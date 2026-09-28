@@ -1,6 +1,6 @@
 # 朝夕 · 恋爱万年历
 
-当前版本：**v1.3.0**。版本记录见 [CHANGELOG.md](CHANGELOG.md)。Node.js 24 + SQLite，使用 Nodemailer 发送邮件、lunar-javascript 计算农历和节气。
+当前版本：**v1.3.1**。版本记录见 [CHANGELOG.md](CHANGELOG.md)。Node.js 24 + SQLite，使用 Nodemailer 发送邮件、lunar-javascript 计算农历和节气。
 
 ## 注册与账本
 
@@ -63,6 +63,8 @@ npm start
 新安装无需 USER1/USER2 环境变量。仅在确实需要预设双人账号时可设置旧版的两组用户名/密码；它们只用于空数据库，账号起初没有邮箱。不要把预览数据目录当成正式数据目录。
 
 ## Linux 部署
+
+需要跟随 GitHub `main` 自动更新时，使用 [部署与自动更新指南](deploy/README.md)，内含首次部署、systemd每5分钟检查、测试构建、备份和失败回滚。下述是手动部署方式，两种方式选一种。
 
 安装 Docker、Docker Compose 和 Caddy，上传源码。`.env` 中填写上述QQ邮箱配置，并改为：
 

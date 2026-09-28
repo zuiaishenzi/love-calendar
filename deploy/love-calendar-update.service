@@ -1,0 +1,11 @@
+[Unit]
+Description=Check GitHub and update love calendar
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/love-calendar/bin/update.sh
+TimeoutStartSec=30min
+UMask=0077
