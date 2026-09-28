@@ -37,6 +37,30 @@ test('注册验证、双人上限、账本隔离、邮箱配置和年度提醒',
   assert.equal((await call('/api/photos/'+shared[0].photos[0],'GET',undefined,outsider.cookie)).status,404);
   assert.equal((await call('/api/memories','POST',{...entry,id:memory.data.id},outsider.cookie)).status,404);
   assert.equal((await call('/api/memories/'+memory.data.id,'DELETE',{},outsider.cookie)).status,404);
+  // Each partner owns their perspective and photographs, even if a request spoofs an author.
+  assert.equal((await call('/api/memories','POST',{...entry,id:memory.data.id,author:alice.data.id,body:'我记得那天的阳光',photos:entry.photos},bob.cookie)).status,200);
+  let dialog=(await call('/api/timeline','GET',undefined,alice.cookie)).data[0];
+  assert.equal(dialog.perspectives.length,2);
+  assert.equal(dialog.perspectives.find(p=>p.author===alice.data.id).body,entry.body);
+  assert.equal(dialog.perspectives.find(p=>p.author===bob.data.id).body,'我记得那天的阳光');
+  const alicePhoto=dialog.perspectives.find(p=>p.author===alice.data.id).photos[0];
+  const bobPhoto=dialog.perspectives.find(p=>p.author===bob.data.id).photos[0];
+  assert.equal((await call('/api/memories','POST',{...entry,id:memory.data.id,body:'补充我的感受',photos:[],keepPhotos:[]},bob.cookie)).status,200);
+  dialog=(await call('/api/memories?month=2026-02','GET',undefined,alice.cookie)).data[0];
+  assert.deepEqual(dialog.perspectives.find(p=>p.author===alice.data.id).photos,[alicePhoto]);
+  assert.equal((await call('/api/photos/'+bobPhoto,'GET',undefined,bob.cookie)).status,404);
+  assert.equal(dialog.perspectives.find(p=>p.author===alice.data.id).body,entry.body);
+  const targeted={title:'只提醒一个人',base_day:'2026-03-01',kind:'solar',enabled:true,recipient_id:bob.data.id};
+  assert.equal((await call('/api/reminders','POST',{...targeted,recipient_id:outsider.data.id},alice.cookie)).status,400);
+  assert.equal((await call('/api/reminders','POST',targeted,alice.cookie)).status,200);
+  const single=(await call('/api/reminders','GET',undefined,bob.cookie)).data.find(r=>r.title===targeted.title);
+  assert.equal(single.recipient_id,bob.data.id);
+  let before=messages.length;await worker.run(new Date('2026-03-01T01:00:00Z'));
+  assert.equal(messages.length,before+1);assert.equal(messages.at(-1).to,'bob@example.com');
+  await worker.run(new Date('2026-03-01T02:00:00Z'));assert.equal(messages.length,before+1);
+  assert.equal((await call('/api/reminders','POST',{...targeted,id:single.id,recipient_id:alice.data.id},bob.cookie)).status,200);
+  await worker.run(new Date('2027-03-01T01:00:00Z'));assert.equal(messages.at(-1).to,'alice@example.com');
+  await call('/api/reminders/'+single.id,'DELETE',{},alice.cookie);
   assert.equal((await call('/api/reminders','POST',{title:'相伴的日子',base_day:'2026-02-17',kind:'lunar',enabled:true},alice.cookie)).status,200);
   const reminders=(await call('/api/reminders?month=2026-02','GET',undefined,bob.cookie)).data;assert.equal(reminders[0].month,1);assert.equal(reminders[0].day,1);assert.deepEqual(reminders[0].dates,['2026-02-17']);
   assert.deepEqual((await call('/api/reminders','GET',undefined,outsider.cookie)).data,[]);
@@ -101,6 +125,7 @@ test('旧双人数据库迁移保留账号、会话、回忆、图片并生成�
   INSERT INTO memories VALUES(1,'2026-01-01','旧回忆','保留我',1,0);
   INSERT INTO photos VALUES('photo',1,'image/png',X'0102');`);db.close();db=openDatabase(dir);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users').get().n,2);assert.equal(db.prepare('SELECT ledger_id FROM memories').get().ledger_id,1);assert.equal(db.prepare('SELECT body FROM memories').get().body,'保留我');assert.equal(db.prepare('SELECT token FROM sessions').get().token,'token');assert.equal(db.prepare('SELECT length(data) AS n FROM photos').get().n,2);assert.equal(readdirSync(dir).filter(x=>x.startsWith('before-v1.3-')).length,1);assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
-  db.close();db=openDatabase(dir);assert.equal(readdirSync(dir).filter(x=>x.startsWith('before-v1.3-')).length,1);
+  assert.equal(db.prepare('SELECT body FROM perspectives').get().body,'保留我');assert.equal(db.prepare('SELECT author FROM photos').get().author,1);
+  db.prepare("UPDATE perspectives SET body='新的视角'").run();db.close();db=openDatabase(dir);assert.equal(db.prepare('SELECT body FROM perspectives').get().body,'新的视角');assert.equal(readdirSync(dir).filter(x=>x.startsWith('before-v1.3-')).length,1);
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });

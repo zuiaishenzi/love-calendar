@@ -13,6 +13,11 @@ const {version:appVersion}=JSON.parse(readFileSync(path.join(root,'package.json'
 async function body(req) {let size=0, chunks=[]; for await(const c of req) {size+=c.length; if(size>24*1024*1024) throw fail(413,'图片总大小过大'); chunks.push(c);} try{return JSON.parse(Buffer.concat(chunks));}catch{throw fail(400,'请求格式错误');}}
 export function createApplication({dataDir=process.env.DATA_DIR||path.join(root,'data'),mailer=createMailer()}={}) {
 const db=openDatabase(dataDir),accounts=accountService(db,mailer),worker=createReminderWorker(db,mailer);
+function attachPerspectives(row){
+ row.perspectives=db.prepare('SELECT p.*,u.name AS author_name FROM perspectives p JOIN users u ON u.id=p.author WHERE p.memory_id=? ORDER BY p.updated,p.author').all(row.id);
+ for(const p of row.perspectives)p.photos=db.prepare('SELECT id FROM photos WHERE memory_id=? AND author=? ORDER BY rowid').all(row.id,p.author).map(x=>x.id);
+ return row;
+}
 const server=http.createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('Referrer-Policy','same-origin'); res.setHeader('Cache-Control','no-store');
   res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' blob:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
@@ -47,9 +52,11 @@ const server=http.createServer(async(req,res)=>{
       if(url.pathname==='/api/reminders'&&req.method==='POST'){
         const input=await body(req);
         if(!validDay(input.base_day)||!['solar','lunar'].includes(input.kind)||typeof input.title!=='string'||!input.title.trim()||input.title.length>100||typeof input.enabled!=='boolean')throw fail(400,'请填写提醒名称、有效日期及历法');
+        const recipient=input.recipient_id??null;
+        if(recipient!==null&&(!Number.isSafeInteger(recipient)||!db.prepare('SELECT id FROM users WHERE id=? AND ledger_id=?').get(recipient,user.ledger_id)))throw fail(400,'请选择本日历的提醒接收人');
         const parts=reminderParts(input.base_day,input.kind);
-        if(input.id){const result=db.prepare('UPDATE reminders SET title=?,base_day=?,kind=?,month=?,day=?,enabled=? WHERE id=? AND ledger_id=?').run(input.title.trim(),input.base_day,input.kind,parts.month,parts.day,Number(input.enabled),input.id,user.ledger_id);if(!result.changes)throw fail(404,'提醒不存在');}
-        else {if(db.prepare('SELECT COUNT(*) AS n FROM reminders WHERE ledger_id=?').get(user.ledger_id).n>=100)throw fail(400,'每本日历最多100条提醒');db.prepare('INSERT INTO reminders(ledger_id,creator,title,base_day,kind,month,day,enabled) VALUES(?,?,?,?,?,?,?,?)').run(user.ledger_id,user.id,input.title.trim(),input.base_day,input.kind,parts.month,parts.day,Number(input.enabled));}
+        if(input.id){const result=db.prepare('UPDATE reminders SET title=?,base_day=?,kind=?,month=?,day=?,enabled=?,recipient_id=? WHERE id=? AND ledger_id=?').run(input.title.trim(),input.base_day,input.kind,parts.month,parts.day,Number(input.enabled),recipient,input.id,user.ledger_id);if(!result.changes)throw fail(404,'提醒不存在');}
+        else {if(db.prepare('SELECT COUNT(*) AS n FROM reminders WHERE ledger_id=?').get(user.ledger_id).n>=100)throw fail(400,'每本日历最多100条提醒');db.prepare('INSERT INTO reminders(ledger_id,creator,title,base_day,kind,month,day,enabled,recipient_id) VALUES(?,?,?,?,?,?,?,?,?)').run(user.ledger_id,user.id,input.title.trim(),input.base_day,input.kind,parts.month,parts.day,Number(input.enabled),recipient);}
         return send(200,{ok:true});
       }
       const reminder=url.pathname.match(/^\/api\/reminders\/(\d+)$/);
@@ -59,14 +66,14 @@ const server=http.createServer(async(req,res)=>{
         const photos=db.prepare('SELECT photos.id,photos.memory_id FROM photos JOIN memories ON memories.id=photos.memory_id WHERE memories.ledger_id=? ORDER BY photos.rowid').all(user.ledger_id);
         const byMemory=new Map();
         for(const photo of photos) {if(!byMemory.has(photo.memory_id)) byMemory.set(photo.memory_id,[]);byMemory.get(photo.memory_id).push(photo.id);}
-        for(const row of rows) row.photos=byMemory.get(row.id)||[];
+        for(const row of rows){row.photos=byMemory.get(row.id)||[];attachPerspectives(row);}
         return send(200,rows);
       }
       if(url.pathname==='/api/logout' && req.method==='POST') {db.prepare('DELETE FROM sessions WHERE token=?').run(hash(req.headers.cookie?.match(/(?:^|;\s*)session=([a-f0-9]{64})(?:;|$)/)?.[1]||''));res.setHeader('Set-Cookie','session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');return send(200,{});}
       if(url.pathname==='/api/memories' && req.method==='GET') {
         const month=url.searchParams.get('month'); if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month||'')) throw fail(400,'月份格式错误');
         const rows=db.prepare('SELECT memories.*, users.name AS author_name FROM memories JOIN users ON author=users.id WHERE memories.ledger_id=? AND day LIKE ? ORDER BY day,id').all(user.ledger_id,month+'-%');
-        for(const row of rows) row.photos=db.prepare('SELECT id FROM photos WHERE memory_id=?').all(row.id).map(p=>p.id);
+        for(const row of rows){row.photos=db.prepare('SELECT id FROM photos WHERE memory_id=?').all(row.id).map(p=>p.id);attachPerspectives(row);}
         return send(200,rows);
       }
       if(url.pathname==='/api/memories' && req.method==='POST') {
@@ -83,12 +90,13 @@ const server=http.createServer(async(req,res)=>{
         db.exec('BEGIN IMMEDIATE');
         try {
           let id=input.id;
-          if(id) {if(!db.prepare('SELECT id FROM memories WHERE id=? AND ledger_id=?').get(id,user.ledger_id)) throw fail(404,'回忆不存在');db.prepare('UPDATE memories SET day=?,title=?,body=?,updated=? WHERE id=?').run(input.day,input.title.trim(),input.body,Date.now(),id);}
+          if(id) {if(!db.prepare('SELECT id FROM memories WHERE id=? AND ledger_id=?').get(id,user.ledger_id)) throw fail(404,'回忆不存在');db.prepare('UPDATE memories SET day=?,title=?,body=CASE WHEN author=? THEN ? ELSE body END,updated=? WHERE id=?').run(input.day,input.title.trim(),user.id,input.body,Date.now(),id);}
           else id=Number(db.prepare('INSERT INTO memories(day,title,body,author,updated,ledger_id) VALUES(?,?,?,?,?,?)').run(input.day,input.title.trim(),input.body,user.id,Date.now(),user.ledger_id).lastInsertRowid);
+          db.prepare('INSERT INTO perspectives(memory_id,author,body,updated) VALUES(?,?,?,?) ON CONFLICT(memory_id,author) DO UPDATE SET body=excluded.body,updated=excluded.updated').run(id,user.id,input.body,Date.now());
           const kept=Array.isArray(input.keepPhotos)?input.keepPhotos:[];
-          for(const p of db.prepare('SELECT id FROM photos WHERE memory_id=?').all(id)) if(!kept.includes(p.id)) db.prepare('DELETE FROM photos WHERE id=?').run(p.id);
-          if(db.prepare('SELECT COUNT(*) AS n FROM photos WHERE memory_id=?').get(id).n+photos.length>6) throw fail(400,'每条回忆最多6张图片');
-          for(const p of photos) db.prepare('INSERT INTO photos VALUES(?,?,?,?)').run(p.id,id,p.mime,p.data);
+          for(const p of db.prepare('SELECT id FROM photos WHERE memory_id=? AND author=?').all(id,user.id)) if(!kept.includes(p.id)) db.prepare('DELETE FROM photos WHERE id=?').run(p.id);
+          if(db.prepare('SELECT COUNT(*) AS n FROM photos WHERE memory_id=? AND author=?').get(id,user.id).n+photos.length>6) throw fail(400,'每条回忆最多6张图片');
+          for(const p of photos) db.prepare('INSERT INTO photos(id,memory_id,mime,data,author) VALUES(?,?,?,?,?)').run(p.id,id,p.mime,p.data,user.id);
           db.exec('COMMIT'); return send(200,{id});
         } catch(e) {db.exec('ROLLBACK');throw e;}
       }

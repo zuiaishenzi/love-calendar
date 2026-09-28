@@ -26,3 +26,14 @@
 .month-jump select:focus-visible{outline:3px solid #b8798c;outline-offset:2px}
 @media(max-width:760px){.toolbar{gap:16px}.navigation{width:100%;justify-content:flex-start;gap:5px}.navigation>button{min-width:30px;padding:0 7px}.navigation #today{padding:0 10px}.month-jump{flex:none}.month-jump .jump-submit{padding:0 11px}}
 @media(max-width:380px){.navigation{gap:3px}.month-jump .year-control{padding-right:6px}.month-control{margin:0 2px!important}.month-jump select{width:64px;padding-left:5px}.month-jump .jump-submit{padding:0 9px}.navigation #today{padding:0 7px}}
+
+.conversation{display:flex;flex-direction:column;gap:14px;margin:18px 0}
+.perspective{align-self:flex-start;max-width:90%;min-width:100px;padding:14px 16px;background:#f7f4f1;border:1px solid #eee6e1;border-radius:4px 16px 16px 16px;overflow-wrap:anywhere}
+.perspective.mine{align-self:flex-end;background:#f7eaf0;border-color:#efdae4;border-radius:16px 4px 16px 16px}
+.perspective-name{font-size:12px;color:#947680;letter-spacing:.03em;margin-bottom:8px}
+.perspective .story-text{margin:0;white-space:pre-wrap}
+.perspective-photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.perspective-photos img{display:block;width:100%;max-height:180px;object-fit:cover;border-radius:8px;margin:0}
+.conversation-invite{font-size:12px;color:#a88b97;text-align:center;margin:0}
+#editor-conversation{max-height:300px;overflow:auto}
+#reminder-form select{display:block;width:100%;padding:12px;border:1px solid var(--line);border-radius:8px;background:white;color:var(--ink);font:inherit;margin-top:8px}

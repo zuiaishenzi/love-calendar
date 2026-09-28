@@ -44,6 +44,18 @@ export function openDatabase(dir) {
  CREATE TRIGGER IF NOT EXISTS memory_same_ledger_insert BEFORE INSERT ON memories WHEN NEW.ledger_id IS NULL OR NEW.ledger_id != (SELECT ledger_id FROM users WHERE id=NEW.author) BEGIN SELECT RAISE(ABORT,'invalid ledger'); END;
  CREATE TRIGGER IF NOT EXISTS memory_same_ledger_update BEFORE UPDATE OF ledger_id,author ON memories WHEN NEW.ledger_id IS NULL OR NEW.ledger_id != (SELECT ledger_id FROM users WHERE id=NEW.author) BEGIN SELECT RAISE(ABORT,'invalid ledger'); END;
  PRAGMA user_version=3;`);
+ // Additive migration: retain original memory text and assign existing photos to its author.
+ db.exec('BEGIN IMMEDIATE');
+ try {
+  if(!db.prepare('PRAGMA table_info(reminders)').all().some(c=>c.name==='recipient_id'))db.exec('ALTER TABLE reminders ADD COLUMN recipient_id INTEGER REFERENCES users(id)');
+  if(!db.prepare('PRAGMA table_info(photos)').all().some(c=>c.name==='author')){
+   db.exec('ALTER TABLE photos ADD COLUMN author INTEGER REFERENCES users(id); UPDATE photos SET author=(SELECT author FROM memories WHERE memories.id=photos.memory_id)');
+  }
+  db.exec(`CREATE TABLE IF NOT EXISTS perspectives(memory_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,author INTEGER NOT NULL REFERENCES users(id),body TEXT NOT NULL,updated INTEGER NOT NULL,PRIMARY KEY(memory_id,author));
+   INSERT OR IGNORE INTO perspectives(memory_id,author,body,updated) SELECT id,author,body,updated FROM memories;
+   PRAGMA user_version=4;`);
+  db.exec('COMMIT');
+ }catch(e){db.exec('ROLLBACK');throw e;}
  // Optional bootstrap for an explicitly configured private installation or isolated preview.
  if(!db.prepare('SELECT id FROM users LIMIT 1').get() && process.env.USER1_NAME) {
   for(const n of [1,2])if(!process.env[`USER${n}_NAME`]||String(process.env[`USER${n}_PASSWORD`]||'').length<12)throw Error('预设账号须配置两组不同用户名及至少12位密码');
