@@ -39,14 +39,14 @@ function conversation(r){
   const mine=p.author===currentUser.id,bubble=el('section',undefined,'perspective'+(mine?' mine':''));
   bubble.append(el('div',p.author_name+(mine?' · 我的视角':' · 对方的视角'),'perspective-name'));
   if(p.body)bubble.append(el('p',p.body,'story-text'));
-  if(p.photos.length){const gallery=el('div',undefined,'perspective-photos');for(const id of p.photos){const a=el('a');a.href='/api/photos/'+id;a.target='_blank';a.rel='noopener';const img=el('img');img.src=a.href;img.alt=p.author_name+'记录的照片';img.loading='lazy';a.append(img);gallery.append(a);}bubble.append(gallery);}
+  if(p.photos.length){const gallery=el('div',undefined,'perspective-photos');for(const id of p.photos){const a=el('button',undefined,'photo-zoom');a.type='button';a.setAttribute('aria-label','放大照片');const img=el('img');img.src='/api/photos/'+id;a.onclick=()=>openPhoto(img);img.alt=p.author_name+'记录的照片';img.loading='lazy';a.append(img);gallery.append(a);}bubble.append(gallery);}
   if(!p.body&&!p.photos.length)bubble.append(el('p','还没有写下文字或照片。','hint'));
   box.append(bubble);
  }
  if((r.perspectives||[]).length<2)box.append(el('p','同一段回忆，也期待另一种视角。','conversation-invite'));
  return box;
 }
-function previews(){const box=$('#photo-preview');box.replaceChildren();kept.forEach(id=>{const wrap=el('div'),img=el('img');img.src='/api/photos/'+id;img.alt='已保存的照片';const remove=el('button','移除');remove.type='button';remove.onclick=()=>{kept=kept.filter(x=>x!==id);previews();};wrap.append(img,remove);box.append(wrap);});}
+function previews(){const box=$('#photo-preview');box.replaceChildren();kept.forEach(id=>{const wrap=el('div'),img=el('img');img.src='/api/photos/'+id;img.alt='已保存的照片';const remove=el('button','移除');remove.type='button';remove.onclick=()=>{kept=kept.filter(x=>x!==id);previews();};const zoom=el('button',undefined,'photo-zoom');zoom.type='button';zoom.setAttribute('aria-label','放大已保存的照片');zoom.onclick=()=>openPhoto(img);zoom.append(img);wrap.append(zoom,remove);box.append(wrap);});}
 function openEditor(r=null){editing=r;const own=r?.perspectives?.find(p=>p.author===currentUser.id);kept=own?[...own.photos]:[];const f=$('#memory-form');f.reset();f.elements.day.value=r?.day||selected;f.elements.title.value=r?.title||'';f.elements.body.value=own?.body||'';$('#editor-conversation').replaceChildren();if(r)$('#editor-conversation').append(conversation(r));$('#editor-title').textContent=r?'我们的回忆 · 我的视角':'写下回忆';$('#editor-error').textContent='';previews();$('#editor').showModal();}
 $('#close').onclick=()=>$('#editor').close();$('#add').onclick=()=>openEditor();$('#add-day').onclick=()=>openEditor();
 function move(delta){const [y,m]=month.split('-').map(Number);const date=new Date(y,m-1+delta,1);if(date.getFullYear()<2000||date.getFullYear()>9999)return;month=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;selected=month+'-01';load();}
@@ -55,3 +55,7 @@ $('#login-form').onsubmit=async e=>{e.preventDefault();const f=e.target,b=f.quer
 $('#logout').onclick=async()=>{try{await api('/api/logout','POST',{});showLogin();}catch(e){$('#status').textContent=e.message;}};
 $('#memory-form').onsubmit=async e=>{e.preventDefault();const f=e.target;$('#save').disabled=true;$('#editor-error').textContent='';try{const files=[...f.elements.photos.files];if(files.length+kept.length>6)throw new Error('每条回忆最多6张照片');if(files.some(f=>f.size>5*1024*1024))throw new Error('每张照片不能超过5MB');if(files.reduce((s,f)=>s+f.size,0)>17*1024*1024)throw new Error('本次上传照片总大小不能超过17MB');const photos=await Promise.all(files.map(file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve({data:reader.result.split(',')[1]});reader.onerror=()=>reject(new Error('图片读取失败'));reader.readAsDataURL(file);})));await api('/api/memories','POST',{id:editing?.id,day:f.elements.day.value,title:f.elements.title.value,body:f.elements.body.value,photos,keepPhotos:kept});selected=f.elements.day.value;month=selected.slice(0,7);$('#editor').close();await load();}catch(error){$('#editor-error').textContent=error.message;}finally{$('#save').disabled=false;}};
 
+
+function openPhoto(image){const viewer=$('#photo-viewer'),large=$('#photo-viewer-image');large.src=image.src;large.alt=image.alt;viewer.showModal();}
+$('#photo-viewer').onclick=()=>$('#photo-viewer').close();
+$('#photo-viewer').addEventListener('close',()=>{$('#photo-viewer-image').removeAttribute('src');});
