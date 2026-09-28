@@ -7,7 +7,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {createApplication} from './server.mjs';
 import {openDatabase} from './db.mjs';
-import {monthDetails,reminderParts,occursOn,nextOccurrence,shanghaiClock} from './calendar.mjs';
+import {validDay,monthDetails,reminderParts,occursOn,nextOccurrence,shanghaiClock} from './calendar.mjs';
 import {createReminderWorker} from './reminders.mjs';
 
 test('注册验证、双人上限、账本隔离、邮箱配置和年度提醒',async()=>{
@@ -43,6 +43,16 @@ test('注册验证、双人上限、账本隔离、邮箱配置和年度提醒',
   assert.equal((await call('/api/reminders','POST',{...reminders[0],enabled:false},outsider.cookie)).status,404);
   assert.equal((await call('/api/reminders/'+reminders[0].id,'DELETE',{},outsider.cookie)).status,404);
   const feb=(await call('/api/calendar?month=2026-02','GET',undefined,alice.cookie)).data;assert.ok(feb.days.find(d=>d.day==='2026-02-17').festivals.includes('春节'));
+  assert.equal((await call('/api/calendar?month=1999-12','GET',undefined,alice.cookie)).status,400);
+  assert.equal((await call('/api/calendar?month=2000-01','GET',undefined,alice.cookie)).data.days.length,31);
+  assert.equal((await call('/api/reminders?month=2000-01','GET',undefined,alice.cookie)).status,200);
+  assert.equal((await call('/api/reminders','POST',{title:'起始日期提醒',base_day:'1999-12-31',kind:'solar',enabled:true},alice.cookie)).status,400);
+  for(const kind of ['solar','lunar']){
+   assert.equal((await call('/api/reminders','POST',{title:'历史提醒',base_day:'2000-01-01',kind,enabled:true},alice.cookie)).status,200);
+   const historical=(await call('/api/reminders','GET',undefined,alice.cookie)).data.find(r=>r.base_day==='2000-01-01');
+   assert.ok(historical.next_day);
+   await call('/api/reminders/'+historical.id,'DELETE',{},alice.cookie);
+  }
   let count=messages.length;await worker.run(new Date('2026-02-17T00:59:00Z'));assert.equal(messages.length,count);
   await worker.run(new Date('2026-02-17T01:00:00Z'));assert.equal(messages.length,count+2);assert.match(messages.at(-1).text,/很温柔的心意/);
   await worker.run(new Date('2026-02-17T02:00:00Z'));await createReminderWorker(db,mailer).run(new Date('2026-02-17T03:00:00Z'));assert.equal(messages.length,count+2);
@@ -65,6 +75,11 @@ test('注册验证、双人上限、账本隔离、邮箱配置和年度提醒',
 });
 
 test('农历、节气、闰年和闰月匹配',()=>{
+ assert.equal(validDay('1999-12-31'),false);
+ assert.equal(validDay('2000-01-01'),true);
+ assert.equal(validDay('2000-02-29'),true);
+ assert.equal(validDay('2001-02-29'),false);
+ assert.equal(monthDetails('2000-02').days.length,29);
  assert.equal(monthDetails('2026-02').days.find(d=>d.day==='2026-02-04').term,'立春');
  assert.equal(monthDetails('2026-02').days.find(d=>d.day==='2026-02-17').lunar,'正月初一');
  assert.equal(monthDetails('2099-01').holiday_known,false);

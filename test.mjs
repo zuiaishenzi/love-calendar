@@ -25,11 +25,11 @@ test('双人私密日历完整流程',async()=>{
   assert.deepEqual((await call('/api/timeline','GET',undefined,a.cookie)).data,[]);
   const entry={day:'2026-02-14',title:'我们的回忆',body:'一起看海 <script>不可执行</script>',photos:[{data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII='}]};
   assert.equal((await call('/api/memories','POST',entry,a.cookie,'https://evil.example')).status,403);
-  for(const day of ['2025-12-31','2026-02-30','2027-02-29']) assert.equal((await call('/api/memories','POST',{...entry,day},a.cookie)).status,400);
+  for(const day of ['1999-12-31','2026-02-30','2027-02-29']) assert.equal((await call('/api/memories','POST',{...entry,day},a.cookie)).status,400);
   const created=await call('/api/memories','POST',entry,a.cookie);assert.equal(created.status,200);
   let rows=(await call('/api/memories?month=2026-02','GET',undefined,b.cookie)).data;assert.equal(rows.length,1);assert.equal(rows[0].title,entry.title);assert.equal(rows[0].photos.length,1);
   const photo=rows[0].photos[0];assert.equal((await call('/api/photos/'+photo)).status,401);assert.equal((await call('/api/photos/'+photo,'GET',undefined,b.cookie)).status,200);
-  const earlier=await call('/api/memories','POST',{...entry,day:'2026-01-01',photos:[]},b.cookie);
+  const earlier=await call('/api/memories','POST',{...entry,day:'2000-01-01',photos:[]},b.cookie);
   const later=await call('/api/memories','POST',{...entry,day:'2027-01-31',photos:[]},a.cookie);
   const sameDay=await call('/api/memories','POST',{...entry,photos:[]},b.cookie);
   const timeline=(await call('/api/timeline','GET',undefined,b.cookie)).data;

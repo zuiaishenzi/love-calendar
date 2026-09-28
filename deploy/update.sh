@@ -13,7 +13,7 @@ branch=$(cat "$base/branch")
 git check-ref-format "refs/heads/$branch" >/dev/null
 [[ -f "$base/shared/.env" ]] || { echo 'Missing shared/.env'; exit 1; }
 if [[ ! -d "$base/source.git" ]]; then git init --bare "$base/source.git"; fi
-git --git-dir="$base/source.git" fetch --no-tags "$repo" "+refs/heads/$branch:refs/heads/deploy"
+git -c http.version=HTTP/1.1 --git-dir="$base/source.git" fetch --depth=1 --no-tags "$repo" "+refs/heads/$branch:refs/heads/deploy"
 revision=$(git --git-dir="$base/source.git" rev-parse refs/heads/deploy)
 old=$(cat "$base/current" 2>/dev/null || true)
 if [[ "$revision" == "$old" ]]; then exit 0; fi

@@ -35,11 +35,11 @@ const server=http.createServer(async(req,res)=>{
       if(!user) throw fail(401,'请先登录');
       if(url.pathname==='/api/me' && req.method==='GET') return send(200,accounts.publicUser(user));
       if(url.pathname==='/api/calendar' && req.method==='GET'){
-        const month=url.searchParams.get('month');if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month||'')||month<'2026-01')throw fail(400,'月份格式错误');
+        const month=url.searchParams.get('month');if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month||'')||month<'2000-01')throw fail(400,'月份格式错误');
         return send(200,monthDetails(month));
       }
       if(url.pathname==='/api/reminders'&&req.method==='GET'){
-        const today=shanghaiClock().day;const month=url.searchParams.get('month');if(month&&(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||month<'2026-01'))throw fail(400,'月份格式错误');
+        const today=shanghaiClock().day;const month=url.searchParams.get('month');if(month&&(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||month<'2000-01'))throw fail(400,'月份格式错误');
         const rows=db.prepare('SELECT * FROM reminders WHERE ledger_id=? ORDER BY base_day,id').all(user.ledger_id);
         for(const r of rows){r.label=reminderLabel(r);r.next_day=nextOccurrence(r,today);if(month)r.dates=monthDetails(month).days.filter(d=>occursOn(r,d.day)).map(d=>d.day);r.delivery=db.prepare('SELECT day,state,attempts,error FROM deliveries WHERE reminder_id=? AND user_id=? ORDER BY day DESC LIMIT 1').get(r.id,user.id)||null;}
         return send(200,rows);

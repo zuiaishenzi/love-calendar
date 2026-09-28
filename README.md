@@ -1,6 +1,6 @@
 # 朝夕 · 恋爱万年历
 
-当前版本：**v1.3.1**。版本记录见 [CHANGELOG.md](CHANGELOG.md)。Node.js 24 + SQLite，使用 Nodemailer 发送邮件、lunar-javascript 计算农历和节气。
+当前版本：**v1.3.2**。版本记录见 [CHANGELOG.md](CHANGELOG.md)。Node.js 24 + SQLite，使用 Nodemailer 发送邮件、lunar-javascript 计算农历和节气。
 
 ## 注册与账本
 
@@ -31,7 +31,7 @@ COOKIE_SECURE=false
 
 ## 日历与回忆录
 
-日历从2026年开始，支持图文回忆和纵向回忆录。主日历显示农历、二十四节气及节日，选中日期可查看完整名称。内置中国大陆放假调休数据由 lunar-javascript 提供；未收录年份明确显示暂无调休安排，不推测未来放假日期。升级依赖并重启可更新内置数据，实际安排以官方通知为准。
+日历从2000年开始，支持图文回忆和纵向回忆录。主日历显示农历、二十四节气及节日，选中日期可查看完整名称。内置中国大陆放假调休数据由 lunar-javascript 提供；未收录年份明确显示暂无调休安排，不推测未来放假日期。升级依赖并重启可更新内置数据，实际安排以官方通知为准。
 
 历法来源：[lunar-javascript](https://github.com/6tail/lunar-javascript)。
 

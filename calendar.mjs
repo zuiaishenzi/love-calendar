@@ -1,6 +1,6 @@
 import calendar from 'lunar-javascript';
 const {Solar,Lunar,HolidayUtil}=calendar;
-export function validDay(day){return typeof day==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(day)&&day>='2026-01-01'&&!Number.isNaN(Date.parse(day))&&new Date(day).toISOString().slice(0,10)===day;}
+export function validDay(day){return typeof day==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(day)&&day>='2000-01-01'&&!Number.isNaN(Date.parse(day))&&new Date(day).toISOString().slice(0,10)===day;}
 export function lunarDate(day){return Solar.fromYmd(...day.split('-').map(Number)).getLunar();}
 export function reminderParts(day,kind){const l=lunarDate(day);return kind==='lunar'?{month:l.getMonth(),day:l.getDay()}:{month:Number(day.slice(5,7)),day:Number(day.slice(8))};}
 export function occursOn(reminder,day){if(day<reminder.base_day)return false;const p=reminderParts(day,reminder.kind);return reminder.month===p.month&&reminder.day===p.day;}
