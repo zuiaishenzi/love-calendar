@@ -48,6 +48,7 @@ export function openDatabase(dir) {
  db.exec('BEGIN IMMEDIATE');
  try {
   if(!db.prepare('PRAGMA table_info(reminders)').all().some(c=>c.name==='recipient_id'))db.exec('ALTER TABLE reminders ADD COLUMN recipient_id INTEGER REFERENCES users(id)');
+  if(!db.prepare('PRAGMA table_info(reminders)').all().some(c=>c.name==='private_owner'))db.exec('ALTER TABLE reminders ADD COLUMN private_owner INTEGER REFERENCES users(id)');
   if(!db.prepare('PRAGMA table_info(photos)').all().some(c=>c.name==='author')){
    db.exec('ALTER TABLE photos ADD COLUMN author INTEGER REFERENCES users(id); UPDATE photos SET author=(SELECT author FROM memories WHERE memories.id=photos.memory_id)');
   }

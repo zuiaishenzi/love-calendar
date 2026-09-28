@@ -45,22 +45,24 @@ const server=http.createServer(async(req,res)=>{
       }
       if(url.pathname==='/api/reminders'&&req.method==='GET'){
         const today=shanghaiClock().day;const month=url.searchParams.get('month');if(month&&(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||month<'2000-01'))throw fail(400,'月份格式错误');
-        const rows=db.prepare('SELECT * FROM reminders WHERE ledger_id=? ORDER BY base_day,id').all(user.ledger_id);
+        const rows=db.prepare('SELECT * FROM reminders WHERE ledger_id=? AND (private_owner IS NULL OR private_owner=?) ORDER BY base_day,id').all(user.ledger_id,user.id);
         for(const r of rows){r.label=reminderLabel(r);r.next_day=nextOccurrence(r,today);if(month)r.dates=monthDetails(month).days.filter(d=>occursOn(r,d.day)).map(d=>d.day);r.delivery=db.prepare('SELECT day,state,attempts,error FROM deliveries WHERE reminder_id=? AND user_id=? ORDER BY day DESC LIMIT 1').get(r.id,user.id)||null;}
         return send(200,rows);
       }
       if(url.pathname==='/api/reminders'&&req.method==='POST'){
         const input=await body(req);
         if(!validDay(input.base_day)||!['solar','lunar'].includes(input.kind)||typeof input.title!=='string'||!input.title.trim()||input.title.length>100||typeof input.enabled!=='boolean')throw fail(400,'请填写提醒名称、有效日期及历法');
-        const recipient=input.recipient_id??null;
+        if(input.private!==undefined&&typeof input.private!=='boolean')throw fail(400,'提醒隐私设置错误');
+        const owner=input.private===true?user.id:null;
+        const recipient=owner??input.recipient_id??null;
         if(recipient!==null&&(!Number.isSafeInteger(recipient)||!db.prepare('SELECT id FROM users WHERE id=? AND ledger_id=?').get(recipient,user.ledger_id)))throw fail(400,'请选择本日历的提醒接收人');
         const parts=reminderParts(input.base_day,input.kind);
-        if(input.id){const result=db.prepare('UPDATE reminders SET title=?,base_day=?,kind=?,month=?,day=?,enabled=?,recipient_id=? WHERE id=? AND ledger_id=?').run(input.title.trim(),input.base_day,input.kind,parts.month,parts.day,Number(input.enabled),recipient,input.id,user.ledger_id);if(!result.changes)throw fail(404,'提醒不存在');}
-        else {if(db.prepare('SELECT COUNT(*) AS n FROM reminders WHERE ledger_id=?').get(user.ledger_id).n>=100)throw fail(400,'每本日历最多100条提醒');db.prepare('INSERT INTO reminders(ledger_id,creator,title,base_day,kind,month,day,enabled,recipient_id) VALUES(?,?,?,?,?,?,?,?,?)').run(user.ledger_id,user.id,input.title.trim(),input.base_day,input.kind,parts.month,parts.day,Number(input.enabled),recipient);}
+        if(input.id){const result=db.prepare('UPDATE reminders SET title=?,base_day=?,kind=?,month=?,day=?,enabled=?,recipient_id=?,private_owner=? WHERE id=? AND ledger_id=? AND (private_owner IS NULL OR private_owner=?)').run(input.title.trim(),input.base_day,input.kind,parts.month,parts.day,Number(input.enabled),recipient,owner,input.id,user.ledger_id,user.id);if(!result.changes)throw fail(404,'提醒不存在');}
+        else {if(db.prepare('SELECT COUNT(*) AS n FROM reminders WHERE ledger_id=?').get(user.ledger_id).n>=100)throw fail(400,'每本日历最多100条提醒');db.prepare('INSERT INTO reminders(ledger_id,creator,title,base_day,kind,month,day,enabled,recipient_id,private_owner) VALUES(?,?,?,?,?,?,?,?,?,?)').run(user.ledger_id,user.id,input.title.trim(),input.base_day,input.kind,parts.month,parts.day,Number(input.enabled),recipient,owner);}
         return send(200,{ok:true});
       }
       const reminder=url.pathname.match(/^\/api\/reminders\/(\d+)$/);
-      if(reminder&&req.method==='DELETE'){const r=db.prepare('DELETE FROM reminders WHERE id=? AND ledger_id=?').run(Number(reminder[1]),user.ledger_id);if(!r.changes)throw fail(404,'提醒不存在');return send(200,{ok:true});}
+      if(reminder&&req.method==='DELETE'){const r=db.prepare('DELETE FROM reminders WHERE id=? AND ledger_id=? AND (private_owner IS NULL OR private_owner=?)').run(Number(reminder[1]),user.ledger_id,user.id);if(!r.changes)throw fail(404,'提醒不存在');return send(200,{ok:true});}
       if(url.pathname==='/api/timeline' && req.method==='GET') {
         const rows=db.prepare('SELECT memories.*, users.name AS author_name FROM memories JOIN users ON author=users.id WHERE memories.ledger_id=? ORDER BY day,id').all(user.ledger_id);
         const photos=db.prepare('SELECT photos.id,photos.memory_id FROM photos JOIN memories ON memories.id=photos.memory_id WHERE memories.ledger_id=? ORDER BY photos.rowid').all(user.ledger_id);

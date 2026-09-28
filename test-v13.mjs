@@ -50,6 +50,16 @@ test('注册验证、双人上限、账本隔离、邮箱配置和年度提醒',
   assert.deepEqual(dialog.perspectives.find(p=>p.author===alice.data.id).photos,[alicePhoto]);
   assert.equal((await call('/api/photos/'+bobPhoto,'GET',undefined,bob.cookie)).status,404);
   assert.equal(dialog.perspectives.find(p=>p.author===alice.data.id).body,entry.body);
+  const secret={title:'我的私密提醒',base_day:'2026-04-01',kind:'solar',enabled:true,private:true,recipient_id:bob.data.id};
+  assert.equal((await call('/api/reminders','POST',secret,alice.cookie)).status,200);
+  const privateRow=(await call('/api/reminders','GET',undefined,alice.cookie)).data.find(r=>r.title===secret.title);
+  assert.equal(privateRow.private_owner,alice.data.id);assert.equal(privateRow.recipient_id,alice.data.id);
+  for(const url of ['/api/reminders','/api/reminders?month=2026-04'])assert.ok(!(await call(url,'GET',undefined,bob.cookie)).data.some(r=>r.id===privateRow.id));
+  assert.equal((await call('/api/reminders','POST',{...secret,id:privateRow.id,private:false},bob.cookie)).status,404);
+  assert.equal((await call('/api/reminders/'+privateRow.id,'DELETE',{},bob.cookie)).status,404);
+  const sentBefore=messages.length;await worker.run(new Date('2026-04-01T01:00:00Z'));
+  assert.equal(messages.length,sentBefore+1);assert.equal(messages.at(-1).to,'alice@example.com');
+  assert.equal((await call('/api/reminders/'+privateRow.id,'DELETE',{},alice.cookie)).status,200);
   const targeted={title:'只提醒一个人',base_day:'2026-03-01',kind:'solar',enabled:true,recipient_id:bob.data.id};
   assert.equal((await call('/api/reminders','POST',{...targeted,recipient_id:outsider.data.id},alice.cookie)).status,400);
   assert.equal((await call('/api/reminders','POST',targeted,alice.cookie)).status,200);

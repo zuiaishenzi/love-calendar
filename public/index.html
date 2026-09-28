@@ -17,7 +17,7 @@
 <label>新邮箱验证码<div class="input-action"><input name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6位数字"><button type="button" id="profile-code">发送验证码</button></div></label>
 <label class="check-label"><input type="checkbox" name="email_enabled">接收我们日历中的年度邮件提醒</label><button class="primary">保存邮箱设置</button><p id="profile-error" role="status"></p></form></dialog>
 <dialog id="reminder-dialog"><form id="reminder-form" method="post"><div class="dialog-heading"><h2 id="reminder-heading">每年提醒我们</h2><button type="button" data-close="reminder-dialog" aria-label="关闭提醒设置">×</button></div>
-<label>提醒谁<select name="recipient_id" aria-label="提醒接收人"><option value="">我们两人</option></select></label><p class="hint">只向所选成员发送邮件；该成员需绑定邮箱并开启邮件提醒。提醒设置仍在共同日历中可见。</p><label>想记住的事<input name="title" maxlength="100" required placeholder="比如：我们的纪念日"></label>
+<label>提醒谁<select name="recipient_id" aria-label="提醒接收人"><option value="">我们两人</option><option value="private">仅提醒我自己（对方不可见）</option></select></label><p class="hint">选择“仅提醒我自己”后，对方看不到这条提醒。接收邮件需绑定邮箱并开启邮件提醒。</p><label>想记住的事<input name="title" maxlength="100" required placeholder="比如：我们的纪念日"></label>
 <label>对应的日历日期<input name="base_day" type="date" min="2000-01-01" max="9999-12-31" required></label>
 <fieldset><legend>每年按哪种日期提醒？</legend><label class="check-label"><input type="radio" name="kind" value="solar" checked>阳历（公历）</label><label class="check-label"><input type="radio" name="kind" value="lunar">农历（阴历）</label></fieldset>
 <p id="reminder-date-hint" class="hint"></p><p class="hint">北京时间当日 09:00 起发送给所选成员中已验证、已开启提醒的邮箱。闰月只在对应闰月提醒；没有对应日期的年份跳过（如2月29日、农历三十）。</p>
