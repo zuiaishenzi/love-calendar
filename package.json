@@ -1,0 +1,17 @@
+{
+  "name": "our-calendar",
+  "private": true,
+  "version": "1.3.0",
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.mjs",
+    "test": "node --test test.mjs test-v13.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "lunar-javascript": "^1.7.7",
+    "nodemailer": "^10.0.11"
+  }
+}

@@ -1,0 +1,4 @@
+# 将域名替换为自己的域名，并将 DNS 指向服务器。
+love.example.com {
+    reverse_proxy 127.0.0.1:3000
+}
