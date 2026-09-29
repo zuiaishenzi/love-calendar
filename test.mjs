@@ -1,7 +1,8 @@
+import {runInNewContext} from 'node:vm';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {once} from 'node:events';
@@ -46,4 +47,19 @@ test('双人私密日历完整流程',async()=>{
   assert.equal((await call('/api/photos/'+photo,'GET',undefined,a.cookie)).status,404);
   assert.equal((await call('/api/logout','POST',{},a.cookie)).status,200);assert.equal((await call('/api/me','GET',undefined,a.cookie)).status,401);
  }finally{if(child?.exitCode===null)await stop();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('旧图片链接被捕获并在页内预览，外部图片不受影响',()=>{
+ let handler,prevented=0,stopped=0,opened=0;
+ const image={src:'https://calendar.example/api/photos/'+'a'.repeat(36),alt:'回忆照片'};
+ const viewer={open:false,showModal(){this.open=true;opened++;}},large={};
+ class Element {closest(selector){if(selector==='#photo-viewer')return null;if(selector==='img')return image;return null;}}
+ runInNewContext(readFileSync(new URL('./public/photo-preview.js',import.meta.url),'utf8'),{
+  Element,URL,location:{href:'https://calendar.example/',origin:'https://calendar.example'},
+  document:{addEventListener(type,fn,capture){assert.equal(type,'click');assert.equal(capture,true);handler=fn;},querySelector(selector){return selector==='#photo-viewer'?viewer:large;}}
+ });
+ const event={target:new Element(),preventDefault(){prevented++;},stopImmediatePropagation(){stopped++;}};
+ handler(event);assert.equal(prevented,1);assert.equal(stopped,1);assert.equal(opened,1);assert.equal(large.src,image.src);
+ handler(event);assert.equal(opened,1);
+ image.src='https://external.example/photo.png';handler(event);assert.equal(prevented,2);
 });

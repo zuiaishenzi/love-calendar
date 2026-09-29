@@ -108,7 +108,7 @@ const server=http.createServer(async(req,res)=>{
       if(memory && req.method==='DELETE') {const result=db.prepare('DELETE FROM memories WHERE id=? AND ledger_id=?').run(Number(memory[1]),user.ledger_id);if(!result.changes)throw fail(404,'回忆不存在');return send(200,{});}
       throw fail(404,'接口不存在');
     }
-    const files={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/features.js':['features.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/favicon.svg':['favicon.svg','image/svg+xml']};
+    const files={'/':['index.html','text/html; charset=utf-8'],'/photo-preview.js':['photo-preview.js','text/javascript; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/features.js':['features.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/favicon.svg':['favicon.svg','image/svg+xml']};
     const file=files[url.pathname]; if(!file || req.method!=='GET') throw fail(404,'页面不存在');
     const content=readFileSync(path.join(root,'public',file[0]));
     res.writeHead(200,{'Content-Type':file[1]});res.end(file[0]==='index.html'?content.toString('utf8').replaceAll('{{APP_VERSION}}',appVersion):content);
