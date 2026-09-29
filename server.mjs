@@ -1,3 +1,4 @@
+import {createRealtime} from './realtime.mjs';
 import sharp from 'sharp';
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
@@ -14,6 +15,7 @@ const {version:appVersion}=JSON.parse(readFileSync(path.join(root,'package.json'
 async function body(req) {let size=0, chunks=[]; for await(const c of req) {size+=c.length; if(size>24*1024*1024) throw fail(413,'图片总大小过大'); chunks.push(c);} try{return JSON.parse(Buffer.concat(chunks));}catch{throw fail(400,'请求格式错误');}}
 export function createApplication({dataDir=process.env.DATA_DIR||path.join(root,'data'),mailer=createMailer()}={}) {
 const db=openDatabase(dataDir),accounts=accountService(db,mailer),worker=createReminderWorker(db,mailer);
+const realtime=createRealtime(accounts.authenticate);
 const pendingThumbnails=new Map();
 function attachPerspectives(row){
  row.perspectives=db.prepare('SELECT p.*,u.name AS author_name FROM perspectives p JOIN users u ON u.id=p.author WHERE p.memory_id=? ORDER BY p.updated,p.author').all(row.id);
@@ -40,6 +42,15 @@ const server=http.createServer(async(req,res)=>{
     }
     if(url.pathname.startsWith('/api/')) {
       if(!user) throw fail(401,'请先登录');
+      if(url.pathname==='/api/events'&&req.method==='GET'){
+        const client=url.searchParams.get('client');if(!/^[a-zA-Z0-9-]{16,80}$/.test(client||''))throw fail(400,'连接标识无效');
+        realtime.connect(client,user,req,res);return;
+      }
+      if(url.pathname==='/api/presence'&&req.method==='POST'){
+        const input=await body(req);if(!/^[a-zA-Z0-9-]{16,80}$/.test(input.client||'')||(input.day!==null&&!validDay(input.day)))throw fail(400,'编辑状态无效');
+        if(!realtime.touch(input.client,user,input.day))throw fail(403,'连接标识不属于当前用户');
+        return send(200,realtime.state(user));
+      }
       if(url.pathname==='/api/me' && req.method==='GET') return send(200,accounts.publicUser(user));
       if(url.pathname==='/api/calendar' && req.method==='GET'){
         const month=url.searchParams.get('month');if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month||'')||month<'2000-01')throw fail(400,'月份格式错误');
@@ -101,7 +112,7 @@ const server=http.createServer(async(req,res)=>{
           for(const p of db.prepare('SELECT id FROM photos WHERE memory_id=? AND author=?').all(id,user.id)) if(!kept.includes(p.id)) db.prepare('DELETE FROM photos WHERE id=?').run(p.id);
           if(db.prepare('SELECT COUNT(*) AS n FROM photos WHERE memory_id=? AND author=?').get(id,user.id).n+photos.length>6) throw fail(400,'每条回忆最多6张图片');
           for(const p of photos) db.prepare('INSERT INTO photos(id,memory_id,mime,data,author) VALUES(?,?,?,?,?)').run(p.id,id,p.mime,p.data,user.id);
-          db.exec('COMMIT'); return send(200,{id});
+          db.exec('COMMIT'); realtime.changed(user);return send(200,{id});
         } catch(e) {db.exec('ROLLBACK');throw e;}
       }
       const photo=url.pathname.match(/^\/api\/photos\/([a-f0-9]{36})$/);
@@ -132,16 +143,17 @@ const server=http.createServer(async(req,res)=>{
         res.writeHead(200,{'Content-Type':result.mime,'Content-Length':result.data.length});return res.end(Buffer.from(result.data));
       }
       const memory=url.pathname.match(/^\/api\/memories\/(\d+)$/);
-      if(memory && req.method==='DELETE') {const result=db.prepare('DELETE FROM memories WHERE id=? AND ledger_id=?').run(Number(memory[1]),user.ledger_id);if(!result.changes)throw fail(404,'回忆不存在');return send(200,{});}
+      if(memory && req.method==='DELETE') {const result=db.prepare('DELETE FROM memories WHERE id=? AND ledger_id=?').run(Number(memory[1]),user.ledger_id);if(!result.changes)throw fail(404,'回忆不存在');realtime.changed(user);return send(200,{});}
       throw fail(404,'接口不存在');
     }
-    const files={'/':['index.html','text/html; charset=utf-8'],'/photo-preview.js':['photo-preview.js','text/javascript; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/features.js':['features.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/favicon.svg':['favicon.svg','image/svg+xml']};
+    const files={'/realtime.js':['realtime.js','text/javascript; charset=utf-8'],'/presence-messages.json':['presence-messages.json','application/json; charset=utf-8'],'/':['index.html','text/html; charset=utf-8'],'/photo-preview.js':['photo-preview.js','text/javascript; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/features.js':['features.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/favicon.svg':['favicon.svg','image/svg+xml']};
     const file=files[url.pathname]; if(!file || req.method!=='GET') throw fail(404,'页面不存在');
     const content=readFileSync(path.join(root,'public',file[0]));
     res.writeHead(200,{'Content-Type':file[1]});res.end(file[0]==='index.html'?content.toString('utf8').replaceAll('{{APP_VERSION}}',appVersion):content);
   } catch(e) {if(!e.status) console.error('请求处理失败',e.code||'internal');send(e.status||500,{error:e.status?e.message:'服务暂时不可用，请稍后重试'});}
 });
-return {server,db,worker};
+server.on('close',()=>realtime.close());
+return {server,db,worker,realtime};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const {server,worker}=createApplication();

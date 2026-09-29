@@ -54,3 +54,5 @@
 #delete-memory-error{color:#a33049;font-size:14px}
 .delete-memory-actions{display:flex;justify-content:center;gap:12px;margin-top:24px}
 #delete-memory-confirm{color:#916c7b;background:transparent}
+
+.presence-note{padding:13px 18px;border:1px solid #efdde5;border-radius:12px;background:#fbf0f5;color:#976077;font-size:14px;line-height:1.7;overflow-wrap:anywhere}

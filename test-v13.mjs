@@ -31,6 +31,31 @@ test('注册验证、双人上限、账本隔离、邮箱配置和年度提醒',
   const concurrentCodes=await Promise.all([code('join-one@example.com'),code('join-two@example.com')]);
   const concurrent=await Promise.all(['join-one','join-two'].map((name,i)=>call('/api/register','POST',{name,email:name+'@example.com',ledger_code:'OUR-SECRET-BOOK-B',password,code:concurrentCodes[i]})));
   assert.deepEqual(concurrent.map(r=>r.status).sort(),[200,409]);
+  // Real HTTP event streams: immediate presence, adaptive intervals and ledger isolation.
+  const streams=[];
+  async function stream(cookie,client){
+   const controller=new AbortController();streams.push(controller);
+   const response=await fetch(origin+'/api/events?client='+client,{headers:{Cookie:cookie},signal:controller.signal});assert.equal(response.status,200);
+   const reader=response.body.getReader();let buffer='';
+   async function next(){for(;;){const end=buffer.indexOf('\n\n');if(end>=0){const frame=buffer.slice(0,end);buffer=buffer.slice(end+2);const data=frame.split('\n').find(x=>x.startsWith('data: '));if(data)return JSON.parse(data.slice(6));continue;}const chunk=await reader.read();if(chunk.done)throw Error('stream ended');buffer+=new TextDecoder().decode(chunk.value);}}
+   return {next};
+  }
+  try{
+   const ca='alice-presence-client',cb='bob-presence-client';
+   const sa=await stream(alice.cookie,ca),sb=await stream(bob.cookie,cb);
+   assert.equal((await sa.next()).interval,24000);const initial=await sb.next();assert.equal(initial.peer,null);
+   let pulse=await call('/api/presence','POST',{client:ca,day:'2026-09-17'},alice.cookie);assert.equal(pulse.data.interval,15000);
+   assert.equal((await sb.next()).peer.day,'2026-09-17');await sa.next();
+   pulse=await call('/api/presence','POST',{client:cb,day:'2026-09-29'},bob.cookie);assert.equal(pulse.data.interval,12000);
+   assert.equal((await sa.next()).peer.name,'bob');await sb.next();
+   assert.equal((await call('/api/presence','POST',{client:ca,day:null},outsider.cookie)).status,403);
+   assert.equal((await call('/api/presence','POST',{client:'outsider-presence-client',day:null},outsider.cookie)).data.peer,null);
+   const change=await call('/api/memories','POST',{day:'2026-09-17',title:'推送测试',body:'更新',photos:[]},alice.cookie);
+   assert.notEqual((await sa.next()).revision,initial.revision);assert.notEqual((await sb.next()).revision,initial.revision);
+   await call('/api/memories/'+change.data.id,'DELETE',{},alice.cookie);await sa.next();await sb.next();
+   await call('/api/presence','POST',{client:ca,day:null},alice.cookie);assert.equal((await sb.next()).peer,null);await sa.next();
+   await call('/api/presence','POST',{client:cb,day:null},bob.cookie);assert.equal((await sa.next()).interval,24000);await sb.next();
+  }finally{for(const controller of streams)controller.abort();}
   const entry={day:'2026-02-17',title:'一起度过的春节',body:'只有两个人的回忆',photos:[{data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII='}]};
   const memory=await call('/api/memories','POST',entry,alice.cookie);assert.equal(memory.status,200);
   const shared=(await call('/api/timeline','GET',undefined,bob.cookie)).data;assert.equal(shared.length,1);
