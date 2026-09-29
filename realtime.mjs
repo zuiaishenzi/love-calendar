@@ -14,7 +14,7 @@ export function createRealtime(authenticate){
   const client={user,req,res};clients.set(id,client);
   res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store','X-Accel-Buffering':'no','Connection':'keep-alive'});
   res.write('retry: 3000\ndata: '+JSON.stringify(state(user))+'\n\n');
-  req.on('close',()=>{if(clients.get(id)!==client)return;clients.delete(id);edits.delete(id);publish(user.ledger_id);});
+  req.on('close',()=>{if(clients.get(id)!==client)return;clients.delete(id);publish(user.ledger_id);});
  }
  function touch(id,user,day){
   const c=clients.get(id);if(c&&c.user.id!==user.id)return false;
