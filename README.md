@@ -117,3 +117,16 @@ docker compose start calendar
 双方各开一个前台页面时，无人编辑每人24秒、一人编辑每人15秒、双人编辑每人12秒检查一次，合计约5/8/10次每分钟。打开编辑框、关闭编辑框会立即报告状态，保存和删除通过SSE推送给同账本双方，额外操作请求不计入上述定时频率。SSE每15秒发极小的连接保活注释。多开标签页会增加连接和请求。
 
 仅共同回忆参与编辑提示，不推送私密提醒或草稿内容。状态45秒过期（清理最多额外15秒）；后台暂停心跳并保留状态至超时，恢复前台自动同步。收到更新时保留编辑框中的草稿，关闭编辑框后刷新。服务器单进程保存在线状态，重启后客户端自动重连。反向代理需支持SSE流式响应、关闭缓冲；推送暂时不可用时定时检查仍能发现更新。
+
+### 缩短已有账本号（一次性维护）
+
+仓库提供 `deploy/shorten-ledger-codes.sh`，适用于 `/opt/love-calendar` 的 Docker 部署。先将包含此脚本的仓库更新至服务器，进入仓库目录执行：
+
+```bash
+sudo bash deploy/shorten-ledger-codes.sh --check
+sudo bash deploy/shorten-ledger-codes.sh --apply
+```
+
+`--check` 只报告需要转换的数量。`--apply` 与部署更新共用互斥锁，短暂停止服务，用当前服务镜像里的 Node 运行转换，结束后启动原容器。数据库旁自动生成 `calendar.sqlite.before-short-codes-*.sqlite` 完整备份；备份失败不会修改数据。仅转换超过 10 位的账本号，保留账本 ID 和所有关联数据，重复执行不会再次转换。新号在个人设置查看，旧号不再用于加入。不要公开数据库备份。
+
+非 Docker 部署可停止服务后用 Node.js 24 执行 `node scripts/shorten-ledger-codes.mjs --apply /绝对路径/calendar.sqlite`，完成后启动服务。
