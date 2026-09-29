@@ -36,8 +36,8 @@ export function accountService(db,mailer) {
    limit('register:'+ip,20,3600000);
    const email=emailOf(input.email),name=String(input.name||'').trim(),password=String(input.password||''),code=String(input.ledger_code||'').trim().toUpperCase();
    if(!/^[\p{L}\p{N}_-]{2,30}$/u.test(name))throw fail(400,'账号须为2至30位文字、数字、下划线或短横线');
-   if(password.length<12||password.length>128)throw fail(400,'密码需要12至128位');
-   if(!/^[A-Z0-9-]{12,64}$/.test(code))throw fail(400,'账本号须为12至64位字母、数字或短横线');
+   if(password.length<8||password.length>128)throw fail(400,'密码需要8至128位');
+   if(!/^[A-Z0-9-]{8,64}$/.test(code))throw fail(400,'账本号须为8至64位字母、数字或短横线');
    verify(email,'register',0,input.code);
    const salt=randomBytes(16).toString('hex'),digest=scryptSync(password,salt,64).toString('hex');
    db.exec('BEGIN IMMEDIATE');

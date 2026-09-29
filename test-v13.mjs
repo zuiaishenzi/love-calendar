@@ -22,6 +22,11 @@ test('注册验证、双人上限、账本隔离、邮箱配置和年度提醒',
  const password='a-long-secret-password';
  async function signup(name,email,ledger_code){return call('/api/register','POST',{name,email,ledger_code,password,code:await code(email)});}
  try{
+  const shortInput={name:'shortpass',email:'short@example.com',ledger_code:'BOOK1234',password:'12345678',code:await code('short@example.com')};
+  assert.equal((await call('/api/register','POST',{...shortInput,password:'1234567'})).status,400);
+  assert.equal((await call('/api/register','POST',{...shortInput,ledger_code:'BOOK123'})).status,400);
+  assert.equal((await call('/api/register','POST',shortInput)).status,200);
+  assert.equal((await call('/api/login','POST',{name:'shortpass',password:'12345678'})).status,200);
   const alice=await signup('alice','alice@example.com','OUR-SECRET-BOOK-A');assert.equal(alice.status,200);assert.equal(alice.data.members.length,1);
   const bob=await signup('bob','bob@example.com','our-secret-book-a');assert.equal(bob.status,200);assert.equal(bob.data.members.length,2);
   const third=await signup('third','third@example.com','OUR-SECRET-BOOK-A');assert.equal(third.status,409);

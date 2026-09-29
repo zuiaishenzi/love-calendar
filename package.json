@@ -1,7 +1,7 @@
 {
   "name": "our-calendar",
   "private": true,
-  "version": "1.4.4",
+  "version": "1.4.5",
   "type": "module",
   "scripts": {
     "start": "node --env-file-if-exists=.env server.mjs",
