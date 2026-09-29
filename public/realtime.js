@@ -40,10 +40,11 @@ function startRealtime(reuseClient=false){
  liveSource.onopen=()=>{if(connected)refreshShared();};
  scheduleLive();
 }
-function announceEditing(){liveDirty=true;sendPresence();}
+function placeFloating(){const host=$('#editor').open?$('#editor'):$('#app');host.append($('#presence-float'));}
+function announceEditing(){placeFloating();liveDirty=true;sendPresence();}
 $('#memory-form').addEventListener('input',()=>{const was=liveDirty;liveDirty=true;if(!was)sendPresence();});
 $('#memory-form').elements.day.addEventListener('change',()=>{if(liveDirty)sendPresence();});
-$('#editor').addEventListener('close',()=>{liveDirty=false;sendPresence();if(livePending){livePending=false;$('#sync-note').hidden=true;$('#editor-sync-note').hidden=true;refreshShared();}});
+$('#editor').addEventListener('close',()=>{placeFloating();liveDirty=false;sendPresence();if(livePending){livePending=false;$('#sync-note').hidden=true;$('#editor-sync-note').hidden=true;refreshShared();}});
 function releasePresence(){if(!currentUser||!liveClient)return;fetch('/api/presence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client:liveClient,day:null}),keepalive:true}).catch(()=>{});liveSource?.close();liveSource=null;clearTimeout(liveTimer);}
 document.addEventListener('visibilitychange',()=>{if(!currentUser)return;if(document.hidden){liveSource?.close();liveSource=null;clearTimeout(liveTimer);}else{const dirty=liveDirty,pending=livePending;startRealtime(true);liveDirty=dirty;livePending=pending;if(dirty)sendPresence();refreshShared();}});
 window.addEventListener('pagehide',releasePresence);
@@ -54,6 +55,7 @@ function setFloatExpanded(expanded){
  $('#presence-note').hidden=!expanded;$('#presence-chevron').textContent=expanded?'⌄':'⌃';
 }
 function showFloating(title,message){
+ placeFloating();
  clearTimeout(floatTimer);floatNotice=false;$('#presence-title').textContent=title;$('#presence-note').textContent=message;
  $('#presence-float').hidden=false;setFloatExpanded(true);
  floatTimer=setTimeout(()=>setFloatExpanded(false),5000);

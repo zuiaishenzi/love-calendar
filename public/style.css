@@ -73,3 +73,6 @@
 #editor-presence-note:not([hidden]){position:sticky;top:0;z-index:2;box-shadow:0 3px 12px #65344810}
 body:has(#presence-float:not([hidden])) main{padding-bottom:130px}
 @media(max-width:760px){.presence-float{right:auto;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom));width:calc(100vw - 32px);max-width:380px}.presence-float.is-collapsed{width:max-content;max-width:calc(100vw - 32px)}#presence-toggle{padding:13px 16px}}
+
+#editor:has(.presence-float:not([hidden])){padding-bottom:140px}
+#editor-presence-note{display:none!important}
