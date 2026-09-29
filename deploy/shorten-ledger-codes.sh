@@ -17,6 +17,6 @@ if [[ "$mode" == --apply ]]; then
  docker stop "$container"
  trap 'docker start "$container" >/dev/null' EXIT
 fi
-docker run --rm --network none --user "$(stat -c '%u:%g' "$base/shared/data/calendar.sqlite")" \
- -v "$base/shared/data:/app/data" -v "$script:/app/shorten-ledger-codes.mjs:ro" \
- --entrypoint node "$image" /app/shorten-ledger-codes.mjs "$mode" /app/data/calendar.sqlite
+docker run --rm -i --network none --user "$(stat -c '%u:%g' "$base/shared/data/calendar.sqlite")" \
+ -v "$base/shared/data:/app/data" \
+ --entrypoint node "$image" --input-type=module - "$mode" /app/data/calendar.sqlite < "$script"
