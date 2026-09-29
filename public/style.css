@@ -45,3 +45,12 @@
 #photo-viewer>button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;width:100%;height:100%;padding:24px;border:0;background:transparent;cursor:zoom-out;color:white}
 #photo-viewer img{display:block;max-width:100%;max-height:calc(100dvh - 100px);width:auto;height:auto;object-fit:contain;border-radius:8px}
 #photo-viewer span{font-size:13px;color:#eadde3}
+
+#delete-memory-dialog{width:min(440px,92vw);text-align:center;padding:30px;background:#fffafb}
+.delete-memory-heart{font-size:45px;color:#b87e94;line-height:1.2;margin-bottom:14px}
+#delete-memory-title{font-size:24px;margin:0 0 16px}
+#delete-memory-name{color:var(--wine);overflow-wrap:anywhere}
+#delete-memory-description{font-size:14px;line-height:1.9;color:#8b747e}
+#delete-memory-error{color:#a33049;font-size:14px}
+.delete-memory-actions{display:flex;justify-content:center;gap:12px;margin-top:24px}
+#delete-memory-confirm{color:#916c7b;background:transparent}
