@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,readdirSync} from 'node:fs';
@@ -37,6 +38,25 @@ test('注册验证、双人上限、账本隔离、邮箱配置和年度提醒',
   assert.equal((await call('/api/photos/'+shared[0].photos[0],'GET',undefined,outsider.cookie)).status,404);
   assert.equal((await call('/api/memories','POST',{...entry,id:memory.data.id},outsider.cookie)).status,404);
   assert.equal((await call('/api/memories/'+memory.data.id,'DELETE',{},outsider.cookie)).status,404);
+  const pixels=Buffer.alloc(2160*1440*3);for(let i=0;i<pixels.length;i++)pixels[i]=(i*31+(i>>8))%256;
+  const original=await sharp(pixels,{raw:{width:2160,height:1440,channels:3}}).jpeg({quality:90}).toBuffer();
+  const photoMemory=await call('/api/memories','POST',{...entry,title:'缩略图测试',photos:[{data:original.toString('base64')}]},alice.cookie);
+  const photoRow=(await call('/api/timeline','GET',undefined,alice.cookie)).data.find(r=>r.id===photoMemory.data.id);
+  const photoUrl=origin+'/api/photos/'+photoRow.photos[0];
+  const thumbResponse=await fetch(photoUrl+'?size=thumb',{headers:{Cookie:alice.cookie}});
+  assert.equal(thumbResponse.status,200);assert.equal(thumbResponse.headers.get('cache-control'),'private, no-cache');
+  const thumb=Buffer.from(await thumbResponse.arrayBuffer()),metadata=await sharp(thumb).metadata();
+  assert.equal(metadata.format,'webp');assert.ok(metadata.width<=640&&metadata.height<=640);assert.ok(thumb.length<original.length);
+  console.log(`Thumbnail benchmark: ${original.length} -> ${thumb.length} bytes (${(100*(1-thumb.length/original.length)).toFixed(1)}% smaller)`);
+  const etag=thumbResponse.headers.get('etag');
+  assert.equal((await fetch(photoUrl+'?size=thumb',{headers:{Cookie:alice.cookie,'If-None-Match':etag}})).status,304);
+  assert.equal((await fetch(photoUrl+'?size=thumb',{headers:{Cookie:outsider.cookie,'If-None-Match':etag}})).status,404);
+  assert.equal((await fetch(photoUrl+'?size=thumb',{headers:{'If-None-Match':etag}})).status,401);
+  const full=await fetch(photoUrl,{headers:{Cookie:alice.cookie}});assert.deepEqual(Buffer.from(await full.arrayBuffer()),original);
+  assert.notEqual(full.headers.get('etag'),etag);
+  await call('/api/memories/'+photoMemory.data.id,'DELETE',{},alice.cookie);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM thumbnails WHERE photo_id=?').get(photoRow.photos[0]).n,0);
+  assert.equal((await fetch(photoUrl+'?size=thumb',{headers:{Cookie:alice.cookie,'If-None-Match':etag}})).status,404);
   // Each partner owns their perspective and photographs, even if a request spoofs an author.
   assert.equal((await call('/api/memories','POST',{...entry,id:memory.data.id,author:alice.data.id,body:'我记得那天的阳光',photos:entry.photos},bob.cookie)).status,200);
   let dialog=(await call('/api/timeline','GET',undefined,alice.cookie)).data[0];

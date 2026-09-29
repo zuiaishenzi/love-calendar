@@ -1,7 +1,7 @@
 FROM node:24-alpine AS base
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --include=optional
 COPY server.mjs db.mjs accounts.mjs mail.mjs calendar.mjs reminders.mjs ./
 COPY public ./public
 RUN mkdir /app/data && chown node:node /app/data

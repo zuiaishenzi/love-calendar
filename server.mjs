@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -13,6 +14,7 @@ const {version:appVersion}=JSON.parse(readFileSync(path.join(root,'package.json'
 async function body(req) {let size=0, chunks=[]; for await(const c of req) {size+=c.length; if(size>24*1024*1024) throw fail(413,'图片总大小过大'); chunks.push(c);} try{return JSON.parse(Buffer.concat(chunks));}catch{throw fail(400,'请求格式错误');}}
 export function createApplication({dataDir=process.env.DATA_DIR||path.join(root,'data'),mailer=createMailer()}={}) {
 const db=openDatabase(dataDir),accounts=accountService(db,mailer),worker=createReminderWorker(db,mailer);
+const pendingThumbnails=new Map();
 function attachPerspectives(row){
  row.perspectives=db.prepare('SELECT p.*,u.name AS author_name FROM perspectives p JOIN users u ON u.id=p.author WHERE p.memory_id=? ORDER BY p.updated,p.author').all(row.id);
  for(const p of row.perspectives)p.photos=db.prepare('SELECT id FROM photos WHERE memory_id=? AND author=? ORDER BY rowid').all(row.id,p.author).map(x=>x.id);
@@ -103,7 +105,32 @@ const server=http.createServer(async(req,res)=>{
         } catch(e) {db.exec('ROLLBACK');throw e;}
       }
       const photo=url.pathname.match(/^\/api\/photos\/([a-f0-9]{36})$/);
-      if(photo && req.method==='GET') {const p=db.prepare('SELECT photos.* FROM photos JOIN memories ON photos.memory_id=memories.id WHERE photos.id=? AND memories.ledger_id=?').get(photo[1],user.ledger_id);if(!p) throw fail(404,'图片不存在');res.writeHead(200,{'Content-Type':p.mime});return res.end(Buffer.from(p.data));}
+      if(photo && req.method==='GET') {
+        const id=photo[1],thumb=url.searchParams.get('size')==='thumb';
+        const permitted=()=>db.prepare('SELECT photos.id,photos.mime FROM photos JOIN memories ON photos.memory_id=memories.id WHERE photos.id=? AND memories.ledger_id=?').get(id,user.ledger_id);
+        const p=permitted();if(!p)throw fail(404,'图片不存在');
+        // Revalidate every request after authorization; never allow shared proxy caching.
+        const etag=`"${id}-${thumb?'thumb-v1':'original'}"`;
+        res.setHeader('Cache-Control','private, no-cache');res.setHeader('ETag',etag);res.setHeader('Vary','Cookie');
+        if(req.headers['if-none-match']===etag){res.writeHead(304);return res.end();}
+        let result;
+        if(thumb){
+          result=db.prepare('SELECT data,mime FROM thumbnails WHERE photo_id=?').get(id);
+          if(!result){
+            if(!pendingThumbnails.has(id)){
+              const original=db.prepare('SELECT data FROM photos WHERE id=?').get(id);
+              const task=sharp(Buffer.from(original.data),{limitInputPixels:40000000}).rotate().resize({width:640,height:640,fit:'inside',withoutEnlargement:true}).webp({quality:75}).toBuffer().then(data=>{
+                if(db.prepare('SELECT id FROM photos WHERE id=?').get(id))db.prepare('INSERT OR IGNORE INTO thumbnails(photo_id,data,mime) VALUES(?,?,?)').run(id,data,'image/webp');
+                return {data,mime:'image/webp'};
+              }).finally(()=>pendingThumbnails.delete(id));
+              pendingThumbnails.set(id,task);
+            }
+            try{result=await pendingThumbnails.get(id);}catch{throw fail(422,'无法生成此图片的预览');}
+            if(!permitted())throw fail(404,'图片不存在');
+          }
+        }else result={data:db.prepare('SELECT data FROM photos WHERE id=?').get(id).data,mime:p.mime};
+        res.writeHead(200,{'Content-Type':result.mime,'Content-Length':result.data.length});return res.end(Buffer.from(result.data));
+      }
       const memory=url.pathname.match(/^\/api\/memories\/(\d+)$/);
       if(memory && req.method==='DELETE') {const result=db.prepare('DELETE FROM memories WHERE id=? AND ledger_id=?').run(Number(memory[1]),user.ledger_id);if(!result.changes)throw fail(404,'回忆不存在');return send(200,{});}
       throw fail(404,'接口不存在');

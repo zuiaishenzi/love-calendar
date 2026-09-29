@@ -57,6 +57,7 @@ export function openDatabase(dir) {
    PRAGMA user_version=4;`);
   db.exec('COMMIT');
  }catch(e){db.exec('ROLLBACK');throw e;}
+ db.exec('CREATE TABLE IF NOT EXISTS thumbnails(photo_id TEXT PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,data BLOB NOT NULL,mime TEXT NOT NULL)');
  // Optional bootstrap for an explicitly configured private installation or isolated preview.
  if(!db.prepare('SELECT id FROM users LIMIT 1').get() && process.env.USER1_NAME) {
   for(const n of [1,2])if(!process.env[`USER${n}_NAME`]||String(process.env[`USER${n}_PASSWORD`]||'').length<12)throw Error('预设账号须配置两组不同用户名及至少12位密码');

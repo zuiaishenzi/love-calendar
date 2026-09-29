@@ -60,6 +60,6 @@ test('旧图片链接被捕获并在页内预览，外部图片不受影响',()=
  });
  const event={target:new Element(),preventDefault(){prevented++;},stopImmediatePropagation(){stopped++;}};
  handler(event);assert.equal(prevented,1);assert.equal(stopped,1);assert.equal(opened,1);assert.equal(large.src,image.src);
- handler(event);assert.equal(opened,1);
- image.src='https://external.example/photo.png';handler(event);assert.equal(prevented,2);
+ handler(event);assert.equal(opened,1);image.dataset={original:image.src};image.src+='?size=thumb';handler(event);assert.equal(large.src,image.dataset.original);
+ image.src='https://external.example/photo.png';handler(event);assert.equal(prevented,3);
 });

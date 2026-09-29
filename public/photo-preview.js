@@ -8,6 +8,6 @@ document.addEventListener('click',event=>{
  if(url.origin!==location.origin||!/^\/api\/photos\/[a-f0-9]{36}$/.test(url.pathname))return;
  event.preventDefault();event.stopImmediatePropagation();
  const viewer=document.querySelector('#photo-viewer'),large=document.querySelector('#photo-viewer-image');
- large.src=image.src;large.alt=image.alt;
+ large.src=image.dataset?.original||image.src;large.alt=image.alt;
  if(!viewer.open)viewer.showModal();
 },true);
