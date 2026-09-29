@@ -1,24 +1,25 @@
+let floatTimer=null,floatNotice=false;
 let liveSource=null,liveTimer=null,liveInterval=24000,liveRevision=null,liveDirty=false,livePending=false,liveRefreshTimer=null,liveGeneration=0;
 let liveClient='',liveMessages=[],livePeerKey='',livePeer=null,liveBusy=false,liveAgain=false;
-function stopRealtime(){liveGeneration++;liveSource?.close();liveSource=null;clearTimeout(liveTimer);clearTimeout(liveRefreshTimer);liveDirty=false;livePending=false;liveRevision=null;livePeerKey='';livePeer=null;liveBusy=false;liveAgain=false;for(const id of ['presence-note','editor-presence-note','sync-note','editor-sync-note'])$('#'+id).hidden=true;}
+function stopRealtime(){clearTimeout(floatTimer);floatNotice=false;$('#presence-float').hidden=true;liveGeneration++;liveSource?.close();liveSource=null;clearTimeout(liveTimer);clearTimeout(liveRefreshTimer);liveDirty=false;livePending=false;liveRevision=null;livePeerKey='';livePeer=null;liveBusy=false;liveAgain=false;for(const id of ['presence-note','editor-presence-note','sync-note','editor-sync-note'])$('#'+id).hidden=true;}
 function refreshShared(){
  if($('#editor').open){livePending=true;$('#sync-note').hidden=false;$('#editor-sync-note').hidden=false;return;}
  clearTimeout(liveRefreshTimer);liveRefreshTimer=setTimeout(()=>{if(currentUser)load();},100);
 }
 function showPeer(peer){
- livePeer=peer;const box=$('#presence-note'),inside=$('#editor-presence-note');box.hidden=!peer;inside.hidden=!peer;if(!peer){livePeerKey='';return;}
+ livePeer=peer;const box=$('#presence-note'),inside=$('#editor-presence-note');inside.hidden=!peer;if(!peer){livePeerKey='';if(!floatNotice)$('#presence-float').hidden=true;return;}
  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
  const category=peer.day<today?'past':peer.day>today?'future':'today',key=peer.started+category;
  if(key===livePeerKey)return;livePeerKey=key;
  const choices=liveMessages.filter(m=>m.category===category);
  const text=choices.length?choices[Math.floor(Math.random()*choices.length)].text:'一份温柔正在认真落笔。';
- box.textContent=peer.name+'正在写回忆 · '+text;inside.textContent=box.textContent;
+ box.textContent=text;inside.textContent=peer.name+'正在写回忆 · '+text;showFloating(peer.name+'正在写回忆',text);
 }
 function receiveLive(state){
- if(liveRevision!==null&&state.revision!==liveRevision)refreshShared();
+ const changed=liveRevision!==null&&state.revision!==liveRevision;if(changed)refreshShared();
  liveRevision=state.revision;
  if(liveInterval!==state.interval){liveInterval=state.interval;scheduleLive();}
- showPeer(state.peer);
+ showPeer(state.peer);if(changed)showSavedNotice();
 }
 function scheduleLive(){clearTimeout(liveTimer);if(currentUser&&!document.hidden)liveTimer=setTimeout(sendPresence,liveInterval);}
 async function sendPresence(){
@@ -46,3 +47,19 @@ $('#editor').addEventListener('close',()=>{liveDirty=false;sendPresence();if(liv
 function releasePresence(){if(!currentUser||!liveClient)return;fetch('/api/presence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client:liveClient,day:null}),keepalive:true}).catch(()=>{});liveSource?.close();liveSource=null;clearTimeout(liveTimer);}
 document.addEventListener('visibilitychange',()=>{if(!currentUser)return;if(document.hidden){liveSource?.close();liveSource=null;clearTimeout(liveTimer);}else{const dirty=liveDirty,pending=livePending;startRealtime(true);liveDirty=dirty;livePending=pending;if(dirty)sendPresence();refreshShared();}});
 window.addEventListener('pagehide',releasePresence);
+
+function setFloatExpanded(expanded){
+ $('#presence-toggle').setAttribute('aria-expanded',String(expanded));
+ $('#presence-float').classList.toggle('is-collapsed',!expanded);
+ $('#presence-note').hidden=!expanded;$('#presence-chevron').textContent=expanded?'⌄':'⌃';
+}
+function showFloating(title,message){
+ clearTimeout(floatTimer);floatNotice=false;$('#presence-title').textContent=title;$('#presence-note').textContent=message;
+ $('#presence-float').hidden=false;setFloatExpanded(true);
+ floatTimer=setTimeout(()=>setFloatExpanded(false),5000);
+}
+function showSavedNotice(){
+ showFloating('新的心意已送达',$('#editor').open?'写完再一起看，你的草稿会好好保留。':'回忆有了新内容，正在为你同步。');floatNotice=true;clearTimeout(floatTimer);
+ floatTimer=setTimeout(()=>{floatNotice=false;if(livePeer){livePeerKey='';showPeer(livePeer);setFloatExpanded(false);}else $('#presence-float').hidden=true;},5000);
+}
+$('#presence-toggle').onclick=()=>{clearTimeout(floatTimer);const expanded=$('#presence-toggle').getAttribute('aria-expanded')!=='true';setFloatExpanded(expanded);if(expanded||floatNotice)floatTimer=setTimeout(()=>{if(floatNotice){floatNotice=false;if(livePeer){livePeerKey='';showPeer(livePeer);setFloatExpanded(false);}else $('#presence-float').hidden=true;}else setFloatExpanded(false);},5000);};

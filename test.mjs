@@ -65,17 +65,20 @@ test('旧图片链接被捕获并在页内预览，外部图片不受影响',()=
 });
 
 test('打开编辑框立即报告状态，编辑窗口内显示对方提示，后台不立即清除状态',async()=>{
- const elements=new Map(),events={},calls=[];
- const get=selector=>{if(!elements.has(selector))elements.set(selector,{hidden:true,textContent:'',open:false,elements:{day:{value:'2026-09-29',addEventListener(){}}},addEventListener(type,fn){events[selector+':'+type]=fn;}});return elements.get(selector);};
+ const elements=new Map(),events={},calls=[],timers=new Map();let nextTimer=0;
+ const get=selector=>{if(!elements.has(selector))elements.set(selector,{hidden:true,textContent:'',open:false,attributes:{},classList:{toggle(){}},setAttribute(k,v){this.attributes[k]=v;},getAttribute(k){return this.attributes[k];},elements:{day:{value:'2026-09-29',addEventListener(){}}},addEventListener(type,fn){events[selector+':'+type]=fn;}});return elements.get(selector);};
  const document={hidden:false,addEventListener(type,fn){events[type]=fn;}};
  const context={document,window:{addEventListener(){}},$:get,currentUser:{id:1},load(){},Intl,Date,Math,console,
- crypto:{getRandomValues(a){return a.fill(1);}},setTimeout(){return 1;},clearTimeout(){},EventSource:class{close(){}},
+ crypto:{getRandomValues(a){return a.fill(1);}},setTimeout(fn,ms){const id=++nextTimer;timers.set(id,{fn,ms});return id;},clearTimeout(id){timers.delete(id);},EventSource:class{close(){}},
  fetch(){return Promise.resolve({json:async()=>[]});},api:async(url,method,data)=>{calls.push(data);return {revision:'v1',interval:15000,peer:null};}};
  runInNewContext(readFileSync(new URL('./public/realtime.js',import.meta.url),'utf8')+';this.controls={startRealtime,announceEditing,showPeer,refreshShared};',context);
  context.controls.startRealtime();get('#editor').open=true;context.controls.announceEditing();await new Promise(resolve=>setImmediate(resolve));
  assert.equal(calls[0].day,'2026-09-29');
  context.controls.showPeer({name:'另一位',day:'2026-09-29',started:'one'});
- assert.equal(get('#editor-presence-note').hidden,false);assert.equal(get('#editor-presence-note').textContent,get('#presence-note').textContent);
+ assert.equal(get('#editor-presence-note').hidden,false);assert.ok(get('#editor-presence-note').textContent.includes(get('#presence-note').textContent));
+ assert.equal(get('#presence-float').hidden,false);assert.equal(get('#presence-toggle').getAttribute('aria-expanded'),'true');
+ [...timers.values()].find(t=>t.ms===5000).fn();assert.equal(get('#presence-toggle').getAttribute('aria-expanded'),'false');
+ get('#presence-toggle').onclick();assert.equal(get('#presence-toggle').getAttribute('aria-expanded'),'true');
  context.controls.refreshShared();assert.equal(get('#editor-sync-note').hidden,false);
  const before=calls.length;document.hidden=true;events.visibilitychange();assert.equal(calls.length,before);
  document.hidden=false;events.visibilitychange();await new Promise(resolve=>setImmediate(resolve));assert.equal(calls.at(-1).day,'2026-09-29');
