@@ -13,7 +13,8 @@ function showPeer(peer){
  if(key===livePeerKey)return;livePeerKey=key;
  const choices=liveMessages.filter(m=>m.category===category);
  const text=choices.length?choices[Math.floor(Math.random()*choices.length)].text:'一份温柔正在认真落笔。';
- box.textContent=text;inside.textContent=peer.name+'正在写回忆 · '+text;showFloating(peer.name+'正在写回忆',text);
+ const action={past:'正在书写回忆',today:'正在记录当下',future:'正在规划未来'}[category];
+ box.textContent=text;inside.textContent=peer.name+action+' · '+text;showFloating(peer.name+action,text);
 }
 function receiveLive(state){
  const changed=liveRevision!==null&&state.revision!==liveRevision;if(changed)refreshShared();
@@ -52,7 +53,7 @@ window.addEventListener('pagehide',releasePresence);
 function setFloatExpanded(expanded){
  $('#presence-toggle').setAttribute('aria-expanded',String(expanded));
  $('#presence-float').classList.toggle('is-collapsed',!expanded);
- $('#presence-note').hidden=!expanded;$('#presence-chevron').textContent=expanded?'⌄':'⌃';
+ $('#presence-title').hidden=!expanded;$('#presence-note').hidden=false;$('#presence-chevron').textContent=expanded?'⌄':'⌃';
 }
 function showFloating(title,message){
  placeFloating();
