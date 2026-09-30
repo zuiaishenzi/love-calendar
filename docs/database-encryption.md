@@ -34,4 +34,14 @@ bash /opt/love-calendar/bin/update.sh --retry
 
 ## 验证
 
+### 构建时 Alpine TLS 报错
+
+若 `apk` 下载 `APKINDEX.tar.gz` 时出现 TLS 错误，随后报告 `python3/make/g++ (no such package)`，先解决软件源连接问题；这些后续提示通常是索引下载失败造成的。
+
+Dockerfile 默认使用清华 TUNA 的 HTTPS Alpine 镜像，保留基础镜像的版本路径和 CPU 架构，不关闭证书验证或软件包签名校验。将修正后的 Dockerfile 上传 GitHub 后，再运行上面的更新命令即可；无需修改服务器已安装的更新脚本。手动构建时可通过 `--build-arg ALPINE_MIRROR=https://dl-cdn.alpinelinux.org/alpine` 切回官方源。
+
+软件源说明：https://mirrors.tuna.tsinghua.edu.cn/help/alpine/
+
+更新脚本在镜像构建和测试完成之后才停止旧服务，因此这一步构建失败不会触发数据库迁移，也不会主动停止旧服务。当前开发环境没有 Docker，镜像构建仍需在 Linux 服务器验证。
+
 `npm test` 包含明文迁移、图片字节一致性、WAL 无明文标记、备份解密、重启读取、错误密钥和缺失密钥拒绝启动等测试。普通 SQLite 工具不能直接打开加密文件，需要支持相同加密格式及密钥的工具。

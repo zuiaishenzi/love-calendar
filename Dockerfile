@@ -1,9 +1,12 @@
 FROM node:24-alpine AS base
+ARG ALPINE_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/alpine
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN apk add --no-cache --virtual .build-deps python3 make g++ \
- && npm ci --omit=dev --include=optional \
- && apk del .build-deps
+# Keep the base image's Alpine release and architecture; only change the mirror.
+# Retain HTTPS verification and apk package signature checks.
+RUN sed -i "s#https\?://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories \
+ && apk add --no-cache --virtual .build-deps python3 make g++
+RUN npm ci --omit=dev --include=optional && apk del .build-deps
 COPY server.mjs db.mjs encrypted-db.mjs accounts.mjs mail.mjs calendar.mjs reminders.mjs realtime.mjs ./
 COPY public ./public
 COPY scripts ./scripts
