@@ -66,3 +66,18 @@ function placeDayDetail(){
 function openMobileDay(){if(mobileCalendar.matches){placeDayDetail();if(!$('#day-dialog').open)$('#day-dialog').showModal();}}
 mobileCalendar.addEventListener('change',placeDayDetail);
 placeDayDetail();
+
+// Choose once using the visitor's local hour when this page opens.
+function homeQuotePool(quotes,hour){
+ const period=hour<6?'predawn':hour<11?'morning':hour<17?'noon':'evening';
+ const rows=[...(Array.isArray(quotes?.[period])?quotes[period]:[]),...(Array.isArray(quotes?.general)?quotes.general:[])];
+ return rows.filter(text=>typeof text==='string'&&text.trim());
+}
+const homeQuoteHour=new Date().getHours();
+fetch('/home-quotes.json?v=1.4.6-poetic').then(response=>{
+ if(!response.ok)throw new Error('Quotes unavailable');
+ return response.json();
+}).then(quotes=>{
+ const choices=homeQuotePool(quotes,homeQuoteHour);
+ if(choices.length)$('#home-quote').textContent=choices[Math.floor(Math.random()*choices.length)];
+}).catch(()=>{});

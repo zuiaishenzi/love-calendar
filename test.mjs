@@ -84,3 +84,16 @@ test('打开编辑框立即报告状态，编辑窗口内显示对方提示，�
  document.hidden=false;events.visibilitychange();await new Promise(resolve=>setImmediate(resolve));assert.equal(calls.at(-1).day,'2026-09-29');
  get('#editor').open=false;events['#editor:close']();await new Promise(resolve=>setImmediate(resolve));assert.equal(calls.at(-1).day,null);assert.equal(get('#presence-float').host,get('#app'));
 });
+
+test('首页短句数量、去重及本地时段边界',()=>{
+ const quotes=JSON.parse(readFileSync(new URL('./public/home-quotes.json',import.meta.url),'utf8'));
+ for(const key of ['morning','noon','evening','predawn'])assert.equal(quotes[key].length,90);
+ assert.equal(quotes.general.length,160);assert.equal(new Set(Object.values(quotes).flat()).size,520);
+ const source=readFileSync(new URL('./public/features.js',import.meta.url),'utf8');
+ const pool=runInNewContext(source.slice(source.indexOf('function homeQuotePool'),source.indexOf('const homeQuoteHour'))+'\nhomeQuotePool');
+ for(const [hour,period] of [[0,'predawn'],[5,'predawn'],[6,'morning'],[10,'morning'],[11,'noon'],[16,'noon'],[17,'evening'],[23,'evening']]){
+  const result=Array.from(pool(quotes,hour));assert.equal(result.length,250);
+  assert.deepEqual(result,[...quotes[period],...quotes.general]);
+ }
+ assert.deepEqual(Array.from(pool({},8)),[]);
+});
