@@ -154,3 +154,52 @@ body:has(#presence-float:not([hidden])) main{padding-bottom:130px}
  aside:has(#stories>.empty) #day-reminders>.hint{margin-bottom:8px;font-size:12px}
  aside:has(#stories>.empty) #all-reminders{padding:6px 8px;font-size:12px}
 }
+
+@media(min-width:761px){
+ .day.has-memory .lunar-label,.day.has-memory .reminder-mark{display:none}
+ .day.has-memory .memory-title{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.3;overflow:hidden;font-size:12px;flex:1;min-height:0}
+}
+dialog{scrollbar-width:thin;scrollbar-color:#c99baa #fbf4f7}
+dialog::-webkit-scrollbar{width:5px}
+dialog::-webkit-scrollbar-track{background:#fbf4f7;border-radius:12px}
+dialog::-webkit-scrollbar-thumb{background:#c99baa;border-radius:12px}
+#day-dialog{background:#fffafb}
+#day-dialog>.dialog-heading h2{font-size:21px}
+#day-dialog>.dialog-heading button{font-size:13px;color:var(--wine);white-space:nowrap}
+#day-dialog aside{background:transparent;padding:0}
+@media(max-width:760px){
+ #app{padding:0 14px}
+ header{height:54px}
+ .intro{padding:12px 0;gap:8px}
+ .intro .eyebrow{font-size:10px;margin-bottom:5px}
+ .intro h1{font-size:23px;line-height:1.35;margin-bottom:5px}
+ .intro p:last-child{font-size:12px}
+ .intro>#add{display:none}
+ .view-switch{margin-bottom:10px;padding-bottom:8px}
+ .view-switch button{padding:6px 12px;min-width:75px;font-size:14px}
+ .toolbar{padding:10px;flex-wrap:wrap;gap:8px}
+ .toolbar h2{font-size:23px;margin:2px 0 0}
+ .toolbar .eyebrow{font-size:10px}
+ .navigation{margin-left:auto}
+ .week{padding:8px 0;font-size:12px}
+ .day,.blank{min-height:55px;padding:6px 4px;gap:3px}
+ .day span{font-size:17px}
+ .day small{font-size:10px}
+ .day.has-memory .lunar-label,.day.has-memory .reminder-mark{display:none}
+ .day i{position:absolute;right:5px;top:10px}
+ .calendar footer{padding:8px;font-size:10px}
+ .calendar-note{font-size:10px;padding:0 8px 8px}
+ .bottom{margin:10px 0;font-size:9px;gap:4px}
+ #day-dialog{width:calc(100vw - 20px);max-height:88dvh;padding:18px;border-radius:22px}
+ #day-dialog .empty{padding:18px 0}
+ #day-dialog .empty .heart{font-size:45px}
+ #day-dialog .day-reminders{margin-top:18px;padding-top:16px}
+ body:has(#presence-float:not([hidden])) main{padding-bottom:0}
+}
+@media(max-width:760px){
+ .toolbar>.navigation{display:grid;grid-template-columns:26px minmax(0,1fr) 26px 42px;width:100%;gap:3px;margin:0}
+ .navigation>button{padding:6px 2px;font-size:12px}
+ .navigation .month-jump{min-width:0;justify-content:center}
+ .navigation .jump-submit{padding:6px 8px;font-size:12px}
+}
+@media(max-width:760px){.navigation #today{padding:6px 2px;white-space:nowrap;font-size:12px}}

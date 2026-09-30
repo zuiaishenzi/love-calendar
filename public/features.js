@@ -56,3 +56,13 @@ $('#password-form').onsubmit=async event=>{
  }catch(e){error.textContent=e.message;}finally{button.disabled=false;}
 };
 $('#password-dialog').addEventListener('close',()=>$('#password-form').reset());
+
+const mobileCalendar=matchMedia('(max-width:760px)');
+function placeDayDetail(){
+ const detail=$('#day-detail');
+ if(mobileCalendar.matches)$('#day-dialog-content').append(detail);
+ else{$('#day-dialog').close();$('.workspace').append(detail);}
+}
+function openMobileDay(){if(mobileCalendar.matches){placeDayDetail();if(!$('#day-dialog').open)$('#day-dialog').showModal();}}
+mobileCalendar.addEventListener('change',placeDayDetail);
+placeDayDetail();
