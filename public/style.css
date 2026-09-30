@@ -76,3 +76,43 @@ body:has(#presence-float:not([hidden])) main{padding-bottom:130px}
 
 #editor:has(.presence-float:not([hidden])){padding-bottom:140px}
 #editor-presence-note{display:none!important}
+
+/* Desktop calendar fits the viewport; long stories scroll within their panel. */
+@media(min-width:1024px) and (min-height:720px){
+ main{max-width:1600px;padding:0 30px}
+ header{height:62px}
+ .intro{padding:18px 0 14px;gap:16px}
+ .intro .eyebrow{margin-bottom:6px}
+ .intro h1{font-size:30px;line-height:1.35;margin-bottom:6px}
+ .intro .primary{padding:10px 18px}
+ .view-switch{margin-bottom:14px;padding-bottom:9px}
+ .view-switch button{padding:7px 16px}
+ #app:has(#calendar-view[aria-pressed="true"]){height:100dvh;display:flex;flex-direction:column;padding-bottom:0}
+ #app:has(#calendar-view[aria-pressed="true"]) .workspace{flex:1;min-height:0;grid-template-columns:minmax(0,1fr) 300px;gap:18px}
+ #app:has(#calendar-view[aria-pressed="true"]) .calendar{height:100%;display:flex;flex-direction:column;min-height:0}
+ .toolbar{padding:12px 18px}
+ .toolbar h2{font-size:25px;margin:2px 0 0}
+ .week{padding:8px 0;font-size:13px}
+ .grid{flex:1;min-height:0;grid-auto-rows:minmax(0,1fr)}
+ .day,.blank{min-height:0;padding:6px 9px;gap:3px;overflow:hidden}
+ .day span{font-size:18px}
+ .day i{position:absolute;right:8px;bottom:5px}
+ .day:has(.reminder-mark){box-shadow:inset 3px 0 #b99562}
+ .day small{font-size:11px;flex-shrink:0}
+ .day .lunar-label{margin-top:0}
+ .day .reminder-mark{font-size:11px}
+ .calendar footer{padding:8px 16px}
+ .calendar-note{padding:0 16px 8px;font-size:11px;margin:0}
+ .workspace>aside{height:100%;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:18px;scrollbar-gutter:stable}
+ aside .eyebrow{margin-bottom:7px}aside h2{margin-bottom:8px}
+ .story{padding:12px 0}.story h3{font-size:16px;margin-bottom:10px}
+ .story img{max-height:180px}
+ .day-reminders{margin-top:16px;padding-top:14px}
+ .bottom{margin:10px 0;font-size:11px}
+ #status:empty{display:none}
+ #status{margin:5px 0;font-size:12px}
+ .presence-float{bottom:12px;right:24px}
+}
+#password-form>.primary{width:100%}
+#forgot-password{margin-top:8px;color:var(--wine)}
+#reset-password{margin-top:12px;color:var(--wine)}

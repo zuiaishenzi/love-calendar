@@ -189,3 +189,51 @@ test('旧双人数据库迁移保留账号、会话、回忆、图片并生成�
   db.prepare("UPDATE perspectives SET body='新的视角'").run();db.close();db=openDatabase(dir);assert.equal(db.prepare('SELECT body FROM perspectives').get().body,'新的视角');assert.equal(readdirSync(dir).filter(x=>x.startsWith('before-v1.3-')).length,1);
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('邮箱重置密码：用途隔离、过期、次数限制、会话撤销及双方隔离',async()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-reset-')),messages=[];
+ const {server,db,worker}=createApplication({dataDir:dir,mailer:{ready:true,async send(m){messages.push(m);}}});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ const origin=`http://127.0.0.1:${server.address().port}`;
+ async function call(url,data,cookie=''){
+  const r=await fetch(origin+url,{method:data===undefined?'GET':'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookie},body:data===undefined?undefined:JSON.stringify(data)});
+  return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};
+ }
+ const email='reset@example.com';
+ async function code(purpose,address=email,cookie=''){
+  db.prepare('DELETE FROM attempts WHERE key=?').run('code-minute:'+address);
+  const r=await call('/api/email/code',{email:address,purpose},cookie);assert.equal(r.status,200);
+  return messages.findLast(m=>m.to===address)?.text;
+ }
+ try{
+  const registration=await code('register');
+  const a=await call('/api/register',{name:'reset-user',email,password:'old-pass-123',ledger_code:'RESETBOOK1',code:registration});assert.equal(a.status,200);
+  const otherEmail='partner@example.com',partnerCode=await code('register',otherEmail);
+  const b=await call('/api/register',{name:'partner',email:otherEmail,password:'partner-pass',ledger_code:'RESETBOOK1',code:partnerCode});assert.equal(b.status,200);
+  const second=await call('/api/login',{name:'reset-user',password:'old-pass-123'});
+  const reset=(otp,password='new-pass-123',cookie='')=>call('/api/password/reset',{email,password,code:otp},cookie);
+  assert.equal((await reset(registration)).status,400);
+  let otp=await code('reset');assert.match(otp,/^\d{6}$/);assert.equal(messages.at(-1).subject,otp);
+  assert.equal((await reset(otp,'short')).status,400);
+  assert.equal((await reset(otp,'new-pass-123',b.cookie)).status,400);
+  for(let i=0;i<5;i++)assert.equal((await reset('invalid')).status,400);
+  assert.equal((await reset(otp)).status,400);
+  otp=await code('reset');db.prepare("UPDATE verification SET expires=0 WHERE purpose='reset'").run();
+  assert.equal((await reset(otp)).status,400);
+  otp=await code('reset');
+  const count=messages.length;
+  await code('reset','missing@example.com');assert.equal(messages.length,count);
+  assert.equal((await reset(otp)).status,200);
+  assert.equal((await reset(otp)).status,400);
+  assert.equal((await call('/api/me',undefined,a.cookie)).status,401);
+  assert.equal((await call('/api/me',undefined,second.cookie)).status,401);
+  assert.equal((await call('/api/me',undefined,b.cookie)).status,200);
+  assert.equal((await call('/api/login',{name:'reset-user',password:'old-pass-123'})).status,401);
+  const fresh=await call('/api/login',{name:'reset-user',password:'new-pass-123'});assert.equal(fresh.status,200);assert.equal(fresh.data.ledger_code,'RESETBOOK1');
+  // The authenticated personal-settings route uses the same mailbox verification.
+  db.prepare("DELETE FROM attempts WHERE key=?").run('code-hour:'+email);
+  otp=await code('reset',email,fresh.cookie);
+  assert.equal((await reset(otp,'last-pass-123',fresh.cookie)).status,200);
+  assert.equal((await call('/api/me',undefined,fresh.cookie)).status,401);
+ }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true});}
+});

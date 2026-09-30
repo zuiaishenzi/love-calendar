@@ -19,17 +19,37 @@ export function accountService(db,mailer) {
    const matches=passwordMatches(u,input.password);if(!u||!matches)throw fail(401,'账号或密码不正确');db.prepare('DELETE FROM attempts WHERE key=?').run('login:'+ip);return session(res,u);
   }
   if(url.pathname==='/api/email/code'&&req.method==='POST'){
-   const purpose=input.purpose;if(!['register','bind'].includes(purpose))throw fail(400,'验证用途错误');if(purpose==='bind'&&!user)throw fail(401,'请先登录');
+   const purpose=input.purpose;if(!['register','bind','reset'].includes(purpose))throw fail(400,'验证用途错误');if(purpose==='bind'&&!user)throw fail(401,'请先登录');
    if(!mailer.ready)throw fail(503,'服务器尚未配置QQ发件邮箱，请联系部署者');
-   const email=emailOf(input.email),owner=purpose==='bind'?user.id:0;
+   const email=emailOf(input.email),target=purpose==='reset'?db.prepare('SELECT id FROM users WHERE email=?').get(email):null,owner=purpose==='bind'?user.id:purpose==='reset'?target?.id:0;
    limit('code-ip:'+ip,20,3600000);limit('code-minute:'+email,1,60000);limit('code-hour:'+email,6,3600000);
    if(purpose==='bind'&&!passwordMatches(user,input.password))throw fail(400,'当前密码不正确');
-   if(db.prepare('SELECT id FROM users WHERE email=?').get(email))throw fail(409,'这个邮箱已绑定账号');
+   if(purpose==='reset'){
+    if(!target||(user&&user.id!==target.id))return {ok:true,expires_in:600};
+   }else if(db.prepare('SELECT id FROM users WHERE email=?').get(email))throw fail(409,'这个邮箱已绑定账号');
    const code=String(randomInt(0,1000000)).padStart(6,'0'),nonce=randomBytes(16).toString('hex');
    db.prepare('DELETE FROM verification WHERE expires<?').run(Date.now());
    db.prepare('INSERT OR REPLACE INTO verification(email,purpose,owner,digest,nonce,expires,tries) VALUES(?,?,?,?,?,?,0)').run(email,purpose,owner,hash(nonce+code),nonce,Date.now()+600000);
    try{await mailer.send(verificationMessage(email,code));}catch{db.prepare('DELETE FROM verification WHERE email=? AND purpose=? AND owner=? AND nonce=?').run(email,purpose,owner,nonce);throw fail(502,'验证码发送失败，请检查服务器QQ邮箱配置或稍后重试');}
    return {ok:true,expires_in:600};
+  }
+  if(url.pathname==='/api/password/reset'&&req.method==='POST'){
+   limit('reset:'+ip,20,900000);
+   const email=emailOf(input.email),password=String(input.password||'');
+   if(password.length<8||password.length>128)throw fail(400,'密码需要8至128位');
+   const target=db.prepare('SELECT * FROM users WHERE email=?').get(email);
+   if(!target||(user&&user.id!==target.id))throw fail(400,'邮箱或验证码不正确');
+   verify(email,'reset',target.id,input.code);
+   const salt=randomBytes(16).toString('hex'),digest=scryptSync(password,salt,64).toString('hex');
+   db.exec('BEGIN IMMEDIATE');
+   try{
+    db.prepare('UPDATE users SET hash=?,salt=? WHERE id=?').run(digest,salt,target.id);
+    db.prepare('DELETE FROM sessions WHERE user_id=?').run(target.id);
+    db.prepare('DELETE FROM verification WHERE owner=? OR email=?').run(target.id,email);
+    db.exec('COMMIT');
+   }catch(e){db.exec('ROLLBACK');throw e;}
+   res.setHeader('Set-Cookie',`session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${process.env.COOKIE_SECURE==='true'?'; Secure':''}`);
+   return {ok:true};
   }
   if(url.pathname==='/api/register'&&req.method==='POST'){
    if(user)throw fail(409,'你已经绑定一本日历，不能再次注册');

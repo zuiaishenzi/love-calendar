@@ -1,6 +1,6 @@
 # 朝夕 · 恋爱万年历
 
-当前版本：**v1.4.5**。版本记录见 [CHANGELOG.md](CHANGELOG.md)。Node.js 24 + SQLite，使用 Nodemailer 发送邮件、lunar-javascript 计算农历和节气。
+当前版本：**v1.4.6**。版本记录见 [CHANGELOG.md](CHANGELOG.md)。Node.js 24 + SQLite，使用 Nodemailer 发送邮件、lunar-javascript 计算农历和节气。
 
 ## 注册与账本
 
@@ -130,3 +130,7 @@ sudo bash deploy/shorten-ledger-codes.sh --apply
 `--check` 只报告需要转换的数量。`--apply` 与部署更新共用互斥锁，短暂停止服务，用当前服务镜像里的 Node 运行转换，结束后启动原容器。数据库旁自动生成 `calendar.sqlite.before-short-codes-*.sqlite` 完整备份；备份失败不会修改数据。仅转换超过 10 位的账本号，保留账本 ID 和所有关联数据，重复执行不会再次转换。新号在个人设置查看，旧号不再用于加入。不要公开数据库备份。
 
 非 Docker 部署可停止服务后用 Node.js 24 执行 `node scripts/shorten-ledger-codes.mjs --apply /绝对路径/calendar.sqlite`，完成后启动服务。
+
+### 忘记密码与重置密码（v1.4.6）
+
+登录页点击「忘记密码」，或在个人设置点击「重置密码」，通过账号绑定邮箱的6位验证码设置至少8位的新密码。验证码10分钟有效，最多尝试5次，一次使用后失效。验证码邮件仍只有数字。重置后该账号所有设备需重新登录；未绑定邮箱的账号需先在个人设置绑定邮箱。

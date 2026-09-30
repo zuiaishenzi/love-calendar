@@ -7,7 +7,7 @@ $('#generate-ledger').onclick=()=>{const bytes=crypto.getRandomValues(new Uint8A
 async function sendCode(form,purpose,button,error){
  const email=form.elements.email;if(!email.reportValidity())return;
  button.disabled=true;error.textContent='正在发送…';let sent=false;
- try{await api('/api/email/code','POST',{email:email.value,purpose,password:form.elements.password.value});sent=true;error.textContent='验证码已发送，请检查收件箱或垃圾邮件。';let left=60;button.textContent=`${left}秒后重发`;const timer=setInterval(()=>{left--;button.textContent=left?`${left}秒后重发`:'发送验证码';if(!left){clearInterval(timer);coolingTimers.delete(button);button.disabled=false;}},1000);coolingTimers.set(button,timer);}
+ try{await api('/api/email/code','POST',{email:email.value,purpose,password:purpose==='bind'?form.elements.password.value:undefined});sent=true;error.textContent=purpose==='reset'?'若该邮箱已绑定账号，验证码将发送至邮箱，请检查收件箱或垃圾邮件。':'验证码已发送，请检查收件箱或垃圾邮件。';let left=60;button.textContent=`${left}秒后重发`;const timer=setInterval(()=>{left--;button.textContent=left?`${left}秒后重发`:'发送验证码';if(!left){clearInterval(timer);coolingTimers.delete(button);button.disabled=false;}},1000);coolingTimers.set(button,timer);}
  catch(e){error.textContent=e.message;}finally{if(!sent)button.disabled=false;}
 }
 $('#register-code').onclick=()=>sendCode($('#register-form'),'register',$('#register-code'),$('#register-error'));
@@ -32,5 +32,27 @@ $('#add-reminder').onclick=()=>openReminder();
 $('#reminder-form').onsubmit=async e=>{e.preventDefault();const f=e.target,b=f.querySelector('button.primary');b.disabled=true;try{await api('/api/reminders','POST',{id:reminderEditing?.id,title:f.elements.title.value,base_day:f.elements.base_day.value,kind:f.elements.kind.value,enabled:f.elements.enabled.checked,private:f.elements.recipient_id.value==='private',recipient_id:f.elements.recipient_id.value==='private'?currentUser.id:f.elements.recipient_id.value?Number(f.elements.recipient_id.value):null});$('#reminder-dialog').close();await load();if($('#reminders-dialog').open)await renderAllReminders();}catch(e){$('#reminder-error').textContent=e.message;}finally{b.disabled=false;}};
 async function renderAllReminders(){const box=$('#reminders-list');box.replaceChildren();$('#reminders-error').textContent='正在加载…';try{const rows=await api('/api/reminders');$('#reminders-error').textContent='';if(!rows.length)box.append(el('p','还没有年度提醒。在日历上选一天，为你们留下一份牵挂。','hint'));for(const r of rows){const card=el('article',undefined,'reminder-card');card.append(el('h3',r.title),el('p',r.label+' · 提醒：'+(r.private_owner!=null?'仅自己 · 私密':r.recipient_id==null?'我们两人':currentUser.members.find(m=>m.id===r.recipient_id)?.name||'指定成员'),'hint'),el('p',r.enabled?`下次：${r.next_day||'未来24年内无对应日期'}`:'已暂停','hint'));if(r.delivery)card.append(el('p',`最近一次（你的邮箱）：${r.delivery.day} · ${{sent:'已交给邮件服务',failed:'发送失败',pending:'待发送',sending:'正在发送'}[r.delivery.state]||'待发送'}`,'hint'));const edit=el('button','编辑'),remove=el('button','删除');edit.onclick=()=>openReminder(r);remove.onclick=async()=>{if(!confirm('确定删除这条年度提醒吗？'))return;try{await api('/api/reminders/'+r.id,'DELETE',{});await renderAllReminders();await load();}catch(e){$('#reminders-error').textContent=e.message;}};card.append(edit,remove);box.append(card);}}catch(e){$('#reminders-error').textContent=e.message;}}
 $('#all-reminders').onclick=()=>{$('#reminders-dialog').showModal();renderAllReminders();};
-api('/api/config').then(config=>{if(!config.mail_ready){$('#mail-setup-note').hidden=false;$('#mail-setup-note').textContent='邮箱注册需部署者先配置服务器QQ邮箱。已有账号可直接登录。';}}).catch(()=>{});
 api('/api/me').then(enter).catch(()=>showLogin());
+
+function openPasswordReset(fromProfile=false){
+ const form=$('#password-form');form.reset();form.elements.email.readOnly=fromProfile;
+ form.elements.email.value=fromProfile?currentUser?.email||'':'';
+ $('#password-error').textContent='';
+ if(fromProfile&&!currentUser?.email){$('#profile-error').textContent='请先绑定邮箱，再重置密码。';return;}
+ if(fromProfile)$('#profile-dialog').close();
+ $('#password-dialog').showModal();
+}
+$('#forgot-password').onclick=()=>openPasswordReset();
+$('#reset-password').onclick=()=>openPasswordReset(true);
+$('#password-code').onclick=()=>sendCode($('#password-form'),'reset',$('#password-code'),$('#password-error'));
+$('#password-form').onsubmit=async event=>{
+ event.preventDefault();const form=event.target,button=form.querySelector('button.primary'),error=$('#password-error');
+ if(form.elements.password.value!==form.elements.confirmation.value){error.textContent='两次输入的密码不一致，请再确认一下。';return;}
+ button.disabled=true;error.textContent='';
+ try{
+  await api('/api/password/reset','POST',{email:form.elements.email.value,code:form.elements.code.value,password:form.elements.password.value});
+  form.reset();$('#password-dialog').close();showLogin();authMode(false);$('#login-form').reset();
+  $('#login-error').textContent='密码已更新，请用新密码重新登录。';
+ }catch(e){error.textContent=e.message;}finally{button.disabled=false;}
+};
+$('#password-dialog').addEventListener('close',()=>$('#password-form').reset());

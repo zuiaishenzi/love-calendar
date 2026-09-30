@@ -34,7 +34,7 @@ const server=http.createServer(async(req,res)=>{
       if(!req.headers['content-type']?.startsWith('application/json')) throw fail(415,'需要 JSON 请求');
     }
     const user=accounts.authenticate(req);
-    const accountPaths=['/api/login','/api/register','/api/email/code','/api/profile','/api/config'];
+    const accountPaths=['/api/login','/api/register','/api/email/code','/api/profile','/api/config','/api/password/reset'];
     if(accountPaths.includes(url.pathname)){
       const input=req.method==='POST'?await body(req):{};
       const result=await accounts.route(req,res,url,input,user);
