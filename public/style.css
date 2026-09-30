@@ -132,3 +132,25 @@ body:has(#presence-float:not([hidden])) main{padding-bottom:130px}
  .empty{padding:18px 0}
  .empty .heart{font-size:48px}
 }
+
+/* A quiet, compact empty day; longer stories retain their own gentle scroll. */
+.workspace>aside{scrollbar-width:thin;scrollbar-color:#c99baa #f3edee}
+.workspace>aside::-webkit-scrollbar{width:6px}
+.workspace>aside::-webkit-scrollbar-track{background:#f3edee;border-radius:12px}
+.workspace>aside::-webkit-scrollbar-thumb{background:#c99baa;border-radius:12px;border:1px solid #f3edee}
+.workspace>aside::-webkit-scrollbar-thumb:hover{background:#ad7489}
+@media(min-width:1024px) and (min-height:720px){
+ .workspace>aside:has(#stories>.empty){padding:14px 16px}
+ aside:has(#stories>.empty)>.eyebrow{margin-bottom:4px}
+ aside:has(#stories>.empty)>h2{font-size:23px;margin-bottom:4px}
+ aside:has(#stories>.empty)>#selected-lunar{margin-bottom:4px;font-size:12px}
+ aside:has(#stories>.empty) .empty{padding:8px 0}
+ aside:has(#stories>.empty) .empty .heart{font-size:34px;line-height:1.15}
+ aside:has(#stories>.empty) .empty h3{margin:6px 0;font-size:15px}
+ aside:has(#stories>.empty) .empty p{margin:0;font-size:12px;line-height:1.6}
+ aside:has(#stories>.empty) .outline{padding:7px 10px;font-size:13px}
+ aside:has(#stories>.empty) .day-reminders{margin-top:10px;padding-top:10px}
+ aside:has(#stories>.empty) .day-reminders h3{margin-bottom:6px;font-size:15px}
+ aside:has(#stories>.empty) #day-reminders>.hint{margin-bottom:8px;font-size:12px}
+ aside:has(#stories>.empty) #all-reminders{padding:6px 8px;font-size:12px}
+}
