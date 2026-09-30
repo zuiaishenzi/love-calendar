@@ -9,11 +9,11 @@ export function createReminderWorker(db,mailer){
   try{
    // A crash after accepting SMTP cannot be distinguished from a delivered message.
    // A leased 'sending' entry is retried after 15 min; normal successful sends are deduplicated.
-   const reminders=db.prepare('SELECT * FROM reminders WHERE enabled=1').all();
+   const reminders=db.prepare('SELECT reminders.* FROM reminders JOIN ledgers ON ledgers.id=reminders.ledger_id WHERE enabled=1 AND ledgers.delete_at IS NULL').all();
    for(const r of reminders){if(!occursOn(r,clock.day))continue;
     const users=db.prepare('SELECT * FROM users WHERE ledger_id=? AND email IS NOT NULL AND email_enabled=1').all(r.ledger_id);
     for(const user of users){
-     const fresh=db.prepare('SELECT enabled,recipient_id FROM reminders WHERE id=?').get(r.id);if(!fresh?.enabled)break;if(fresh.recipient_id!==null&&fresh.recipient_id!==user.id)continue;
+     const fresh=db.prepare('SELECT enabled,recipient_id FROM reminders JOIN ledgers ON ledgers.id=reminders.ledger_id WHERE reminders.id=? AND ledgers.delete_at IS NULL').get(r.id);if(!fresh?.enabled)break;if(fresh.recipient_id!==null&&fresh.recipient_id!==user.id)continue;
      db.prepare('INSERT OR IGNORE INTO deliveries(reminder_id,user_id,day) VALUES(?,?,?)').run(r.id,user.id,clock.day);
      const claim=db.prepare("UPDATE deliveries SET state='sending',attempts=attempts+1,retry_at=? WHERE reminder_id=? AND user_id=? AND day=? AND state<>'sent' AND attempts<3 AND retry_at<=?").run(now.getTime()+900000,r.id,user.id,clock.day,now.getTime());
      if(!claim.changes)continue;

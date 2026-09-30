@@ -58,6 +58,11 @@ export function openDatabase(dir) {
   db.exec('COMMIT');
  }catch(e){db.exec('ROLLBACK');throw e;}
  db.exec('CREATE TABLE IF NOT EXISTS thumbnails(photo_id TEXT PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,data BLOB NOT NULL,mime TEXT NOT NULL)');
+ for(const [name,type] of [['delete_at','INTEGER'],['delete_kind','TEXT']])if(!db.prepare('PRAGMA table_info(ledgers)').all().some(c=>c.name===name))db.exec(`ALTER TABLE ledgers ADD COLUMN ${name} ${type}`);
+ for(const [name,type] of [['avatar','TEXT'],['avatar_data','BLOB']])if(!db.prepare('PRAGMA table_info(users)').all().some(c=>c.name===name))db.exec(`ALTER TABLE users ADD COLUMN ${name} ${type}`);
+ db.exec(`CREATE TABLE IF NOT EXISTS ledger_confirmations(id TEXT PRIMARY KEY,ledger_id INTEGER UNIQUE REFERENCES ledgers(id) ON DELETE CASCADE,purpose TEXT NOT NULL,expires INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS ledger_votes(request_id TEXT REFERENCES ledger_confirmations(id) ON DELETE CASCADE,user_id INTEGER REFERENCES users(id),email TEXT NOT NULL,nonce TEXT NOT NULL,digest TEXT NOT NULL,tries INTEGER NOT NULL DEFAULT 0,approved INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(request_id,user_id));
+ PRAGMA secure_delete=ON;`);
  // Optional bootstrap for an explicitly configured private installation or isolated preview.
  if(!db.prepare('SELECT id FROM users LIMIT 1').get() && process.env.USER1_NAME) {
   for(const n of [1,2])if(!process.env[`USER${n}_NAME`]||String(process.env[`USER${n}_PASSWORD`]||'').length<12)throw Error('预设账号须配置两组不同用户名及至少12位密码');

@@ -17,6 +17,7 @@ function showPeer(peer){
  box.textContent=text;inside.textContent=peer.name+action+' · '+text;showFloating(peer.name+action,text);
 }
 function receiveLive(state){
+ if(currentUser&&state.lifecycle!==undefined){currentUser.lifecycle=state.lifecycle;if(typeof refreshSettings==='function')refreshSettings();}
  const changed=liveRevision!==null&&state.revision!==liveRevision;if(changed)refreshShared();
  liveRevision=state.revision;
  if(liveInterval!==state.interval){liveInterval=state.interval;scheduleLive();}
@@ -33,7 +34,7 @@ async function sendPresence(){
 }
 function startRealtime(reuseClient=false){
  const previous=liveClient;stopRealtime();liveClient=reuseClient&&previous?previous:Array.from(crypto.getRandomValues(new Uint8Array(16)),n=>n.toString(16).padStart(2,'0')).join('');const generation=liveGeneration;
- if(!liveMessages.length)fetch('/presence-messages.json?v=1.5.0').then(r=>r.json()).then(rows=>{liveMessages=rows;if(livePeer){livePeerKey='';showPeer(livePeer);}}).catch(()=>{});
+ if(!liveMessages.length)fetch('/presence-messages.json?v=1.6.0').then(r=>r.json()).then(rows=>{liveMessages=rows;if(livePeer){livePeerKey='';showPeer(livePeer);}}).catch(()=>{});
  if(document.hidden)return;
  liveSource=new EventSource('/api/events?client='+liveClient);
  let connected=false;

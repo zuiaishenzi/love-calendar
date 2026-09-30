@@ -1,12 +1,12 @@
 import {randomUUID} from 'node:crypto';
-export function createRealtime(authenticate){
+export function createRealtime(authenticate,lifecycleStatus=()=>null){
  const clients=new Map(),edits=new Map(),versions=new Map(),epoch=randomUUID();
  const version=ledger=>epoch+':'+(versions.get(ledger)||0);
  function state(user){
   const active=[...edits.values()].filter(e=>e.ledger===user.ledger_id&&e.until>Date.now());
   const count=new Set(active.map(e=>e.user)).size;
   const peer=active.find(e=>e.user!==user.id);
-  return {revision:version(user.ledger_id),interval:count>=2?12000:count===1?15000:24000,peer:peer?{name:peer.name,day:peer.day,started:peer.started}:null};
+  return {revision:version(user.ledger_id),lifecycle:lifecycleStatus(user.ledger_id),interval:count>=2?12000:count===1?15000:24000,peer:peer?{name:peer.name,day:peer.day,started:peer.started}:null};
  }
  function publish(ledger){for(const [id,c] of clients){if(c.user.ledger_id!==ledger)continue;if(!authenticate(c.req)){c.res.end();clients.delete(id);edits.delete(id);continue;}c.res.write('data: '+JSON.stringify(state(c.user))+'\n\n');}}
  function connect(id,user,req,res){

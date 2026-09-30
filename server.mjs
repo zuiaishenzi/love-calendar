@@ -10,13 +10,19 @@ import {accountService,hash,fail} from './accounts.mjs';
 import {createMailer} from './mail.mjs';
 import {validDay,monthDetails,occursOn,reminderParts,reminderLabel,nextOccurrence,shanghaiClock} from './calendar.mjs';
 import {createReminderWorker} from './reminders.mjs';
+import {lifecycleService} from './lifecycle.mjs';
+import {memoirDocument} from './memoir-export.mjs';
+import {Readable} from 'node:stream';
 const root=path.dirname(fileURLToPath(import.meta.url));
 const {version:appVersion}=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8'));
 async function body(req) {let size=0, chunks=[]; for await(const c of req) {size+=c.length; if(size>24*1024*1024) throw fail(413,'图片总大小过大'); chunks.push(c);} try{return JSON.parse(Buffer.concat(chunks));}catch{throw fail(400,'请求格式错误');}}
 export function createApplication({dataDir=process.env.DATA_DIR||path.join(root,'data'),mailer=createMailer()}={}) {
-const db=openDatabase(dataDir),accounts=accountService(db,mailer),worker=createReminderWorker(db,mailer);
-const realtime=createRealtime(accounts.authenticate);
+const db=openDatabase(dataDir),lifecycle=lifecycleService(db,mailer),accounts=accountService(db,mailer,lifecycle),worker=createReminderWorker(db,mailer);
+lifecycle.purge();
+const cleanup=setInterval(()=>{try{lifecycle.purge();}catch{console.error('账本到期清理失败');}},60000);cleanup.unref();
+const realtime=createRealtime(accounts.authenticate,lifecycle.status);
 const pendingThumbnails=new Map();
+const avatarAssets=new Map();
 function attachPerspectives(row){
  row.perspectives=db.prepare('SELECT p.*,u.name AS author_name FROM perspectives p JOIN users u ON u.id=p.author WHERE p.memory_id=? ORDER BY p.rowid').all(row.id);
  for(const p of row.perspectives)p.photos=db.prepare('SELECT id FROM photos WHERE memory_id=? AND author=? ORDER BY rowid').all(row.id,p.author).map(x=>x.id);
@@ -33,21 +39,46 @@ const server=http.createServer(async(req,res)=>{
       if(req.headers.origin!==origin) throw fail(403,'请求来源不正确');
       if(!req.headers['content-type']?.startsWith('application/json')) throw fail(415,'需要 JSON 请求');
     }
+    lifecycle.purge();
     const user=accounts.authenticate(req);
+    const ensureWritable=()=>{if(!user||accounts.authenticate(req)?.id!==user.id)throw fail(401,'请重新登录');lifecycle.writable(user.ledger_id);};
     const accountPaths=['/api/login','/api/register','/api/email/code','/api/profile','/api/config','/api/password/reset'];
     if(accountPaths.includes(url.pathname)){
       const input=req.method==='POST'?await body(req):{};
-      const result=await accounts.route(req,res,url,input,user);
+      const result=await accounts.route(req,res,url,input,accounts.authenticate(req));
       if(result!==undefined)return send(200,result);
     }
     if(url.pathname.startsWith('/api/')) {
       if(!user) throw fail(401,'请先登录');
+      if(url.pathname==='/api/lifecycle'&&req.method==='GET')return send(200,lifecycle.status(user.ledger_id));
+      if(['/api/lifecycle/code','/api/lifecycle/confirm'].includes(url.pathname)&&req.method==='POST'){
+        const input=await body(req),active=accounts.authenticate(req);if(!active||active.id!==user.id)throw fail(401,'请重新登录');
+        const result=url.pathname.endsWith('/code')?await lifecycle.sendCode(active,input.purpose):lifecycle.confirm(active,input.purpose,input.code);
+        realtime.changed(user);return send(200,result);
+      }
+      if(!['GET','HEAD'].includes(req.method)&&!['/api/logout','/api/presence'].includes(url.pathname))lifecycle.writable(user.ledger_id);
+      if(url.pathname==='/api/memoir/export'&&req.method==='GET'){
+        res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Content-Disposition':"attachment; filename=our-story.html; filename*=UTF-8''%E5%B2%81%E6%9C%88%E6%8B%BE%E5%BF%86.html"});
+        const stream=Readable.from(memoirDocument(db,user.ledger_id));stream.on('error',()=>res.destroy());res.on('close',()=>stream.destroy());stream.pipe(res);return;
+      }
+      if(url.pathname==='/api/avatar'&&req.method==='POST'){
+        const input=await body(req);ensureWritable();
+        if(input.preset){if(!/^pair-[1-5]-[12]$/.test(input.preset))throw fail(400,'请选择系统头像');db.prepare('UPDATE users SET avatar=?,avatar_data=NULL WHERE id=?').run(input.preset,user.id);}
+        else{
+          if(typeof input.data!=='string'||input.data.length>7000000)throw fail(400,'头像须为5MB以内的图片');
+          let data;try{const raw=Buffer.from(input.data,'base64');if(raw.length>5*1024*1024)throw Error();const photo=sharp(raw,{limitInputPixels:20000000});const meta=await photo.metadata();if(!['jpeg','png','webp'].includes(meta.format))throw Error();data=await photo.rotate().resize(256,256,{fit:'cover'}).webp({quality:85}).toBuffer();}catch{throw fail(400,'请选择5MB以内的 JPG、PNG 或 WebP 图片');}
+          ensureWritable();db.prepare('UPDATE users SET avatar_data=? WHERE id=?').run(data,user.id);
+        }
+        return send(200,accounts.publicUser(db.prepare('SELECT * FROM users WHERE id=?').get(user.id)));
+      }
+      const avatar=url.pathname.match(/^\/api\/avatars\/(\d+)$/);
+      if(avatar&&req.method==='GET'){const row=db.prepare('SELECT avatar_data FROM users WHERE id=? AND ledger_id=?').get(Number(avatar[1]),user.ledger_id);if(!row?.avatar_data)throw fail(404,'头像不存在');res.writeHead(200,{'Content-Type':'image/webp'});return res.end(row.avatar_data);}
       if(url.pathname==='/api/events'&&req.method==='GET'){
         const client=url.searchParams.get('client');if(!/^[a-zA-Z0-9-]{16,80}$/.test(client||''))throw fail(400,'连接标识无效');
         realtime.connect(client,user,req,res);return;
       }
       if(url.pathname==='/api/presence'&&req.method==='POST'){
-        const input=await body(req);if(!/^[a-zA-Z0-9-]{16,80}$/.test(input.client||'')||(input.day!==null&&!validDay(input.day)))throw fail(400,'编辑状态无效');
+        const input=await body(req);if(lifecycle.status(user.ledger_id)?.readonly)input.day=null;if(!/^[a-zA-Z0-9-]{16,80}$/.test(input.client||'')||(input.day!==null&&!validDay(input.day)))throw fail(400,'编辑状态无效');
         if(!realtime.touch(input.client,user,input.day))throw fail(403,'连接标识不属于当前用户');
         return send(200,realtime.state(user));
       }
@@ -63,7 +94,7 @@ const server=http.createServer(async(req,res)=>{
         return send(200,rows);
       }
       if(url.pathname==='/api/reminders'&&req.method==='POST'){
-        const input=await body(req);
+        const input=await body(req);ensureWritable();
         if(!validDay(input.base_day)||!['solar','lunar'].includes(input.kind)||typeof input.title!=='string'||!input.title.trim()||input.title.length>100||typeof input.enabled!=='boolean')throw fail(400,'请填写提醒名称、有效日期及历法');
         if(input.private!==undefined&&typeof input.private!=='boolean')throw fail(400,'提醒隐私设置错误');
         const owner=input.private===true?user.id:null;
@@ -92,7 +123,7 @@ const server=http.createServer(async(req,res)=>{
         return send(200,rows);
       }
       if(url.pathname==='/api/memories' && req.method==='POST') {
-        const input=await body(req);
+        const input=await body(req);ensureWritable();
         if(!validDay(input.day) || typeof input.title!=='string' || !input.title.trim() || input.title.length>100 || typeof input.body!=='string' || input.body.length>20000) throw fail(400,'请填写有效日期、标题（100字以内）和正文（20000字以内）');
         if(!Array.isArray(input.photos)||input.photos.length>6) throw fail(400,'每条回忆最多6张图片');
         const photos=input.photos.map(p=>{
@@ -147,13 +178,19 @@ const server=http.createServer(async(req,res)=>{
       throw fail(404,'接口不存在');
     }
     const files={'/dialog-history.js':['dialog-history.js','text/javascript; charset=utf-8'],'/home-quotes.json':['home-quotes.json','application/json; charset=utf-8'],'/realtime.js':['realtime.js','text/javascript; charset=utf-8'],'/presence-messages.json':['presence-messages.json','application/json; charset=utf-8'],'/':['index.html','text/html; charset=utf-8'],'/photo-preview.js':['photo-preview.js','text/javascript; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/features.js':['features.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/favicon.svg':['favicon.svg','image/svg+xml']};
+    files['/settings.js']=['settings.js','text/javascript; charset=utf-8'];
+    const presetAsset=url.pathname.match(/^\/avatars\/pair-([1-5])\.png$/);
+    if(presetAsset&&req.method==='GET'){
+      const id=presetAsset[1];if(!avatarAssets.has(id))avatarAssets.set(id,sharp(path.join(root,'public','avatars',`pair-${id}.png`)).resize(512,256).webp({quality:82}).toBuffer().catch(error=>{avatarAssets.delete(id);throw error;}));
+      const data=await avatarAssets.get(id);res.writeHead(200,{'Content-Type':'image/webp','Cache-Control':'public, max-age=86400'});return res.end(data);
+    }
     const file=files[url.pathname]; if(!file || req.method!=='GET') throw fail(404,'页面不存在');
     const content=readFileSync(path.join(root,'public',file[0]));
     res.writeHead(200,{'Content-Type':file[1]});res.end(file[0]==='index.html'?content.toString('utf8').replaceAll('{{APP_VERSION}}',appVersion):content);
   } catch(e) {if(!e.status) console.error('请求处理失败',e.code||'internal');send(e.status||500,{error:e.status?e.message:'服务暂时不可用，请稍后重试'});}
 });
-server.on('close',()=>realtime.close());
-return {server,db,worker,realtime};
+server.on('close',()=>{clearInterval(cleanup);realtime.close();});
+return {server,db,worker,realtime,lifecycle};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const {server,worker}=createApplication();
