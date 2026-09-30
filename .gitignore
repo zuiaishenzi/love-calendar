@@ -2,3 +2,8 @@ data/
 .env
 node_modules/
 test-data-*/
+.database-key
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.encrypting-*

@@ -1,6 +1,10 @@
 # 朝夕 · 恋爱万年历
 
-当前版本：**v1.4.6**。版本记录见 [CHANGELOG.md](CHANGELOG.md)。Node.js 24 + SQLite，使用 Nodemailer 发送邮件、lunar-javascript 计算农历和节气。
+当前版本：**v1.5.0**。版本记录见 [CHANGELOG.md](CHANGELOG.md)。Node.js 24 + SQLite，使用 Nodemailer 发送邮件、lunar-javascript 计算农历和节气。
+
+## 数据库加密
+
+V1.5.0 默认整库加密，旧数据库首次启动自动迁移。请保管 `data/.database-key`，已有历史明文备份不会自动转换。升级、密钥与恢复说明见 [数据库加密文档](docs/database-encryption.md)。
 
 ## 注册与账本
 

@@ -1,9 +1,12 @@
 FROM node:24-alpine AS base
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --include=optional
-COPY server.mjs db.mjs accounts.mjs mail.mjs calendar.mjs reminders.mjs realtime.mjs ./
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \
+ && npm ci --omit=dev --include=optional \
+ && apk del .build-deps
+COPY server.mjs db.mjs encrypted-db.mjs accounts.mjs mail.mjs calendar.mjs reminders.mjs realtime.mjs ./
 COPY public ./public
+COPY scripts ./scripts
 RUN mkdir /app/data && chown node:node /app/data
 USER node
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 DATA_DIR=/app/data
@@ -11,7 +14,7 @@ EXPOSE 3000
 CMD ["node", "server.mjs"]
 
 FROM base AS test
-COPY test.mjs test-v13.mjs ./
+COPY test.mjs test-v13.mjs test-encryption.mjs ./
 RUN npm test
 
 FROM base AS production

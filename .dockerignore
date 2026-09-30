@@ -1,4 +1,10 @@
 .env
+.database-key
+**/.database-key
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
+**/*.encrypting-*
 data
 .git
 node_modules

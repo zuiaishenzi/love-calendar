@@ -74,7 +74,7 @@ function homeQuotePool(quotes,hour){
  return rows.filter(text=>typeof text==='string'&&text.trim());
 }
 const homeQuoteHour=new Date().getHours();
-fetch('/home-quotes.json?v=1.4.6-poetic').then(response=>{
+fetch('/home-quotes.json?v=1.5.0-poetic').then(response=>{
  if(!response.ok)throw new Error('Quotes unavailable');
  return response.json();
 }).then(quotes=>{

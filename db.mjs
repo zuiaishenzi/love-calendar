@@ -1,4 +1,4 @@
-import {DatabaseSync} from 'node:sqlite';
+import {openEncryptedDatabase} from './encrypted-db.mjs';
 import {mkdirSync} from 'node:fs';
 import path from 'node:path';
 import {randomBytes,scryptSync} from 'node:crypto';
@@ -10,7 +10,7 @@ const userSchema=`CREATE TABLE users (
  UNIQUE(ledger_id,seat));`;
 export function openDatabase(dir) {
  mkdirSync(dir,{recursive:true});
- const db=new DatabaseSync(path.join(dir,'calendar.sqlite'));
+ const db=openEncryptedDatabase(path.join(dir,'calendar.sqlite'));
  db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;');
  const existing=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'").get();
  const legacy=existing&&!db.prepare('PRAGMA table_info(users)').all().some(c=>c.name==='ledger_id');

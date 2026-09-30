@@ -1,4 +1,4 @@
-import {DatabaseSync} from 'node:sqlite';
+import {openEncryptedDatabase} from '../encrypted-db.mjs';
 import {randomBytes} from 'node:crypto';
 import {existsSync,chmodSync} from 'node:fs';
 import path from 'node:path';
@@ -12,7 +12,7 @@ if(args.length!==2||!['--check','--apply'].includes(args[0])){
 const file=args[1];
 if(!path.isAbsolute(file)||!existsSync(file))throw Error('Database must be an existing absolute path');
 process.umask(0o077);
-const db=new DatabaseSync(file,{readOnly:args[0]==='--check'});
+const db=openEncryptedDatabase(file,{readonly:args[0]==='--check'});
 try{
  db.exec('PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON');
  const rows=db.prepare('SELECT id,code FROM ledgers ORDER BY id').all();
