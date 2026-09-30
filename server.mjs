@@ -18,7 +18,7 @@ const db=openDatabase(dataDir),accounts=accountService(db,mailer),worker=createR
 const realtime=createRealtime(accounts.authenticate);
 const pendingThumbnails=new Map();
 function attachPerspectives(row){
- row.perspectives=db.prepare('SELECT p.*,u.name AS author_name FROM perspectives p JOIN users u ON u.id=p.author WHERE p.memory_id=? ORDER BY p.updated,p.author').all(row.id);
+ row.perspectives=db.prepare('SELECT p.*,u.name AS author_name FROM perspectives p JOIN users u ON u.id=p.author WHERE p.memory_id=? ORDER BY p.rowid').all(row.id);
  for(const p of row.perspectives)p.photos=db.prepare('SELECT id FROM photos WHERE memory_id=? AND author=? ORDER BY rowid').all(row.id,p.author).map(x=>x.id);
  return row;
 }

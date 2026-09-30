@@ -100,6 +100,12 @@ test('注册验证、双人上限、账本隔离、邮箱配置和年度提醒',
   assert.deepEqual(dialog.perspectives.find(p=>p.author===alice.data.id).photos,[alicePhoto]);
   assert.equal((await call('/api/photos/'+bobPhoto,'GET',undefined,bob.cookie)).status,404);
   assert.equal(dialog.perspectives.find(p=>p.author===alice.data.id).body,entry.body);
+  // Editing the first author's contribution must not move it below the second.
+  assert.equal((await call('/api/memories','POST',{...entry,id:memory.data.id,body:entry.body,photos:[],keepPhotos:[alicePhoto]},alice.cookie)).status,200);
+  for(const url of ['/api/timeline','/api/memories?month=2026-02']){
+   const ordered=(await call(url,'GET',undefined,bob.cookie)).data.find(r=>r.id===memory.data.id);
+   assert.deepEqual(ordered.perspectives.map(p=>p.author),[alice.data.id,bob.data.id]);
+  }
   const secret={title:'我的私密提醒',base_day:'2026-04-01',kind:'solar',enabled:true,private:true,recipient_id:bob.data.id};
   assert.equal((await call('/api/reminders','POST',secret,alice.cookie)).status,200);
   const privateRow=(await call('/api/reminders','GET',undefined,alice.cookie)).data.find(r=>r.title===secret.title);

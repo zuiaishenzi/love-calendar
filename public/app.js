@@ -21,7 +21,7 @@ async function loadTimeline(){
       const item=el('article',undefined,'timeline-item'),date=el('time',r.day.replaceAll('-','.'),'timeline-date');date.dateTime=r.day;
       const card=el('div',undefined,'timeline-card');card.append(el('h3',r.title));
       card.append(conversation(r));
-      const actions=el('div',undefined,'timeline-actions');actions.append(el('span',r.author_name+' 记录'));
+      const actions=el('div',undefined,'timeline-actions');
       const jump=el('button','查看这一天 ↗');jump.onclick=async()=>{selected=r.day;month=r.day.slice(0,7);await switchView('calendar');$('#selected-label').scrollIntoView({block:'center'});};
       const edit=el('button','写下我的视角');edit.onclick=()=>openEditor(r);actions.append(edit,jump);card.append(actions);item.append(date,card);list.append(item);
     }
