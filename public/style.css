@@ -79,7 +79,7 @@ body:has(#presence-float:not([hidden])) main{padding-bottom:130px}
 
 /* Desktop calendar fits the viewport; long stories scroll within their panel. */
 @media(min-width:1024px) and (min-height:720px){
- main{max-width:1600px;padding:0 30px}
+ main{max-width:1240px;padding:0 24px}
  header{height:62px}
  .intro{padding:18px 0 14px;gap:16px}
  .intro .eyebrow{margin-bottom:6px}
@@ -88,7 +88,7 @@ body:has(#presence-float:not([hidden])) main{padding-bottom:130px}
  .view-switch{margin-bottom:14px;padding-bottom:9px}
  .view-switch button{padding:7px 16px}
  #app:has(#calendar-view[aria-pressed="true"]){height:100dvh;display:flex;flex-direction:column;padding-bottom:0}
- #app:has(#calendar-view[aria-pressed="true"]) .workspace{flex:1;min-height:0;grid-template-columns:minmax(0,1fr) 300px;gap:18px}
+ #app:has(#calendar-view[aria-pressed="true"]) .workspace{flex:1;min-height:0;grid-template-columns:minmax(0,1fr) 320px;gap:20px}
  #app:has(#calendar-view[aria-pressed="true"]) .calendar{height:100%;display:flex;flex-direction:column;min-height:0}
  .toolbar{padding:12px 18px}
  .toolbar h2{font-size:25px;margin:2px 0 0}
@@ -116,3 +116,19 @@ body:has(#presence-float:not([hidden])) main{padding-bottom:130px}
 #password-form>.primary{width:100%}
 #forgot-password{margin-top:8px;color:var(--wine)}
 #reset-password{margin-top:12px;color:var(--wine)}
+
+/* Complete every week, including the unused dates at the end of a month. */
+.grid{border-bottom:1px solid #e9e1e2}
+.day,.blank{border-top:0;border-right:1px solid #eee5e9;border-bottom:1px solid #eee5e9}
+.grid>:nth-child(7n){border-right:0}
+.grid>:nth-last-child(-n+7){border-bottom:0}
+.blank{background:#fcfafb}
+@media(min-width:1024px) and (min-height:720px){
+ .toolbar{flex-wrap:wrap;gap:8px}
+ .navigation{margin-left:auto}
+ .intro{padding:12px 0 10px}
+ .intro h1{font-size:28px}
+ .view-switch{margin-bottom:12px}
+ .empty{padding:18px 0}
+ .empty .heart{font-size:48px}
+}
