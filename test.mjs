@@ -97,3 +97,23 @@ test('首页短句数量、去重及本地时段边界',()=>{
  }
  assert.deepEqual(Array.from(pool({},8)),[]);
 });
+
+test('返回键逐层关闭弹窗，按钮关闭及快速切换不残留历史',()=>{
+ const queue=[],listeners={};
+ const dialogs=['day','editor','photo','profile','password'].map(id=>({id,open:false,events:{},showModal(){this.open=true;},close(){if(!this.open)return;this.open=false;queue.push(()=>this.events.close?.());},addEventListener(name,fn){this.events[name]=fn;}}));
+ const entries=[null];let cursor=0;
+ const history={get state(){return entries[cursor];},replaceState(value){entries[cursor]=value;},pushState(value){entries.splice(cursor+1);entries.push(value);cursor++;},go(delta){queue.push(()=>{cursor+=delta;assert.ok(cursor>=0);listeners.popstate();});}};
+ runInNewContext(readFileSync(new URL('./public/dialog-history.js',import.meta.url),'utf8'),{history,document:{querySelectorAll:()=>dialogs},window:{addEventListener:(event,fn)=>listeners[event]=fn}});
+ const flush=()=>{let n=0;while(queue.length){assert.ok(n++<40,'history loop');queue.shift()();}};
+ const [day,editor,photo,profile,password]=dialogs;
+ day.showModal();editor.showModal();photo.showModal();assert.equal(cursor,3);
+ history.go(-1);flush();assert.equal(photo.open,false);assert.equal(editor.open,true);assert.equal(day.open,true);
+ history.go(-1);flush();assert.equal(editor.open,false);assert.equal(day.open,true);
+ day.close();flush();assert.equal(cursor,0);
+ for(let i=0;i<3;i++){day.showModal();day.close();flush();assert.equal(cursor,0);}
+ profile.showModal();profile.close();password.showModal();flush();assert.equal(cursor,1);assert.equal(password.open,true);
+ history.go(-1);flush();assert.equal(password.open,false);assert.equal(cursor,0);
+ history.go(1);flush();assert.equal(password.open,false);
+ day.showModal();editor.showModal();dialogs.forEach(d=>d.close());flush();assert.equal(dialogs.some(d=>d.open),false);
+ day.showModal();day.events.cancel({preventDefault(){}});flush();assert.equal(day.open,false);
+});
