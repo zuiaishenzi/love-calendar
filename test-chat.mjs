@@ -11,6 +11,38 @@ import {chatService} from './chat.mjs';
 import {openDatabase} from './db.mjs';
 import {createRealtime} from './realtime.mjs';
 import {EventEmitter} from 'node:events';
+import {memoryAttachments} from './media.mjs';
+
+test('语音气泡点击播放与暂停，互斥播放，元数据更新时长',async()=>{
+ const source=readFileSync(new URL('./public/app.js',import.meta.url),'utf8'),start=source.indexOf('function voiceMessage('),end=source.indexOf('function memoryAttachment',start);
+ const make=tag=>({tag,children:[],events:{},attributes:{},paused:true,duration:3,classList:{toggle(){}},append(...nodes){this.children.push(...nodes);},setAttribute(k,v){this.attributes[k]=v;},addEventListener(k,fn){this.events[k]=fn;},async play(){this.paused=false;this.events.play();},pause(){this.paused=true;this.events.pause();}});
+ const context={activeVoiceAudio:null,el:(tag,text)=>Object.assign(make(tag),{textContent:text}),Math,Number,$:()=>({})},create=runInNewContext(source.slice(start,end)+';voiceMessage',context),first=create('/first',2),second=create('/second',5),[button,audio]=first.children;
+ audio.events.loadedmetadata();assert.equal(button.children[2].textContent,'3″');await button.onclick();assert.equal(audio.paused,false);assert.equal(button.attributes['aria-pressed'],'true');await second.children[0].onclick();assert.equal(audio.paused,true);assert.equal(second.children[1].paused,false);await second.children[0].onclick();assert.equal(second.children[1].paused,true);
+});
+
+test('回忆附件校验文件类型、文件名及单文件和总量限制',()=>{
+ const mp4=Buffer.from('000000186674797069736f6d','hex'),wav=Buffer.from('524946460000000057415645','hex');
+ assert.equal(memoryAttachments([{name:'片段.mp4',data:mp4.toString('base64')}])[0].kind,'video');assert.equal(memoryAttachments([{name:'语音.wav',data:wav.toString('base64')}])[0].mime,'audio/wav');
+ for(const file of [{name:'bad.mp4',data:Buffer.from('<script>').toString('base64')},{name:'bad.html',data:mp4.toString('base64')},{name:'bad.wav',data:'!bad!'}])assert.throws(()=>memoryAttachments([file]),e=>e.status===400);
+ const big=Buffer.alloc(20*1024*1024+1);wav.copy(big);assert.throws(()=>memoryAttachments([{name:'大音频.wav',data:big.toString('base64')}]),e=>e.status===400);
+});
+
+test('回忆视频语音上传、双方隔离、分段下载、各自编辑、导出及到期清理',async()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-memory-media-')),app=createApplication({dataDir:dir,mailer:{ready:false}}),{db,server}=app;seed(db);await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;
+ const call=async(url,method='GET',data,cookie='',range)=>{const r=await fetch(origin+url,{method,headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json',...(range?{Range:range}:{})},body:data===undefined?undefined:JSON.stringify(data)});return {status:r.status,headers:r.headers,data:r.headers.get('content-type')?.includes('json')?await r.json():Buffer.from(await r.arrayBuffer())};};
+ try{
+  const cookies=[];for(const name of ['alice','bob','other'])cookies.push((await call('/api/login','POST',{name,password:'password-123'})).headers.get('set-cookie').split(';')[0]);const [a,b,c]=cookies;
+  const bytes=Buffer.from('524946460000000057415645','hex'),base={day:'2026-10-02',title:'附件回忆',body:'',photos:[]},saved=await call('/api/memories','POST',{...base,attachments:[{name:'声音.wav',data:bytes.toString('base64')},{name:'片段.mp4',data:Buffer.from('000000186674797069736f6d','hex').toString('base64')}]},a);assert.equal(saved.status,200);const id=saved.data.id;
+  let row=(await call('/api/memories?month=2026-10', 'GET',undefined,b)).data[0];assert.equal(row.perspectives[0].attachments.length,2);const attachment=row.perspectives[0].attachments[0];
+  assert.equal((await call('/api/memory-attachments/'+attachment.id,'GET',undefined,c)).status,404);assert.equal((await call('/api/memory-attachments/'+attachment.id+'?download=1','GET',undefined,b)).headers.get('content-disposition').includes('attachment'),true);
+  const part=await call('/api/memory-attachments/'+attachment.id,'GET',undefined,b,'bytes=0-3');assert.equal(part.status,206);assert.equal(part.data.length,4);assert.equal((await call('/api/memory-attachments/'+attachment.id,'GET',undefined,a,'bytes=99-')).status,416);
+  assert.equal((await call('/api/memories','POST',{...base,id,attachments:[],keepAttachments:[]},b)).status,200);row=(await call('/api/memories?month=2026-10','GET',undefined,a)).data[0];assert.equal(row.perspectives[0].attachments.length,2);
+  const exported=(await call('/api/memoir/export','GET',undefined,b)).data.toString();assert.ok(exported.includes('<video controls'));assert.ok(exported.includes('data:audio/wav;base64'));
+  assert.equal((await call('/api/memories','POST',{...base,id,attachments:[{name:'bad.mp4',data:'YmFk'}],keepAttachments:[]},a)).status,400);assert.equal((await call('/api/memories?month=2026-10','GET',undefined,a)).data[0].perspectives[0].attachments.length,2);
+  await call('/api/memories','POST',{...base,id,attachments:[],keepAttachments:[attachment.id]},a);assert.equal((await call('/api/memories?month=2026-10','GET',undefined,a)).data[0].perspectives[0].attachments.length,1);
+  db.prepare("UPDATE ledgers SET delete_at=?,delete_kind='ledger' WHERE id=1").run(Date.now()+10000);assert.equal((await call('/api/memories','POST',{...base,id},a)).status,423);assert.equal((await call('/api/memory-attachments/'+attachment.id,'GET',undefined,b)).status,200);db.exec('UPDATE ledgers SET delete_at=1 WHERE id=1');app.lifecycle.purge();assert.equal(db.prepare('SELECT COUNT(*) AS n FROM memory_attachments').get().n,0);
+ }finally{await new Promise(r=>server.close(r));db.close();rmSync(dir,{recursive:true,force:true});}
+});
 
 test('头像清空后同一头像可以重新绘制，重复绘制保留已有图片',()=>{
  const source=readFileSync(new URL('./public/settings.js',import.meta.url),'utf8'),start=source.indexOf('function drawAvatar('),end=source.indexOf('function menuOpen',start);
@@ -70,8 +102,9 @@ test('聊天文字、图片、语音附件只对本账本开放，支持范围�
   assert.equal((await call('/api/chat/call','GET',undefined,a)).status,404);assert.equal((await call('/api/chat/call','POST',{action:'offer',sdp:'v=0'},a)).status,404);assert.equal((await call('/api/chat/config','GET',undefined,a)).status,404);
   assert.equal((await call('/api/chat/messages','POST',{kind:'text',text:'<script>想念你</script>'},a)).status,200);
   const png=await sharp({create:{width:20,height:20,channels:3,background:'#b87a90'}}).png().toBuffer();const image=(await call('/api/chat/messages','POST',{kind:'image',data:png.toString('base64')},a)).data.id;
-  const audio=(await call('/api/chat/messages','POST',{kind:'audio',data:Buffer.from([0x1a,0x45,0xdf,0xa3,0,1,2,3]).toString('base64')},b)).data.id;
-  const messages=(await call('/api/chat/messages','GET',undefined,b)).data.messages;assert.equal(messages.length,3);assert.equal(messages[0].text,'<script>想念你</script>');assert.equal(messages[2].sender,2);
+  const audio=(await call('/api/chat/messages','POST',{kind:'audio',duration:3,data:Buffer.from([0x1a,0x45,0xdf,0xa3,0,1,2,3]).toString('base64')},b)).data.id;
+  const messages=(await call('/api/chat/messages','GET',undefined,b)).data.messages;assert.equal(messages.length,3);assert.equal(messages[0].text,'<script>想念你</script>');assert.equal(messages[2].sender,2);assert.equal(messages[2].duration,3);
+  const download=await call('/api/chat/media/'+audio+'?download=1','GET',undefined,a);assert.equal(download.headers.get('content-disposition').includes('.webm'),true);assert.equal(download.data.length,8);assert.equal((await call('/api/chat/media/'+audio+'?download=1','GET',undefined,c)).status,404);
   assert.equal((await call('/api/chat/messages','GET',undefined,c)).data.messages.length,0);
   assert.equal((await call('/api/chat/media/'+image,'GET',undefined,c)).status,404);assert.equal((await call('/api/chat/media/'+image,'GET',undefined,b)).headers.get('content-type'),'image/webp');
   const ranged=await call('/api/chat/media/'+audio,'GET',undefined,a,'bytes=0-3');assert.equal(ranged.status,206);assert.equal(ranged.data.length,4);assert.equal(ranged.headers.get('content-range'),'bytes 0-3/8');

@@ -4,12 +4,13 @@ export function* memoirDocument(db,ledger){
  for(const memory of db.prepare('SELECT id,day,title FROM memories WHERE ledger_id=? ORDER BY day,id').all(ledger)){
   yield `<article><time>${escape(memory.day)}</time><h2>${escape(memory.title)}</h2>`;
   for(const perspective of db.prepare('SELECT p.author,p.body,u.name FROM perspectives p JOIN users u ON u.id=p.author WHERE p.memory_id=? ORDER BY p.rowid').all(memory.id)){
-   if(!perspective.body&&!db.prepare('SELECT id FROM photos WHERE memory_id=? AND author=?').get(memory.id,perspective.author)&&db.prepare('SELECT id FROM memory_chat_messages WHERE memory_id=?').get(memory.id))continue;
+   if(!perspective.body&&!db.prepare('SELECT id FROM photos WHERE memory_id=? AND author=?').get(memory.id,perspective.author)&&!db.prepare('SELECT id FROM memory_attachments WHERE memory_id=? AND author=?').get(memory.id,perspective.author)&&db.prepare('SELECT id FROM memory_chat_messages WHERE memory_id=?').get(memory.id))continue;
    yield `<section><h3>${escape(perspective.name)}的视角</h3><p>${escape(perspective.body)}</p>`;
    for(const photo of db.prepare('SELECT id FROM photos WHERE memory_id=? AND author=? ORDER BY rowid').all(memory.id,perspective.author)){
     const p=db.prepare('SELECT mime,data FROM photos WHERE id=?').get(photo.id);
     if(p&&['image/jpeg','image/png','image/webp'].includes(p.mime))yield `<img alt="回忆照片" src="data:${p.mime};base64,${Buffer.from(p.data).toString('base64')}">`;
    }
+   for(const item of db.prepare('SELECT name,kind,mime,data FROM memory_attachments WHERE memory_id=? AND author=? ORDER BY rowid').all(memory.id,perspective.author)){const src=`data:${item.mime};base64,${Buffer.from(item.data).toString('base64')}`;yield `<p>${escape(item.name)}</p>`;yield item.kind==='video'?`<video controls preload="metadata" style="max-width:100%" src="${src}"></video>`:`<audio controls preload="metadata" src="${src}"></audio>`;yield `<p><a download="${escape(item.name)}" href="${src}">下载附件</a></p>`;}
    yield '</section>';
   }
   const chats=db.prepare('SELECT * FROM memory_chat_messages WHERE memory_id=? ORDER BY position').all(memory.id);

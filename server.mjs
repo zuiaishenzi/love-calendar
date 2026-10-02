@@ -15,9 +15,10 @@ import {memoirDocument} from './memoir-export.mjs';
 import {Readable} from 'node:stream';
 import {memoService,createMemoOrganizer} from './memos.mjs';
 import {chatService} from './chat.mjs';
+import {memoryAttachments,sendMedia} from './media.mjs';
 const root=path.dirname(fileURLToPath(import.meta.url));
 const {version:appVersion}=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8'));
-async function body(req) {let size=0, chunks=[]; for await(const c of req) {size+=c.length; if(size>24*1024*1024) throw fail(413,'图片总大小过大'); chunks.push(c);} try{return JSON.parse(Buffer.concat(chunks));}catch{throw fail(400,'请求格式错误');}}
+async function body(req,max=24*1024*1024) {let size=0, chunks=[]; for await(const c of req) {size+=c.length; if(size>max) throw fail(413,'上传内容总大小过大'); chunks.push(c);} try{return JSON.parse(Buffer.concat(chunks));}catch{throw fail(400,'请求格式错误');}}
 export function createApplication({dataDir=process.env.DATA_DIR||path.join(root,'data'),mailer=createMailer(),memoOrganizer=createMemoOrganizer()}={}) {
 const db=openDatabase(dataDir),lifecycle=lifecycleService(db,mailer),accounts=accountService(db,mailer,lifecycle),worker=createReminderWorker(db,mailer);
 lifecycle.purge();
@@ -28,9 +29,9 @@ const chat=chatService(db,(user,type)=>{if(type==='memory')realtime.changed(user
 const pendingThumbnails=new Map();
 const avatarAssets=new Map();
 function attachPerspectives(row){
- row.chat_messages=db.prepare('SELECT id,sender,sender_name AS name,kind,text,mime,created FROM memory_chat_messages WHERE memory_id=? ORDER BY position').all(row.id);
+ row.chat_messages=db.prepare('SELECT id,sender,sender_name AS name,kind,text,mime,created,duration FROM memory_chat_messages WHERE memory_id=? ORDER BY position').all(row.id);
  row.perspectives=db.prepare('SELECT p.*,u.name AS author_name FROM perspectives p JOIN users u ON u.id=p.author WHERE p.memory_id=? ORDER BY p.rowid').all(row.id);
- for(const p of row.perspectives)p.photos=db.prepare('SELECT id FROM photos WHERE memory_id=? AND author=? ORDER BY rowid').all(row.id,p.author).map(x=>x.id);
+ for(const p of row.perspectives){p.photos=db.prepare('SELECT id FROM photos WHERE memory_id=? AND author=? ORDER BY rowid').all(row.id,p.author).map(x=>x.id);p.attachments=db.prepare('SELECT id,name,kind,mime,length(data) AS size FROM memory_attachments WHERE memory_id=? AND author=? ORDER BY rowid').all(row.id,p.author);}
  return row;
 }
 const server=http.createServer(async(req,res)=>{
@@ -58,7 +59,7 @@ const server=http.createServer(async(req,res)=>{
       const chatAttachment=url.pathname.match(/^\/api\/memory-chat-media\/([a-f0-9]{36})$/);
       if(chatAttachment&&req.method==='GET'){
         const row=db.prepare('SELECT c.data,c.mime FROM memory_chat_messages c JOIN memories m ON m.id=c.memory_id WHERE c.id=? AND m.ledger_id=? AND c.kind!=?').get(chatAttachment[1],user.ledger_id,'text');if(!row)throw fail(404,'附件不存在');
-        res.writeHead(200,{'Content-Type':row.mime,'Content-Length':row.data.length});res.end(Buffer.from(row.data));return;
+        sendMedia(req,res,row);return;
       }
       if(url.pathname.startsWith('/api/chat/')){const result=await chat.route(req,res,url,user,req.method==='POST'?await body(req):{},ensureWritable);if(result!==null)send(200,result);return;}
       if(url.pathname==='/api/memos'||url.pathname.startsWith('/api/memos/'))return send(200,await memos.route(req,url,user,req.method==='POST'?await body(req):{},ensureWritable));
@@ -135,7 +136,9 @@ const server=http.createServer(async(req,res)=>{
         return send(200,rows);
       }
       if(url.pathname==='/api/memories' && req.method==='POST') {
-        const input=await body(req);ensureWritable();
+        const input=await body(req,96*1024*1024);ensureWritable();
+        const attachments=memoryAttachments(input.attachments);
+        if(input.keepAttachments!==undefined&&(!Array.isArray(input.keepAttachments)||input.keepAttachments.length>6||input.keepAttachments.some(id=>typeof id!=='string'||! /^[a-f0-9]{36}$/.test(id))))throw fail(400,'保留附件信息无效');
         if(!validDay(input.day) || typeof input.title!=='string' || !input.title.trim() || input.title.length>100 || typeof input.body!=='string' || input.body.length>20000) throw fail(400,'请填写有效日期、标题（100字以内）和正文（20000字以内）');
         if(!Array.isArray(input.photos)||input.photos.length>6) throw fail(400,'每条回忆最多6张图片');
         const photos=input.photos.map(p=>{
@@ -155,9 +158,15 @@ const server=http.createServer(async(req,res)=>{
           for(const p of db.prepare('SELECT id FROM photos WHERE memory_id=? AND author=?').all(id,user.id)) if(!kept.includes(p.id)) db.prepare('DELETE FROM photos WHERE id=?').run(p.id);
           if(db.prepare('SELECT COUNT(*) AS n FROM photos WHERE memory_id=? AND author=?').get(id,user.id).n+photos.length>6) throw fail(400,'每条回忆最多6张图片');
           for(const p of photos) db.prepare('INSERT INTO photos(id,memory_id,mime,data,author) VALUES(?,?,?,?,?)').run(p.id,id,p.mime,p.data,user.id);
+          const own=db.prepare('SELECT id FROM memory_attachments WHERE memory_id=? AND author=?').all(id,user.id);
+          for(const item of own)if(input.keepAttachments&&!input.keepAttachments.includes(item.id))db.prepare('DELETE FROM memory_attachments WHERE id=?').run(item.id);
+          if(db.prepare('SELECT COUNT(*) AS n FROM memory_attachments WHERE memory_id=? AND author=?').get(id,user.id).n+attachments.length>6)throw fail(400,'每个视角最多6个视频或语音附件');
+          for(const item of attachments)db.prepare('INSERT INTO memory_attachments(id,memory_id,author,name,kind,mime,data) VALUES(?,?,?,?,?,?,?)').run(item.id,id,user.id,item.name,item.kind,item.mime,item.data);
           db.exec('COMMIT'); realtime.changed(user);return send(200,{id});
         } catch(e) {db.exec('ROLLBACK');throw e;}
       }
+      const attachment=url.pathname.match(/^\/api\/memory-attachments\/([a-f0-9]{36})$/);
+      if(attachment&&req.method==='GET'){const row=db.prepare('SELECT a.name,a.mime,a.data FROM memory_attachments a JOIN memories m ON m.id=a.memory_id WHERE a.id=? AND m.ledger_id=?').get(attachment[1],user.ledger_id);if(!row)throw fail(404,'附件不存在');sendMedia(req,res,row,url.searchParams.get('download')==='1'?row.name:null);return;}
       const photo=url.pathname.match(/^\/api\/photos\/([a-f0-9]{36})$/);
       if(photo && req.method==='GET') {
         const id=photo[1],thumb=url.searchParams.get('size')==='thumb';

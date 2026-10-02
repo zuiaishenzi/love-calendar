@@ -58,6 +58,7 @@ export function openDatabase(dir) {
   db.exec('COMMIT');
  }catch(e){db.exec('ROLLBACK');throw e;}
  db.exec('CREATE TABLE IF NOT EXISTS thumbnails(photo_id TEXT PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,data BLOB NOT NULL,mime TEXT NOT NULL)');
+ db.exec('CREATE TABLE IF NOT EXISTS memory_attachments(id TEXT PRIMARY KEY,memory_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,author INTEGER NOT NULL REFERENCES users(id),name TEXT NOT NULL,kind TEXT NOT NULL,mime TEXT NOT NULL,data BLOB NOT NULL)');
  for(const [name,type] of [['delete_at','INTEGER'],['delete_kind','TEXT']])if(!db.prepare('PRAGMA table_info(ledgers)').all().some(c=>c.name===name))db.exec(`ALTER TABLE ledgers ADD COLUMN ${name} ${type}`);
  for(const [name,type] of [['avatar','TEXT'],['avatar_data','BLOB']])if(!db.prepare('PRAGMA table_info(users)').all().some(c=>c.name===name))db.exec(`ALTER TABLE users ADD COLUMN ${name} ${type}`);
  db.exec(`CREATE TABLE IF NOT EXISTS ledger_confirmations(id TEXT PRIMARY KEY,ledger_id INTEGER UNIQUE REFERENCES ledgers(id) ON DELETE CASCADE,purpose TEXT NOT NULL,expires INTEGER NOT NULL);
@@ -76,6 +77,7 @@ export function openDatabase(dir) {
  CREATE INDEX IF NOT EXISTS chat_ledger_id ON chat_messages(ledger_id,id);`);
  if(!db.prepare('PRAGMA table_info(chat_messages)').all().some(c=>c.name==='retracted_at'))db.exec('ALTER TABLE chat_messages ADD COLUMN retracted_at INTEGER');
  db.exec(`CREATE TABLE IF NOT EXISTS memory_chat_messages(id TEXT PRIMARY KEY,memory_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,position INTEGER NOT NULL,sender INTEGER NOT NULL REFERENCES users(id),sender_name TEXT NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,data BLOB,mime TEXT,created INTEGER NOT NULL,UNIQUE(memory_id,position));`);
+ for(const table of ['chat_messages','memory_chat_messages'])if(!db.prepare(`PRAGMA table_info(${table})`).all().some(c=>c.name==='duration'))db.exec(`ALTER TABLE ${table} ADD COLUMN duration REAL`);
  // Optional bootstrap for an explicitly configured private installation or isolated preview.
  if(!db.prepare('SELECT id FROM users LIMIT 1').get() && process.env.USER1_NAME) {
   for(const n of [1,2])if(!process.env[`USER${n}_NAME`]||String(process.env[`USER${n}_PASSWORD`]||'').length<12)throw Error('预设账号须配置两组不同用户名及至少12位密码');
