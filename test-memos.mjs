@@ -8,6 +8,16 @@ import {createApplication} from './server.mjs';
 import {memoService} from './memos.mjs';
 import {openDatabase} from './db.mjs';
 
+test('旧整理结果迁移为可选AI分类，重启不覆盖手动改回待整理的记录',()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-memo-category-migration-'));let db=openDatabase(dir);
+ try{
+  db.exec("INSERT INTO ledgers(id,code) VALUES(1,'MIGRATE1'); INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(1,'test','x','x',1,1); INSERT INTO memo_notes(id,user_id,body) VALUES(1,1,'原文'); ALTER TABLE memo_notes DROP COLUMN ai_category; DROP TABLE memo_ai_categories;");
+  db.prepare('INSERT INTO memo_summaries(user_id,content) VALUES(1,?)').run(JSON.stringify([{id:1,category:'饮食',text:'整理结果'}]));db.close();db=openDatabase(dir);
+  assert.equal(db.prepare('SELECT ai_category FROM memo_notes').get().ai_category,'饮食');assert.equal(db.prepare('SELECT name FROM memo_ai_categories').get().name,'饮食');assert.equal(db.prepare('SELECT body FROM memo_notes').get().body,'原文');
+  db.exec('UPDATE memo_notes SET ai_category=NULL; DELETE FROM memo_summaries;');db.close();db=openDatabase(dir);assert.equal(db.prepare('SELECT ai_category FROM memo_notes').get().ai_category,null);assert.equal(db.prepare('SELECT name FROM memo_ai_categories').get().name,'饮食');
+ }finally{db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
 test('私密备忘隔离、自定义分类不发送AI、原文保留、只读和注销清理',async()=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),'love-memos-'));let received;
  const app=createApplication({dataDir:dir,mailer:{ready:false},memoOrganizer:{ready:true,async organize(notes){received=notes;return {items:notes.map(n=>({id:n.id,category:'饮食',text:'喜欢清淡，不加糖'}))};}}});
@@ -29,6 +39,11 @@ test('私密备忘隔离、自定义分类不发送AI、原文保留、只读和
   assert.equal((await call('/api/memos/categories/'+cid,'DELETE',{},a)).status,409);
   const organized=await call('/api/memos/organize','POST',{},a);assert.equal(organized.status,200);
   assert.deepEqual(received,[{id:nid,body:'清淡饮食，咖啡不加糖'}]);assert.equal(organized.data.notes[0].body,'秘密旅行地点');assert.equal(organized.data.notes[1].body,'清淡饮食，咖啡不加糖');
+  assert.deepEqual(organized.data.ai_categories,['饮食']);assert.equal(organized.data.notes[1].ai_category,'饮食');
+  const placed=await call('/api/memos/notes','POST',{body:'喜欢热茶',ai_category:'饮食'},a);assert.equal(placed.status,200);assert.equal(placed.data.notes.at(-1).ai_category,'饮食');assert.equal(placed.data.summary[0].id,nid);
+  assert.equal((await call('/api/memos/notes','POST',{body:'非法分类',ai_category:'饮食'},b)).status,400);
+  assert.equal((await call('/api/memos/notes','POST',{body:'非法组合',ai_category:'饮食',category_id:cid},a)).status,400);
+  const pending=await call('/api/memos/notes','POST',{id:placed.data.notes.at(-1).id,body:'待整理的新记录'},a);assert.equal(pending.data.notes.at(-1).ai_category,null);assert.equal(pending.data.summary[0].id,nid);
   assert.equal((await call('/api/memos','GET',undefined,b)).data.summary,null);
   assert.equal((await call('/api/memos/organize','POST',{},a)).status,429);
   assert.equal((await call('/api/memos/notes','POST',{id:nid,body:'更新'},a)).data.summary,null);
@@ -37,7 +52,7 @@ test('私密备忘隔离、自定义分类不发送AI、原文保留、只读和
   assert.equal((await call('/api/memos/organize','POST',{},a)).status,423);
   assert.equal((await call('/api/memos','GET',undefined,a)).status,200);
   db.prepare('UPDATE ledgers SET delete_at=1 WHERE id=1').run();app.lifecycle.purge();
-  for(const table of ['memo_notes','memo_categories','memo_summaries'])assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,0);
+  for(const table of ['memo_notes','memo_categories','memo_summaries','memo_ai_categories'])assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,0);
  }finally{await new Promise(r=>server.close(r));db.close();rmSync(dir,{recursive:true,force:true});}
 });
 

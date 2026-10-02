@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
+import {runInNewContext} from 'node:vm';
 import {scryptSync} from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,6 +11,16 @@ import {chatService} from './chat.mjs';
 import {openDatabase} from './db.mjs';
 
 function seed(db){db.exec("INSERT INTO ledgers(id,code) VALUES(1,'CHAT1234'),(2,'OTHER123');");for(const [id,name,ledger,seat] of [[1,'alice',1,1],[2,'bob',1,2],[3,'other',2,1]])db.prepare('INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(?,?,?,?,?,?)').run(id,name,scryptSync('password-123','salt',64).toString('hex'),'salt',ledger,seat);}
+test('聊天右键、触屏长按、移动取消及长按后不误触图片',()=>{
+ const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8'),start=source.indexOf('function chatMessageMenu('),end=source.indexOf('function chatHeader',start),handlers={},opened=[],timers=new Map();let next=0;
+ const context={chatPressTimer:null,chatPressStart:null,chatLongPressed:false,Math,openChatMenu:(...args)=>opened.push(args),setTimeout(fn){timers.set(++next,fn);return next;},clearTimeout(id){timers.delete(id);}};
+ const attach=runInNewContext(source.slice(start,end)+';chatMessageMenu',context),card={addEventListener(type,fn){handlers[type]=fn;},getBoundingClientRect(){return {left:10,top:10};}},row={id:1};attach(card,row);
+ const event={pointerType:'touch',clientX:20,clientY:30,target:{closest:()=>null},preventDefault(){this.prevented=true;},stopPropagation(){this.stopped=true;}};
+ handlers.contextmenu(event);assert.equal(opened.length,1);assert.equal(event.prevented,true);
+ handlers.pointerdown({...event});handlers.pointermove({...event,clientX:40});assert.equal(timers.size,0);
+ handlers.pointerdown({...event});[...timers.values()][0]();assert.equal(opened.length,2);handlers.pointerup();const click={...event,prevented:false,stopped:false};handlers.click(click);assert.equal(click.prevented,true);assert.equal(click.stopped,true);
+ handlers.pointerdown({...event});handlers.pointercancel();assert.equal(timers.size,0);
+});
 test('聊天文字、图片、语音附件与信令只对本账本开放，支持范围播放、只读与到期清理',async()=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),'love-chat-')),app=createApplication({dataDir:dir,mailer:{ready:false}}),{db,server}=app;seed(db);
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;
@@ -37,6 +48,12 @@ test('聊天文字、图片、语音附件与信令只对本账本开放，支�
   assert.equal((await call('/api/memory-chat-media/'+attachment,'GET',undefined,c)).status,404);assert.equal((await call('/api/memory-chat-media/'+attachment,'GET',undefined,b)).headers.get('content-type'),'image/webp');
   db.prepare('UPDATE chat_messages SET data=? WHERE id=?').run(Buffer.from('changed'),image);assert.notDeepEqual((await call('/api/memory-chat-media/'+attachment,'GET',undefined,b)).data,Buffer.from('changed'));
   const exported=await call('/api/memoir/export','GET',undefined,b);assert.ok(exported.data.toString().includes('收藏的对话'));assert.ok(exported.data.toString().includes('&lt;script&gt;想念你&lt;/script&gt;'));assert.ok(exported.data.toString().includes('data:audio/webm;base64,'));
+  assert.equal((await call('/api/chat/messages/'+image+'/retract','POST',{},b)).status,403);
+  assert.equal((await call('/api/chat/messages/'+image+'/retract','POST',{},c)).status,404);
+  assert.equal((await call('/api/chat/messages/'+image+'/retract','POST',{},a)).status,200);
+  const retracted=(await call('/api/chat/messages','GET',undefined,b)).data;assert.ok(retracted.messages.find(r=>r.id===image).retracted_at);assert.ok(retracted.retractions.some(r=>r.id===image));assert.equal(db.prepare('SELECT data FROM chat_messages WHERE id=?').get(image).data,null);
+  assert.equal((await call('/api/chat/media/'+image,'GET',undefined,b)).status,404);assert.equal((await call('/api/chat/memory','POST',{ids:[image]},a)).status,404);
+  assert.equal((await call('/api/memory-chat-media/'+attachment,'GET',undefined,b)).status,200);
   const offer=await call('/api/chat/call','POST',{action:'offer',sdp:'v=0\r\n'},a);assert.equal(offer.status,200);const id=offer.data.call.id;
   assert.equal((await call('/api/chat/call','GET',undefined,c)).data.call,null);
   assert.equal((await call('/api/chat/call','POST',{action:'answer',id,sdp:'v=0\r\n'},c)).status,404);
@@ -49,6 +66,7 @@ test('聊天文字、图片、语音附件与信令只对本账本开放，支�
   assert.equal((await call('/api/chat/call','GET',undefined,a)).data.call,null);
   db.prepare("UPDATE ledgers SET delete_at=?,delete_kind='ledger' WHERE id=1").run(Date.now()+10000);
   assert.equal((await call('/api/chat/messages','POST',{kind:'text',text:'禁止'},a)).status,423);
+  assert.equal((await call('/api/chat/messages/'+audio+'/retract','POST',{},b)).status,423);
   assert.equal((await call('/api/chat/memory','POST',{ids:[image]},a)).status,423);
   assert.equal((await call('/api/chat/call','POST',{action:'offer',sdp:'v=0\r\n'},a)).status,423);
   assert.equal((await call('/api/chat/messages','GET',undefined,b)).status,200);

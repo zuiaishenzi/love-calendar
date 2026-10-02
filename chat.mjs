@@ -29,7 +29,7 @@ export function chatService(db,notify,{now=()=>Date.now()}={}){
   if(p==='/api/chat/memory'&&req.method==='POST'){
    check();const ids=input.ids;
    if(!Array.isArray(ids)||ids.length<1||ids.length>50||ids.some(id=>!Number.isSafeInteger(id)||id<1)||new Set(ids).size!==ids.length)throw fail(400,'请选择1至50条不同的聊天消息');
-   const rows=db.prepare(`SELECT m.*,u.name FROM chat_messages m JOIN users u ON u.id=m.sender WHERE m.ledger_id=? AND m.id IN (${ids.map(()=>'?').join(',')}) ORDER BY m.id`).all(ledger,...ids);
+   const rows=db.prepare(`SELECT m.*,u.name FROM chat_messages m JOIN users u ON u.id=m.sender WHERE m.ledger_id=? AND m.retracted_at IS NULL AND m.id IN (${ids.map(()=>'?').join(',')}) ORDER BY m.id`).all(ledger,...ids);
    if(rows.length!==ids.length)throw fail(404,'部分消息不存在或不属于当前账本');
    if(rows.reduce((sum,r)=>sum+(r.data?.length||0),0)>25*1024*1024)throw fail(400,'选中附件超过25MB，请减少选择');
    const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(now()));
@@ -40,9 +40,10 @@ export function chatService(db,notify,{now=()=>Date.now()}={}){
    })();notify(user,'memory');return {id:memoryId,day,count:rows.length};
   }
   if(p==='/api/chat/messages'&&req.method==='GET'){
+   const since=Number(url.searchParams.get('since')||0);if(!Number.isSafeInteger(since)||since<0)throw fail(400,'同步信息无效');const revision=now();
    const cursor=Number(url.searchParams.get('before')||0);if(!Number.isSafeInteger(cursor)||cursor<0)throw fail(400,'分页信息无效');
-   const rows=db.prepare('SELECT m.id,m.sender,m.kind,m.text,m.mime,m.created,u.name FROM chat_messages m JOIN users u ON u.id=m.sender WHERE m.ledger_id=? AND (?=0 OR m.id<?) ORDER BY m.id DESC LIMIT 51').all(ledger,cursor,cursor);
-   const more=rows.length>50;return {messages:rows.slice(0,50).reverse(),more,members:db.prepare('SELECT id,name,avatar,avatar_data IS NOT NULL AS avatar_uploaded,ledger_id,seat FROM users WHERE ledger_id=? ORDER BY seat').all(ledger).map(u=>({id:u.id,name:u.name,avatar:u.avatar||`pair-${(u.ledger_id-1)%5+1}-${u.seat}`,avatar_uploaded:Boolean(u.avatar_uploaded)}))};
+   const rows=db.prepare('SELECT m.id,m.sender,m.kind,m.text,m.mime,m.created,m.retracted_at,u.name FROM chat_messages m JOIN users u ON u.id=m.sender WHERE m.ledger_id=? AND (?=0 OR m.id<?) ORDER BY m.id DESC LIMIT 51').all(ledger,cursor,cursor);
+   const more=rows.length>50;return {messages:rows.slice(0,50).reverse(),more,revision,retractions:db.prepare('SELECT id,retracted_at FROM chat_messages WHERE ledger_id=? AND retracted_at>=?').all(ledger,since),members:db.prepare('SELECT id,name,avatar,avatar_data IS NOT NULL AS avatar_uploaded,ledger_id,seat FROM users WHERE ledger_id=? ORDER BY seat').all(ledger).map(u=>({id:u.id,name:u.name,avatar:u.avatar||`pair-${(u.ledger_id-1)%5+1}-${u.seat}`,avatar_uploaded:Boolean(u.avatar_uploaded)}))};
   }
   if(p==='/api/chat/messages'&&req.method==='POST'){
    check();const count=db.prepare('SELECT COUNT(*) AS n FROM chat_messages WHERE ledger_id=?').get(ledger).n;if(count>=10000)throw fail(400,'聊天记录已达10000条上限');
@@ -56,9 +57,11 @@ export function chatService(db,notify,{now=()=>Date.now()}={}){
    }
    check();const id=Number(db.prepare('INSERT INTO chat_messages(ledger_id,sender,kind,text,data,mime,created) VALUES(?,?,?,?,?,?,?)').run(ledger,user.id,kind,text,data,mime,now()).lastInsertRowid);notify(user);return {id};
   }
+  const retract=p.match(/^\/api\/chat\/messages\/(\d+)\/retract$/);
+  if(retract&&req.method==='POST'){check();const row=db.prepare('SELECT sender FROM chat_messages WHERE id=? AND ledger_id=?').get(Number(retract[1]),ledger);if(!row)throw fail(404,'消息不存在');if(row.sender!==user.id)throw fail(403,'只能撤回自己发送的消息');db.prepare("UPDATE chat_messages SET text='',data=NULL,mime=NULL,retracted_at=COALESCE(retracted_at,?) WHERE id=? AND ledger_id=?").run(now(),Number(retract[1]),ledger);notify(user);return {ok:true};}
   const media=p.match(/^\/api\/chat\/media\/(\d+)$/);
   if(media&&req.method==='GET'){
-   const row=db.prepare('SELECT data,mime FROM chat_messages WHERE id=? AND ledger_id=? AND kind!=?').get(Number(media[1]),ledger,'text');if(!row)throw fail(404,'附件不存在');const bytes=Buffer.from(row.data);let start=0,end=bytes.length-1,status=200;
+   const row=db.prepare('SELECT data,mime FROM chat_messages WHERE id=? AND ledger_id=? AND kind!=? AND retracted_at IS NULL').get(Number(media[1]),ledger,'text');if(!row)throw fail(404,'附件不存在');const bytes=Buffer.from(row.data);let start=0,end=bytes.length-1,status=200;
    if(req.headers.range){const range=req.headers.range.match(/^bytes=(\d*)-(\d*)$/);if(!range||!range[1]&&!range[2])throw fail(416,'无效的播放范围');if(!range[1])start=Math.max(0,bytes.length-Number(range[2]));else{start=Number(range[1]);if(range[2])end=Math.min(end,Number(range[2]));}if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start>end||start>=bytes.length){res.setHeader('Content-Range',`bytes */${bytes.length}`);throw fail(416,'播放范围超出附件');}status=206;}
    res.writeHead(status,{'Content-Type':row.mime,'Content-Length':end-start+1,'Accept-Ranges':'bytes',...(status===206?{'Content-Range':`bytes ${start}-${end}/${bytes.length}`}:{})});res.end(bytes.subarray(start,end+1));return null;
   }

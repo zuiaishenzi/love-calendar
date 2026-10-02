@@ -67,8 +67,14 @@ export function openDatabase(dir) {
  CREATE TABLE IF NOT EXISTS memo_notes(id INTEGER PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,body TEXT NOT NULL,category_id INTEGER REFERENCES memo_categories(id));
  CREATE INDEX IF NOT EXISTS memo_notes_user ON memo_notes(user_id);
  CREATE TABLE IF NOT EXISTS memo_summaries(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,content TEXT NOT NULL);`);
+ db.exec('CREATE TABLE IF NOT EXISTS memo_ai_categories(user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(user_id,name))');
+ if(!db.prepare('PRAGMA table_info(memo_notes)').all().some(c=>c.name==='ai_category')){
+  db.exec('ALTER TABLE memo_notes ADD COLUMN ai_category TEXT');
+  db.transaction(()=>{for(const row of db.prepare('SELECT user_id,content FROM memo_summaries').all())for(const item of JSON.parse(row.content)){db.prepare('INSERT OR IGNORE INTO memo_ai_categories(user_id,name) VALUES(?,?)').run(row.user_id,item.category);db.prepare('UPDATE memo_notes SET ai_category=? WHERE id=? AND user_id=? AND category_id IS NULL').run(item.category,item.id,row.user_id);}})();
+ }
  db.exec(`CREATE TABLE IF NOT EXISTS chat_messages(id INTEGER PRIMARY KEY,ledger_id INTEGER NOT NULL REFERENCES ledgers(id),sender INTEGER NOT NULL REFERENCES users(id),kind TEXT NOT NULL CHECK(kind IN ('text','image','audio')),text TEXT NOT NULL DEFAULT '',data BLOB,mime TEXT,created INTEGER NOT NULL);
  CREATE INDEX IF NOT EXISTS chat_ledger_id ON chat_messages(ledger_id,id);`);
+ if(!db.prepare('PRAGMA table_info(chat_messages)').all().some(c=>c.name==='retracted_at'))db.exec('ALTER TABLE chat_messages ADD COLUMN retracted_at INTEGER');
  db.exec(`CREATE TABLE IF NOT EXISTS memory_chat_messages(id TEXT PRIMARY KEY,memory_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,position INTEGER NOT NULL,sender INTEGER NOT NULL REFERENCES users(id),sender_name TEXT NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,data BLOB,mime TEXT,created INTEGER NOT NULL,UNIQUE(memory_id,position));`);
  // Optional bootstrap for an explicitly configured private installation or isolated preview.
  if(!db.prepare('SELECT id FROM users LIMIT 1').get() && process.env.USER1_NAME) {

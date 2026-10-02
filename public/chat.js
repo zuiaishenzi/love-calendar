@@ -2,7 +2,25 @@ let chatOwner=null,chatTimer=null,chatBusy=false,chatMore=false,chatOldest=null,
 let voiceStream=null,voiceRecorder=null,voiceBlob=null,voiceUrl=null,voiceTimer=null,voiceSeconds=0,recordGeneration=0;
 let voiceCall=null,voicePeer=null,callStream=null,callIceCount=0,callCreating=false,callIceQueue=[],callConfig=null;
 let chatMembers=[],chatSelecting=false,chatSelected=new Set(),chatSavingMemory=false;
-function chatSelection(){const readonly=Boolean(currentUser?.lifecycle?.readonly);$('#chat-select').textContent=chatSelecting?'取消勾选':'勾选对话';$('#chat-select').disabled=readonly||chatSavingMemory;$('#chat-selection-count').hidden=$('#chat-to-memory').hidden=!chatSelecting;$('#chat-selection-count').textContent=`已选 ${chatSelected.size} 条`;$('#chat-to-memory').disabled=readonly||chatSavingMemory||!chatSelected.size;$('#chat-to-memory').textContent=chatSavingMemory?'正在收藏…':'存入今日回忆';}
+let chatSyncSince=0;
+function chatSelection(){const readonly=Boolean(currentUser?.lifecycle?.readonly);$('#chat-selection-bar').hidden=!chatSelecting;$('#chat-selection-cancel').disabled=chatSavingMemory;$('#chat-selection-count').textContent=`已选 ${chatSelected.size} 条`;$('#chat-to-memory').disabled=readonly||chatSavingMemory||!chatSelected.size;$('#chat-to-memory').textContent=chatSavingMemory?'正在收藏…':'存入今日回忆';}
+let chatContextRow=null,chatPressTimer=null,chatPressStart=null,chatLongPressed=false;
+function closeChatMenu(){clearTimeout(chatPressTimer);$('#chat-context-menu').hidden=true;chatContextRow=null;}
+function openChatMenu(row,x,y){if(row.retracted_at)return;chatContextRow=row;const menu=$('#chat-context-menu'),bounds=$('#chat-dialog').getBoundingClientRect();menu.hidden=false;$('#chat-context-copy').hidden=row.kind!=='text';$('#chat-context-retract').hidden=row.sender!==chatOwner;$('#chat-context-retract').disabled=Boolean(currentUser?.lifecycle?.readonly);$('#chat-context-select').disabled=Boolean(currentUser?.lifecycle?.readonly);menu.style.left=Math.max(8,Math.min(x-bounds.left,bounds.width-menu.offsetWidth-8))+'px';menu.style.top=Math.max(8,Math.min(y-bounds.top,bounds.height-menu.offsetHeight-8))+'px';(row.kind==='text'?$('#chat-context-copy'):$('#chat-context-select')).focus();}
+$('#chat-context-select').onclick=()=>{const row=chatContextRow;if(!row)return;closeChatMenu();chatSelecting=true;chatSelected.add(row.id);renderChat();};
+$('#chat-context-copy').onclick=async()=>{const text=chatContextRow?.text;if(text===undefined)return;closeChatMenu();try{await navigator.clipboard.writeText(text);chatStatus('已复制');}catch{chatStatus('复制失败，请检查浏览器剪贴板权限');}};
+$('#chat-context-retract').onclick=async()=>{const row=chatContextRow;if(!row||row.sender!==chatOwner)return;closeChatMenu();const owner=chatOwner;try{await api('/api/chat/messages/'+row.id+'/retract','POST',{});if(owner===chatOwner){chatSelected.delete(row.id);chatStatus('已撤回');await syncChat();}}catch(e){if(owner===chatOwner)chatStatus(e.message);}};
+$('#chat-dialog').addEventListener('click',e=>{if(!e.target.closest('#chat-context-menu'))closeChatMenu();});
+$('#chat-dialog').addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#chat-context-menu').hidden){e.preventDefault();e.stopPropagation();closeChatMenu();}});
+$('#chat-messages').addEventListener('scroll',closeChatMenu);
+function chatMessageMenu(card,row){
+ card.tabIndex=0;card.addEventListener('contextmenu',e=>{if(row.retracted_at)return;e.preventDefault();openChatMenu(row,e.clientX,e.clientY);});
+ card.addEventListener('keydown',e=>{if(e.key==='ContextMenu'||e.key==='F10'&&e.shiftKey){e.preventDefault();const bounds=card.getBoundingClientRect();openChatMenu(row,bounds.left+20,bounds.top+20);}});
+ card.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'||e.target.closest('audio,input')||row.retracted_at)return;clearTimeout(chatPressTimer);chatLongPressed=false;chatPressStart={x:e.clientX,y:e.clientY};chatPressTimer=setTimeout(()=>{chatLongPressed=true;openChatMenu(row,e.clientX,e.clientY);},500);});
+ card.addEventListener('pointermove',e=>{if(chatPressStart&&Math.hypot(e.clientX-chatPressStart.x,e.clientY-chatPressStart.y)>10)clearTimeout(chatPressTimer);});
+ for(const type of ['pointerup','pointercancel','pointerleave'])card.addEventListener(type,()=>{clearTimeout(chatPressTimer);chatPressStart=null;});
+ card.addEventListener('click',e=>{if(chatLongPressed){e.preventDefault();e.stopPropagation();chatLongPressed=false;}},true);
+}
 function chatHeader(){const peer=chatMembers.find(m=>m.id!==chatOwner);$('#chat-title').textContent=peer?.name||'等待对方加入';if(peer)drawAvatar($('#chat-peer-avatar'),peer);else $('#chat-peer-avatar').replaceChildren();}
 const chatStatus=text=>$('#chat-status').textContent=text;
 function releaseRecording(){recordGeneration++;clearInterval(voiceTimer);if(voiceRecorder?.state==='recording'){voiceRecorder.onstop=null;voiceRecorder.stop();}voiceRecorder=null;voiceStream?.getTracks().forEach(t=>t.stop());voiceStream=null;voiceBlob=null;if(voiceUrl)URL.revokeObjectURL(voiceUrl);voiceUrl=null;$('#chat-record-preview').pause();$('#chat-record-preview').removeAttribute('src');$('#chat-record-preview').hidden=true;$('#chat-record-send').hidden=$('#chat-record-cancel').hidden=true;$('#chat-record').textContent='录制语音';}
@@ -14,11 +32,14 @@ function renderChat(){
  $('#chat-earlier').hidden=!chatMore;
  const readonly=Boolean(currentUser?.lifecycle?.readonly);for(const field of $('#chat-form').elements)field.disabled=readonly||chatSending;
  $('#chat-record').disabled=readonly||chatSending||Boolean(voicePeer)||callCreating;$('#chat-image-input').disabled=readonly||chatSending;
- const key=chatOwner+':'+chatSelecting+':'+JSON.stringify(chatMembers)+':'+chatRows.map(r=>r.id).join(',');if(key===chatRenderKey)return;chatRenderKey=key;
- const list=$('#chat-messages'),bottom=list.scrollHeight-list.scrollTop-list.clientHeight<70;list.replaceChildren();
+ for(const row of chatRows)if(row.retracted_at)chatSelected.delete(row.id);chatSelection();
+ const key=chatOwner+':'+chatSelecting+':'+JSON.stringify(chatMembers)+':'+chatRows.map(r=>r.id+'-'+(r.retracted_at||0)).join(',');if(key===chatRenderKey)return;chatRenderKey=key;
+ const list=$('#chat-messages'),bottom=list.scrollHeight-list.scrollTop-list.clientHeight<70;for(const audio of list.querySelectorAll('audio'))audio.pause();list.replaceChildren();
  for(const row of chatRows){const mine=row.sender===chatOwner,wrap=el('div',undefined,'chat-row'+(mine?' mine':'')),avatar=el('span',undefined,'avatar chat-avatar'),member=chatMembers.find(m=>m.id===row.sender);avatar.setAttribute('aria-label',mine?'我的头像':row.name+'的头像');if(member)drawAvatar(avatar,member);
-  if(chatSelecting){const check=el('input');check.type='checkbox';check.checked=chatSelected.has(row.id);check.disabled=chatSavingMemory;check.setAttribute('aria-label','选择'+row.name+'的'+({text:'文字',image:'图片',audio:'语音'}[row.kind])+'消息');check.onchange=()=>{if(check.checked&&chatSelected.size>=50){check.checked=false;chatStatus('一次最多选择50条消息');return;}if(check.checked)chatSelected.add(row.id);else chatSelected.delete(row.id);wrap.classList.toggle('selected',check.checked);chatSelection();};wrap.append(check);wrap.classList.toggle('selected',check.checked);}
+  if(chatSelecting&&!row.retracted_at){const check=el('input');check.type='checkbox';check.checked=chatSelected.has(row.id);check.disabled=chatSavingMemory;check.setAttribute('aria-label','选择'+row.name+'的'+({text:'文字',image:'图片',audio:'语音'}[row.kind])+'消息');check.onchange=()=>{if(check.checked&&chatSelected.size>=50){check.checked=false;chatStatus('一次最多选择50条消息');return;}if(check.checked)chatSelected.add(row.id);else chatSelected.delete(row.id);wrap.classList.toggle('selected',check.checked);chatSelection();};wrap.append(check);wrap.classList.toggle('selected',check.checked);}
   const card=el('article',undefined,'chat-message'+(mine?' mine':''));card.append(el('small',(mine?'':row.name+' · ')+new Date(row.created).toLocaleString('zh-CN'),'chat-meta'));
+  if(row.retracted_at){wrap.classList.add('retracted');card.append(el('p',mine?'你撤回了一条消息':'对方撤回了一条消息','chat-retracted'));wrap.append(card);list.append(wrap);continue;}
+  chatMessageMenu(card,row);
   if(row.kind==='text')card.append(el('p',row.text,'chat-text'));
   if(row.kind==='image'){const img=el('img');img.src='/api/chat/media/'+row.id;img.alt='聊天图片';img.loading='lazy';const button=el('button',undefined,'chat-image');button.type='button';button.setAttribute('aria-label','放大聊天图片');button.append(img);button.onclick=()=>openPhoto(img);card.append(button);}
   if(row.kind==='audio'){const audio=el('audio');audio.src='/api/chat/media/'+row.id;audio.controls=true;audio.preload='none';audio.setAttribute('aria-label','播放语音消息');card.append(audio);}wrap.append(avatar,card);list.append(wrap);
@@ -44,16 +65,16 @@ async function syncChat(){
  clearTimeout(chatTimer);if(!chatOwner||chatBusy)return;chatBusy=true;const generation=chatGeneration;
  try{
   const call=await api('/api/chat/call');if(generation!==chatGeneration)return;if(!callCreating)await applyCall(call.call);
-  if($('#chat-dialog').open){const data=await api('/api/chat/messages');if(generation!==chatGeneration)return;chatMembers=data.members;const byId=new Map(chatRows.map(r=>[r.id,r]));for(const row of data.messages)byId.set(row.id,row);chatRows=[...byId.values()].sort((a,b)=>a.id-b.id);if(chatOldest===null){chatMore=data.more;chatOldest=chatRows[0]?.id||null;}renderChat();}
+  if($('#chat-dialog').open){const data=await api('/api/chat/messages?since='+chatSyncSince);if(generation!==chatGeneration)return;chatSyncSince=data.revision;chatMembers=data.members;const byId=new Map(chatRows.map(r=>[r.id,r]));for(const row of data.messages)byId.set(row.id,row);for(const retracted of data.retractions||[]){const row=byId.get(retracted.id);if(row)byId.set(row.id,{...row,text:'',mime:null,retracted_at:retracted.retracted_at});}chatRows=[...byId.values()].sort((a,b)=>a.id-b.id);if(chatOldest===null){chatMore=data.more;chatOldest=chatRows[0]?.id||null;}renderChat();}
  }catch(e){if(generation===chatGeneration)chatStatus(e.message);}finally{if(generation===chatGeneration){chatBusy=false;if(chatOwner)chatTimer=setTimeout(syncChat,voiceCall?1500:$('#chat-dialog').open?4000:15000);}}
 }
 window.addEventListener('chat-update',()=>{if(!$('#chat-dialog').open&&!voiceCall)$('#chat-open').textContent='聊天 · 新动态';syncChat();});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&chatOwner)syncChat();});
-$('#chat-open').onclick=()=>{chatSelecting=false;chatSelected.clear();chatMembers=[];chatRenderKey='';chatSelection();chatHeader();$('#chat-dialog').showModal();chatStatus('');chatRows=[];chatOldest=null;syncChat();};
-$('#chat-select').onclick=()=>{chatSelecting=!chatSelecting;chatSelected.clear();renderChat();};
+$('#chat-open').onclick=()=>{closeChatMenu();chatSyncSince=0;chatSelecting=false;chatSelected.clear();chatMembers=[];chatRenderKey='';chatSelection();chatHeader();$('#chat-dialog').showModal();chatStatus('');chatRows=[];chatOldest=null;syncChat();};
+$('#chat-selection-cancel').onclick=()=>{chatSelecting=false;chatSelected.clear();renderChat();};
 $('#chat-to-memory').onclick=async()=>{if(chatSavingMemory||!chatSelected.size)return;chatSavingMemory=true;chatSelection();const owner=chatOwner;try{const result=await api('/api/chat/memory','POST',{ids:[...chatSelected]});if(owner!==chatOwner)return;chatSelected.clear();chatSelecting=false;chatStatus(`已将 ${result.count} 条对话存入 ${result.day} 的回忆`);renderChat();await load();}catch(e){if(owner===chatOwner)chatStatus(e.message);}finally{chatSavingMemory=false;if(owner===chatOwner)chatSelection();}};
 $('#chat-close').onclick=()=>$('#chat-dialog').close();
-$('#chat-dialog').addEventListener('close',()=>{releaseRecording();for(const audio of $('#chat-messages').querySelectorAll('audio'))audio.pause();});
+$('#chat-dialog').addEventListener('close',()=>{closeChatMenu();releaseRecording();for(const audio of $('#chat-messages').querySelectorAll('audio'))audio.pause();});
 $('#chat-earlier').onclick=async()=>{const owner=chatOwner;try{const data=await api('/api/chat/messages?before='+chatOldest);if(owner!==chatOwner)return;chatRows=[...data.messages,...chatRows];chatMore=data.more;chatOldest=chatRows[0]?.id||null;renderChat();}catch(e){chatStatus(e.message);}};
 const chatBase64=blob=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(Error('附件读取失败'));reader.readAsDataURL(blob);});
 async function sendChat(input){if(chatSending)return false;chatSending=true;renderChat();chatStatus('正在发送…');const owner=chatOwner;try{await api('/api/chat/messages','POST',input);if(owner!==chatOwner)return false;chatStatus('已发送');await syncChat();return true;}catch(e){if(owner===chatOwner)chatStatus(e.message);return false;}finally{chatSending=false;if(chatOwner)renderChat();}}
