@@ -2,7 +2,7 @@ let lifecyclePurpose='',avatarRevision=Date.now();
 function drawAvatar(host,user,preset){
  const choice=preset||user.avatar,custom=!preset&&user.avatar_uploaded;
  const signature=custom?'custom-'+user.id+'-'+avatarRevision:choice;
- if(host.dataset.avatar===signature)return;
+ if(host.dataset.avatar===signature&&host.querySelector('img'))return;
  host.dataset.avatar=signature;host.replaceChildren();const img=el('img');img.alt='';img.decoding='async';
  img.src=custom?`/api/avatars/${user.id}?v=${avatarRevision}`:`/avatars/${choice.slice(0,-2)}.png?v=20261001-2`;
  img.className=custom?'avatar-custom':choice.endsWith('-2')?'avatar-pair second':'avatar-pair';host.append(img);

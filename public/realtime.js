@@ -17,6 +17,7 @@ function showPeer(peer){
  box.textContent=text;inside.textContent=peer.name+action+' · '+text;showFloating(peer.name+action,text);
 }
 function receiveLive(state){
+ if(typeof updateChatPresence==='function')updateChatPresence(Boolean(state.peer_online));
  if(currentUser&&state.lifecycle!==undefined){currentUser.lifecycle=state.lifecycle;if(typeof refreshSettings==='function')refreshSettings();}
  const changed=liveRevision!==null&&state.revision!==liveRevision;if(changed)refreshShared();
  liveRevision=state.revision;
@@ -40,7 +41,7 @@ function startRealtime(reuseClient=false){
  liveSource.addEventListener('chat',()=>window.dispatchEvent(new Event('chat-update')));
  let connected=false;
  liveSource.onmessage=event=>{if(generation!==liveGeneration)return;try{const state=JSON.parse(event.data);if(!connected){connected=true;refreshShared();}receiveLive(state);}catch{}};
- liveSource.onopen=()=>{if(connected)refreshShared();};
+ liveSource.onopen=()=>{sendPresence();if(connected)refreshShared();};
  scheduleLive();
 }
 function placeFloating(){const host=$('#editor').open?$('#editor'):$('#app');host.append($('#presence-float'));}

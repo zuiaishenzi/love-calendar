@@ -48,7 +48,7 @@ test('注册验证、双人上限、账本隔离、邮箱配置和年度提醒',
   try{
    const ca='alice-presence-client',cb='bob-presence-client';
    const sa=await stream(alice.cookie,ca),sb=await stream(bob.cookie,cb);
-   assert.equal((await sa.next()).interval,24000);const initial=await sb.next();assert.equal(initial.peer,null);
+   assert.equal((await sa.next()).interval,24000);const initial=await sb.next();assert.equal(initial.peer,null);assert.equal(initial.peer_online,true);assert.equal((await sa.next()).peer_online,true);
    let pulse=await call('/api/presence','POST',{client:ca,day:'2026-09-17'},alice.cookie);assert.equal(pulse.data.interval,15000);
    assert.equal((await sb.next()).peer.day,'2026-09-17');await sa.next();
    pulse=await call('/api/presence','POST',{client:cb,day:'2026-09-29'},bob.cookie);assert.equal(pulse.data.interval,12000);

@@ -1,31 +1,10 @@
-import {randomUUID,randomBytes} from 'node:crypto';
+import {randomBytes} from 'node:crypto';
 import sharp from 'sharp';
 import {fail} from './accounts.mjs';
 
 export function chatService(db,notify,{now=()=>Date.now()}={}){
- const calls=new Map();
- function active(user){const c=calls.get(user.ledger_id);if(c&&(now()-c.created>45000&&c.status==='ringing'||now()-Math.min(...Object.values(c.seen))>60000)){calls.delete(user.ledger_id);notify(user);return null;}return c||null;}
- function view(user){const c=active(user);if(!c)return null;const peer=c.caller===user.id?c.callee:c.caller;c.seen[user.id]=now();return {id:c.id,caller:c.caller,callee:c.callee,status:c.status,offer:c.caller===user.id?null:c.offer,answer:c.caller===user.id?c.answer:null,ice:c.ice[peer]};}
- function config(){const iceServers=[];if(process.env.CHAT_STUN_URL)iceServers.push({urls:process.env.CHAT_STUN_URL});if(process.env.CHAT_TURN_URL&&process.env.CHAT_TURN_USERNAME&&process.env.CHAT_TURN_PASSWORD)iceServers.push({urls:process.env.CHAT_TURN_URL,username:process.env.CHAT_TURN_USERNAME,credential:process.env.CHAT_TURN_PASSWORD});return {iceServers};}
  async function route(req,res,url,user,input,check){
   const p=url.pathname,ledger=user.ledger_id;
-  if(p==='/api/chat/config'&&req.method==='GET')return config();
-  if(p==='/api/chat/call'&&req.method==='GET'){if(db.prepare('SELECT delete_at FROM ledgers WHERE id=?').get(ledger)?.delete_at){calls.delete(ledger);return {call:null};}return {call:view(user)};}
-  if(p==='/api/chat/call'&&req.method==='POST'){
-   // Hangup remains available during deletion retention.
-   if(input.action!=='hangup')check();let c=active(user);
-   if(input.action==='offer'){
-    if(c)throw fail(409,'当前已有通话，请先结束。');const peer=db.prepare('SELECT id FROM users WHERE ledger_id=? AND id!=?').get(ledger,user.id);if(!peer)throw fail(409,'另一人加入账本后才能通话。');
-    if(typeof input.sdp!=='string'||!input.sdp.startsWith('v=0')||input.sdp.length>30000)throw fail(400,'通话信息无效');
-    c={id:randomUUID(),caller:user.id,callee:peer.id,status:'ringing',offer:{type:'offer',sdp:input.sdp},answer:null,ice:{[user.id]:[],[peer.id]:[]},created:now(),seen:{[user.id]:now(),[peer.id]:now()}};calls.set(ledger,c);
-   }else{
-    if(!c||c.id!==input.id)throw fail(404,'通话已结束');
-    if(input.action==='answer'){if(user.id!==c.callee||c.status!=='ringing')throw fail(409,'无法接听此通话');if(typeof input.sdp!=='string'||!input.sdp.startsWith('v=0')||input.sdp.length>30000)throw fail(400,'通话信息无效');c.answer={type:'answer',sdp:input.sdp};c.status='connected';}
-    else if(input.action==='ice'){const x=input.candidate;if(!x||typeof x.candidate!=='string'||x.candidate.length>4000||!(x.sdpMid==null||typeof x.sdpMid==='string'&&x.sdpMid.length<100)||!(x.sdpMLineIndex==null||Number.isSafeInteger(x.sdpMLineIndex)&&x.sdpMLineIndex>=0))throw fail(400,'连接信息无效');if(c.ice[user.id].length>=100)throw fail(429,'连接候选过多');c.ice[user.id].push({candidate:x.candidate,sdpMid:x.sdpMid??null,sdpMLineIndex:x.sdpMLineIndex??null});}
-    else if(input.action==='hangup')calls.delete(ledger);else throw fail(400,'通话操作无效');
-   }
-   notify(user);return {call:view(user)};
-  }
   if(p==='/api/chat/memory'&&req.method==='POST'){
    check();const ids=input.ids;
    if(!Array.isArray(ids)||ids.length<1||ids.length>50||ids.some(id=>!Number.isSafeInteger(id)||id<1)||new Set(ids).size!==ids.length)throw fail(400,'请选择1至50条不同的聊天消息');
@@ -77,6 +56,5 @@ export function chatService(db,notify,{now=()=>Date.now()}={}){
   }
   throw fail(404,'接口不存在');
  }
- const timer=setInterval(()=>{for(const ledger of calls.keys()){if(!db.prepare('SELECT id FROM ledgers WHERE id=? AND delete_at IS NULL').get(ledger))calls.delete(ledger);else active({ledger_id:ledger});}},15000);timer.unref();
- return {route,close(){clearInterval(timer);calls.clear();}};
+ return {route,close(){}};
 }

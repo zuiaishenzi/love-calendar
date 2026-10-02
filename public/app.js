@@ -1,4 +1,9 @@
 const $=s=>document.querySelector(s);
+function appendChatTime(list,created,previous){
+ const day=value=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(value);
+ if(previous!=null&&Math.abs(created-previous)<5*60000&&day(created)===day(previous))return;
+ list.append(el('div',new Date(created).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}),'chat-time-divider'));
+}
 const localDay=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let selected=localDay()<'2000-01-01'?'2000-01-01':localDay(), month=selected.slice(0,7), memories=[], editing=null, kept=[], loadVersion=0;
 async function api(url,method='GET',data) {const r=await fetch(url,{method,headers:method==='GET'?{}:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});const json=await r.json();if(!r.ok){if(r.status===401 && url!='/api/login') showLogin();throw new Error(json.error);}return json;}
@@ -44,7 +49,7 @@ function conversation(r){
   if(!p.body&&!p.photos.length)bubble.append(el('p','还没有写下文字或照片。','hint'));
   box.append(bubble);
  }
- if(r.chat_messages?.length){const transcript=el('section',undefined,'memory-chat-transcript');transcript.append(el('h4','收藏的对话'));for(const row of r.chat_messages){const entry=el('article',undefined,'memory-chat-entry');entry.append(el('small',row.name+' · '+new Date(row.created).toLocaleString('zh-CN')));if(row.kind==='text')entry.append(el('p',row.text,'story-text'));else if(row.kind==='image'){const img=el('img');img.src='/api/memory-chat-media/'+row.id;img.alt='收藏的聊天图片';img.loading='lazy';const button=el('button',undefined,'photo-zoom');button.type='button';button.setAttribute('aria-label','放大收藏的聊天图片');button.append(img);button.onclick=()=>openPhoto(img);entry.append(button);}else{const audio=el('audio');audio.controls=true;audio.preload='none';audio.src='/api/memory-chat-media/'+row.id;entry.append(audio);}transcript.append(entry);}box.append(transcript);}
+ if(r.chat_messages?.length){const transcript=el('section',undefined,'memory-chat-transcript');transcript.append(el('h4','收藏的对话'));let previous=null;for(const row of r.chat_messages){appendChatTime(transcript,row.created,previous);previous=row.created;const entry=el('article',undefined,'memory-chat-entry');entry.append(el('small',row.name));if(row.kind==='text')entry.append(el('p',row.text,'story-text'));else if(row.kind==='image'){const img=el('img');img.src='/api/memory-chat-media/'+row.id;img.alt='收藏的聊天图片';img.loading='lazy';const button=el('button',undefined,'photo-zoom');button.type='button';button.setAttribute('aria-label','放大收藏的聊天图片');button.append(img);button.onclick=()=>openPhoto(img);entry.append(button);}else{const audio=el('audio');audio.controls=true;audio.preload='none';audio.src='/api/memory-chat-media/'+row.id;entry.append(audio);}transcript.append(entry);}box.append(transcript);}
  if(!r.chat_messages?.length&&(r.perspectives||[]).length<2)box.append(el('p','同一段回忆，也期待另一种视角。','conversation-invite'));
  return box;
 }

@@ -9,8 +9,32 @@ import sharp from 'sharp';
 import {createApplication} from './server.mjs';
 import {chatService} from './chat.mjs';
 import {openDatabase} from './db.mjs';
+import {createRealtime} from './realtime.mjs';
+import {EventEmitter} from 'node:events';
+
+test('头像清空后同一头像可以重新绘制，重复绘制保留已有图片',()=>{
+ const source=readFileSync(new URL('./public/settings.js',import.meta.url),'utf8'),start=source.indexOf('function drawAvatar('),end=source.indexOf('function menuOpen',start);
+ const draw=runInNewContext(source.slice(start,end)+';drawAvatar',{avatarRevision:1,el:()=>({})}),host={dataset:{},children:[],querySelector(){return this.children[0]||null;},replaceChildren(){this.children=[];},append(img){this.children.push(img);}},user={id:2,avatar:'pair-1-2',avatar_uploaded:false};
+ draw(host,user);const first=host.children[0];assert.ok(first.src);draw(host,user);assert.equal(host.children[0],first);
+ host.replaceChildren();draw(host,user);assert.equal(host.children.length,1);assert.equal(host.children[0].src,first.src);
+ user.avatar_uploaded=true;draw(host,user);assert.match(host.children[0].src,/\/api\/avatars\/2/);host.replaceChildren();draw(host,user);assert.equal(host.children.length,1);
+});
+
+test('在线状态同账本隔离、多窗口在线、断开与心跳超时切换离开',()=>{
+ const original=Date.now;let now=100000;Date.now=()=>now;const realtime=createRealtime(req=>req.user);
+ const user={id:1,ledger_id:1},peer={id:2,ledger_id:1},other={id:3,ledger_id:2};
+ const connect=(id,user)=>{const req=new EventEmitter();req.user=user;realtime.connect(id,user,req,{writeHead(){},write(){},end(){}});return req;};
+ try{const one=connect('peer-one',peer);connect('other',other);assert.equal(realtime.state(user).peer_online,true);assert.equal(realtime.state(other).peer_online,false);const two=connect('peer-two',peer);one.emit('close');assert.equal(realtime.state(user).peer_online,true);now+=45001;assert.equal(realtime.state(user).peer_online,false);assert.equal(realtime.touch('peer-two',user,null),false);realtime.touch('peer-two',peer,null);assert.equal(realtime.state(user).peer_online,true);two.emit('close');assert.equal(realtime.state(user).peer_online,false);}finally{realtime.close();Date.now=original;}
+});
 
 function seed(db){db.exec("INSERT INTO ledgers(id,code) VALUES(1,'CHAT1234'),(2,'OTHER123');");for(const [id,name,ledger,seat] of [[1,'alice',1,1],[2,'bob',1,2],[3,'other',2,1]])db.prepare('INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(?,?,?,?,?,?)').run(id,name,scryptSync('password-123','salt',64).toString('hex'),'salt',ledger,seat);}
+test('聊天与倒序历史仅在首条、间隔五分钟或北京时间跨天时显示时间',()=>{
+ const source=readFileSync(new URL('./public/app.js',import.meta.url),'utf8'),start=source.indexOf('function appendChatTime('),end=source.indexOf('const localDay=',start),markers=[];
+ const append=runInNewContext(source.slice(start,end)+';appendChatTime',{Intl,Date,Math,el:(tag,text,style)=>({tag,text,style})}),list={append:marker=>markers.push(marker)},base=Date.parse('2026-10-02T12:00:00+08:00');
+ append(list,base,null);append(list,base+60000,base);append(list,base+300000,base);append(list,base-60000,base);append(list,base-300000,base);
+ append(list,Date.parse('2026-10-03T00:00:00+08:00'),Date.parse('2026-10-02T23:59:00+08:00'));
+ assert.equal(markers.length,4);assert.ok(markers.every(m=>m.style==='chat-time-divider'));
+});
 test('历史检索组合筛选、北京时间边界、字面关键词、分页及账本隔离',async()=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),'love-chat-history-')),db=openDatabase(dir);seed(db);const service=chatService(db,()=>{});
  const insert=db.prepare('INSERT INTO chat_messages(ledger_id,sender,kind,text,created,retracted_at) VALUES(?,?,?,?,?,?)'),start=Date.parse('2026-10-02T00:00:00+08:00');
@@ -36,13 +60,14 @@ test('聊天右键、触屏长按、移动取消及长按后不误触图片',()=
  handlers.pointerdown({...event});[...timers.values()][0]();assert.equal(opened.length,2);handlers.pointerup();const click={...event,prevented:false,stopped:false};handlers.click(click);assert.equal(click.prevented,true);assert.equal(click.stopped,true);
  handlers.pointerdown({...event});handlers.pointercancel();assert.equal(timers.size,0);
 });
-test('聊天文字、图片、语音附件与信令只对本账本开放，支持范围播放、只读与到期清理',async()=>{
+test('聊天文字、图片、语音附件只对本账本开放，支持范围播放、只读与到期清理',async()=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),'love-chat-')),app=createApplication({dataDir:dir,mailer:{ready:false}}),{db,server}=app;seed(db);
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;
  async function call(url,method='GET',input,cookie='',range){const r=await fetch(origin+url,{method,headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json',...(range?{Range:range}:{})},body:input===undefined?undefined:JSON.stringify(input)});return {status:r.status,cookie:r.headers.get('set-cookie')?.split(';')[0],headers:r.headers,data:r.headers.get('content-type')?.includes('json')?await r.json():Buffer.from(await r.arrayBuffer())};}
  try{
   const a=(await call('/api/login','POST',{name:'alice',password:'password-123'})).cookie,b=(await call('/api/login','POST',{name:'bob',password:'password-123'})).cookie,c=(await call('/api/login','POST',{name:'other',password:'password-123'})).cookie;
   assert.equal((await call('/api/chat/messages')).status,401);
+  assert.equal((await call('/api/chat/call','GET',undefined,a)).status,404);assert.equal((await call('/api/chat/call','POST',{action:'offer',sdp:'v=0'},a)).status,404);assert.equal((await call('/api/chat/config','GET',undefined,a)).status,404);
   assert.equal((await call('/api/chat/messages','POST',{kind:'text',text:'<script>想念你</script>'},a)).status,200);
   const png=await sharp({create:{width:20,height:20,channels:3,background:'#b87a90'}}).png().toBuffer();const image=(await call('/api/chat/messages','POST',{kind:'image',data:png.toString('base64')},a)).data.id;
   const audio=(await call('/api/chat/messages','POST',{kind:'audio',data:Buffer.from([0x1a,0x45,0xdf,0xa3,0,1,2,3]).toString('base64')},b)).data.id;
@@ -69,32 +94,19 @@ test('聊天文字、图片、语音附件与信令只对本账本开放，支�
   const retracted=(await call('/api/chat/messages','GET',undefined,b)).data;assert.ok(retracted.messages.find(r=>r.id===image).retracted_at);assert.ok(retracted.retractions.some(r=>r.id===image));assert.equal(db.prepare('SELECT data FROM chat_messages WHERE id=?').get(image).data,null);
   assert.equal((await call('/api/chat/media/'+image,'GET',undefined,b)).status,404);assert.equal((await call('/api/chat/memory','POST',{ids:[image]},a)).status,404);
   assert.equal((await call('/api/memory-chat-media/'+attachment,'GET',undefined,b)).status,200);
-  const offer=await call('/api/chat/call','POST',{action:'offer',sdp:'v=0\r\n'},a);assert.equal(offer.status,200);const id=offer.data.call.id;
-  assert.equal((await call('/api/chat/call','GET',undefined,c)).data.call,null);
-  assert.equal((await call('/api/chat/call','POST',{action:'answer',id,sdp:'v=0\r\n'},c)).status,404);
-  assert.equal((await call('/api/chat/call','POST',{action:'offer',sdp:'v=0\r\n'},b)).status,409);
-  assert.equal((await call('/api/chat/call','POST',{action:'answer',id,sdp:'v=0\r\n'},a)).status,409);
-  assert.equal((await call('/api/chat/call','POST',{action:'answer',id,sdp:'v=0\r\n'},b)).status,200);
-  assert.equal((await call('/api/chat/call','POST',{action:'ice',id,candidate:{candidate:'candidate:test',sdpMid:'0',sdpMLineIndex:0}},a)).status,200);
-  assert.equal((await call('/api/chat/call','GET',undefined,b)).data.call.ice.length,1);
-  assert.equal((await call('/api/chat/call','POST',{action:'hangup',id},b)).status,200);
-  assert.equal((await call('/api/chat/call','GET',undefined,a)).data.call,null);
   db.prepare("UPDATE ledgers SET delete_at=?,delete_kind='ledger' WHERE id=1").run(Date.now()+10000);
   assert.equal((await call('/api/chat/messages','POST',{kind:'text',text:'禁止'},a)).status,423);
   assert.equal((await call('/api/chat/messages/'+audio+'/retract','POST',{},b)).status,423);
   assert.equal((await call('/api/chat/memory','POST',{ids:[image]},a)).status,423);
-  assert.equal((await call('/api/chat/call','POST',{action:'offer',sdp:'v=0\r\n'},a)).status,423);
   assert.equal((await call('/api/chat/messages','GET',undefined,b)).status,200);
   db.prepare('UPDATE ledgers SET delete_at=1 WHERE id=1').run();app.lifecycle.purge();assert.equal(db.prepare('SELECT COUNT(*) AS n FROM chat_messages').get().n,0);assert.equal(db.prepare('SELECT COUNT(*) AS n FROM memory_chat_messages').get().n,0);
  }finally{await new Promise(r=>server.close(r));db.close();rmSync(dir,{recursive:true,force:true});}
 });
 
-test('通话未接听或一方掉线自动过期，聊天分页及发送频率限制',async()=>{
+test('聊天分页及发送频率限制',async()=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),'love-call-')),db=openDatabase(dir);seed(db);let time=100000;const service=chatService(db,()=>{},{now:()=>time}),user={id:1,ledger_id:1},peer={id:2,ledger_id:1};
  const route=(user,method,pathname,input={})=>service.route({method},{},new URL(pathname,'http://localhost'),user,input,()=>{});
  try{
-  const result=await route(user,'POST','/api/chat/call',{action:'offer',sdp:'v=0\r\n'});time+=45001;assert.equal((await route(peer,'GET','/api/chat/call')).call,null);
-  time+=100;const offer=await route(user,'POST','/api/chat/call',{action:'offer',sdp:'v=0\r\n'});await route(peer,'POST','/api/chat/call',{action:'answer',id:offer.call.id,sdp:'v=0\r\n'});time+=60001;assert.equal((await route(user,'GET','/api/chat/call')).call,null);
   for(let i=0;i<30;i++)await route(user,'POST','/api/chat/messages',{kind:'text',text:'消息'+i});await assert.rejects(route(user,'POST','/api/chat/messages',{kind:'text',text:'太频繁'}),e=>e.status===429);
   time+=60001;for(let i=0;i<25;i++)await route(user,'POST','/api/chat/messages',{kind:'text',text:'下一批'+i});const page=await route(user,'GET','/api/chat/messages');assert.equal(page.messages.length,50);assert.equal(page.more,true);assert.equal((await route(user,'GET','/api/chat/messages?before='+page.messages[0].id)).messages.length,5);
  }finally{service.close();db.close();rmSync(dir,{recursive:true,force:true});}

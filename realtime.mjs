@@ -6,18 +6,21 @@ export function createRealtime(authenticate,lifecycleStatus=()=>null){
   const active=[...edits.values()].filter(e=>e.ledger===user.ledger_id&&e.until>Date.now());
   const count=new Set(active.map(e=>e.user)).size;
   const peer=active.find(e=>e.user!==user.id);
-  return {revision:version(user.ledger_id),lifecycle:lifecycleStatus(user.ledger_id),interval:count>=2?12000:count===1?15000:24000,peer:peer?{name:peer.name,day:peer.day,started:peer.started}:null};
+  const peer_online=[...clients.values()].some(c=>c.user.ledger_id===user.ledger_id&&c.user.id!==user.id&&c.until>Date.now()&&authenticate(c.req));
+  return {peer_online,revision:version(user.ledger_id),lifecycle:lifecycleStatus(user.ledger_id),interval:count>=2?12000:count===1?15000:24000,peer:peer?{name:peer.name,day:peer.day,started:peer.started}:null};
  }
- function publish(ledger){for(const [id,c] of clients){if(c.user.ledger_id!==ledger)continue;if(!authenticate(c.req)){c.res.end();clients.delete(id);edits.delete(id);continue;}c.res.write('data: '+JSON.stringify(state(c.user))+'\n\n');}}
+ function publish(ledger,exclude=null){for(const [id,c] of clients){if(c.user.ledger_id!==ledger||id===exclude)continue;if(!authenticate(c.req)){c.res.end();clients.delete(id);edits.delete(id);continue;}c.res.write('data: '+JSON.stringify(state(c.user))+'\n\n');}}
  function connect(id,user,req,res){
   const old=clients.get(id);if(old&&old.user.id!==user.id){res.writeHead(403);res.end();return;}if(old)old.res.end();
-  const client={user,req,res};clients.set(id,client);
+  const client={user,req,res,until:Date.now()+45000};clients.set(id,client);
   res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store','X-Accel-Buffering':'no','Connection':'keep-alive'});
   res.write('retry: 3000\ndata: '+JSON.stringify(state(user))+'\n\n');
+  publish(user.ledger_id,id);
   req.on('close',()=>{if(clients.get(id)!==client)return;clients.delete(id);publish(user.ledger_id);});
  }
  function touch(id,user,day){
   const c=clients.get(id);if(c&&c.user.id!==user.id)return false;
+  if(c){const expired=c.until<=Date.now();c.until=Date.now()+45000;if(expired)publish(user.ledger_id);}
   const old=edits.get(id);if(old&&old.user!==user.id)return false;
   if(day)edits.set(id,{user:user.id,ledger:user.ledger_id,name:user.name,day,until:Date.now()+45000,started:old?.day===day?old.started:randomUUID()});else edits.delete(id);
   if(old?.day!==day)publish(user.ledger_id);
@@ -28,6 +31,7 @@ export function createRealtime(authenticate,lifecycleStatus=()=>null){
   const affected=new Set();
   for(const [id,e] of edits)if(e.until<=Date.now()){edits.delete(id);affected.add(e.ledger);}
   for(const [id,c] of clients){if(!authenticate(c.req)){c.res.end();clients.delete(id);edits.delete(id);affected.add(c.user.ledger_id);}else c.res.write(': keepalive\n\n');}
+  for(const c of clients.values())if(c.until<=Date.now()&&!c.expired){c.expired=true;affected.add(c.user.ledger_id);}else if(c.until>Date.now())c.expired=false;
   for(const ledger of affected)publish(ledger);
  },15000);timer.unref();
  function chat(user){for(const c of clients.values())if(c.user.ledger_id===user.ledger_id&&authenticate(c.req))c.res.write('event: chat\ndata: {}\n\n');}
