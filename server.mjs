@@ -13,24 +13,29 @@ import {createReminderWorker} from './reminders.mjs';
 import {lifecycleService} from './lifecycle.mjs';
 import {memoirDocument} from './memoir-export.mjs';
 import {Readable} from 'node:stream';
+import {memoService,createMemoOrganizer} from './memos.mjs';
+import {chatService} from './chat.mjs';
 const root=path.dirname(fileURLToPath(import.meta.url));
 const {version:appVersion}=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8'));
 async function body(req) {let size=0, chunks=[]; for await(const c of req) {size+=c.length; if(size>24*1024*1024) throw fail(413,'图片总大小过大'); chunks.push(c);} try{return JSON.parse(Buffer.concat(chunks));}catch{throw fail(400,'请求格式错误');}}
-export function createApplication({dataDir=process.env.DATA_DIR||path.join(root,'data'),mailer=createMailer()}={}) {
+export function createApplication({dataDir=process.env.DATA_DIR||path.join(root,'data'),mailer=createMailer(),memoOrganizer=createMemoOrganizer()}={}) {
 const db=openDatabase(dataDir),lifecycle=lifecycleService(db,mailer),accounts=accountService(db,mailer,lifecycle),worker=createReminderWorker(db,mailer);
 lifecycle.purge();
 const cleanup=setInterval(()=>{try{lifecycle.purge();}catch{console.error('账本到期清理失败');}},60000);cleanup.unref();
 const realtime=createRealtime(accounts.authenticate,lifecycle.status);
+const memos=memoService(db,memoOrganizer);
+const chat=chatService(db,(user,type)=>{if(type==='memory')realtime.changed(user);else realtime.chat(user);});
 const pendingThumbnails=new Map();
 const avatarAssets=new Map();
 function attachPerspectives(row){
+ row.chat_messages=db.prepare('SELECT id,sender,sender_name AS name,kind,text,mime,created FROM memory_chat_messages WHERE memory_id=? ORDER BY position').all(row.id);
  row.perspectives=db.prepare('SELECT p.*,u.name AS author_name FROM perspectives p JOIN users u ON u.id=p.author WHERE p.memory_id=? ORDER BY p.rowid').all(row.id);
  for(const p of row.perspectives)p.photos=db.prepare('SELECT id FROM photos WHERE memory_id=? AND author=? ORDER BY rowid').all(row.id,p.author).map(x=>x.id);
  return row;
 }
 const server=http.createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('Referrer-Policy','same-origin'); res.setHeader('Cache-Control','no-store');
-  res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' blob:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   const send=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data));};
   try {
     const url=new URL(req.url,'http://localhost');
@@ -50,6 +55,13 @@ const server=http.createServer(async(req,res)=>{
     }
     if(url.pathname.startsWith('/api/')) {
       if(!user) throw fail(401,'请先登录');
+      const chatAttachment=url.pathname.match(/^\/api\/memory-chat-media\/([a-f0-9]{36})$/);
+      if(chatAttachment&&req.method==='GET'){
+        const row=db.prepare('SELECT c.data,c.mime FROM memory_chat_messages c JOIN memories m ON m.id=c.memory_id WHERE c.id=? AND m.ledger_id=? AND c.kind!=?').get(chatAttachment[1],user.ledger_id,'text');if(!row)throw fail(404,'附件不存在');
+        res.writeHead(200,{'Content-Type':row.mime,'Content-Length':row.data.length});res.end(Buffer.from(row.data));return;
+      }
+      if(url.pathname.startsWith('/api/chat/')){const result=await chat.route(req,res,url,user,req.method==='POST'?await body(req):{},ensureWritable);if(result!==null)send(200,result);return;}
+      if(url.pathname==='/api/memos'||url.pathname.startsWith('/api/memos/'))return send(200,await memos.route(req,url,user,req.method==='POST'?await body(req):{},ensureWritable));
       if(url.pathname==='/api/lifecycle'&&req.method==='GET')return send(200,lifecycle.status(user.ledger_id));
       if(['/api/lifecycle/code','/api/lifecycle/confirm'].includes(url.pathname)&&req.method==='POST'){
         const input=await body(req),active=accounts.authenticate(req);if(!active||active.id!==user.id)throw fail(401,'请重新登录');
@@ -179,6 +191,8 @@ const server=http.createServer(async(req,res)=>{
     }
     const files={'/dialog-history.js':['dialog-history.js','text/javascript; charset=utf-8'],'/home-quotes.json':['home-quotes.json','application/json; charset=utf-8'],'/realtime.js':['realtime.js','text/javascript; charset=utf-8'],'/presence-messages.json':['presence-messages.json','application/json; charset=utf-8'],'/':['index.html','text/html; charset=utf-8'],'/photo-preview.js':['photo-preview.js','text/javascript; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/features.js':['features.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/favicon.svg':['favicon.svg','image/svg+xml']};
     files['/settings.js']=['settings.js','text/javascript; charset=utf-8'];
+    files['/memos.js']=['memos.js','text/javascript; charset=utf-8'];
+    files['/chat.js']=['chat.js','text/javascript; charset=utf-8'];
     const presetAsset=url.pathname.match(/^\/avatars\/pair-([1-5])\.png$/);
     if(presetAsset&&req.method==='GET'){
       const id=presetAsset[1];if(!avatarAssets.has(id))avatarAssets.set(id,sharp(path.join(root,'public','avatars',`pair-${id}.png`)).resize(512,256).webp({quality:82}).toBuffer().catch(error=>{avatarAssets.delete(id);throw error;}));
@@ -189,7 +203,7 @@ const server=http.createServer(async(req,res)=>{
     res.writeHead(200,{'Content-Type':file[1]});res.end(file[0]==='index.html'?content.toString('utf8').replaceAll('{{APP_VERSION}}',appVersion):content);
   } catch(e) {if(!e.status) console.error('请求处理失败',e.code||'internal');send(e.status||500,{error:e.status?e.message:'服务暂时不可用，请稍后重试'});}
 });
-server.on('close',()=>{clearInterval(cleanup);realtime.close();});
+server.on('close',()=>{clearInterval(cleanup);chat.close();realtime.close();});
 return {server,db,worker,realtime,lifecycle};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){

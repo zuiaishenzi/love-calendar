@@ -37,6 +37,7 @@ function startRealtime(reuseClient=false){
  if(!liveMessages.length)fetch('/presence-messages.json?v=1.6.0').then(r=>r.json()).then(rows=>{liveMessages=rows;if(livePeer){livePeerKey='';showPeer(livePeer);}}).catch(()=>{});
  if(document.hidden)return;
  liveSource=new EventSource('/api/events?client='+liveClient);
+ liveSource.addEventListener('chat',()=>window.dispatchEvent(new Event('chat-update')));
  let connected=false;
  liveSource.onmessage=event=>{if(generation!==liveGeneration)return;try{const state=JSON.parse(event.data);if(!connected){connected=true;refreshShared();}receiveLive(state);}catch{}};
  liveSource.onopen=()=>{if(connected)refreshShared();};

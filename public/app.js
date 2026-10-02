@@ -3,8 +3,8 @@ const localDay=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.get
 let selected=localDay()<'2000-01-01'?'2000-01-01':localDay(), month=selected.slice(0,7), memories=[], editing=null, kept=[], loadVersion=0;
 async function api(url,method='GET',data) {const r=await fetch(url,{method,headers:method==='GET'?{}:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});const json=await r.json();if(!r.ok){if(r.status===401 && url!='/api/login') showLogin();throw new Error(json.error);}return json;}
 let view='calendar', timelineVersion=0;
-function showLogin(){stopRealtime();++loadVersion;++timelineVersion;$('#app').hidden=true;$('#login').hidden=false;document.querySelectorAll('dialog').forEach(d=>d.close());currentUser=null;annualReminders=[];calendarInfo={days:[]};memories=[];$('#stories').replaceChildren();$('#timeline-list').replaceChildren();}
-async function enter(user){currentUser=user;if(typeof refreshSettings==='function')refreshSettings();startRealtime();$('#username').textContent=user.name;$('#login').hidden=true;$('#app').hidden=false;await load();}
+function showLogin(){if(typeof stopChat==='function')stopChat();stopRealtime();++loadVersion;++timelineVersion;$('#app').hidden=true;$('#login').hidden=false;document.querySelectorAll('dialog').forEach(d=>d.close());currentUser=null;annualReminders=[];calendarInfo={days:[]};memories=[];$('#stories').replaceChildren();$('#timeline-list').replaceChildren();}
+async function enter(user){currentUser=user;if(typeof refreshSettings==='function')refreshSettings();startRealtime();if(typeof startChat==='function')startChat();$('#username').textContent=user.name;$('#login').hidden=true;$('#app').hidden=false;await load();}
 async function load(){if(view==='timeline')return loadTimeline();const version=++loadVersion;$('#status').textContent='正在翻开回忆…';try{const [rows,info,reminders]=await Promise.all([api('/api/memories?month='+month),api('/api/calendar?month='+month),api('/api/reminders?month='+month)]);if(version!==loadVersion)return;memories=rows;calendarInfo=info;annualReminders=reminders;$('#holiday-note').textContent=info.holiday_note;render();$('#status').textContent='';}catch(e){if(version===loadVersion)$('#status').textContent=e.message;}}
 function switchView(next){view=next;++loadVersion;++timelineVersion;$('.workspace').hidden=view!=='calendar';$('#memoir').hidden=view!=='timeline';$('#calendar-view').setAttribute('aria-pressed',String(view==='calendar'));$('#memoir-view').setAttribute('aria-pressed',String(view==='timeline'));return load();}
 async function loadTimeline(){
@@ -36,6 +36,7 @@ function render(){const [y,m]=month.split('-').map(Number);$('#year-label').text
 function conversation(r){
  const box=el('div',undefined,'conversation');
  for(const p of r.perspectives||[]){
+  if(r.chat_messages?.length&&!p.body&&!p.photos.length)continue;
   const mine=p.author===currentUser.id,bubble=el('section',undefined,'perspective'+(mine?' mine':''));
   bubble.append(el('div',p.author_name+(mine?' · 我的视角':' · 对方的视角'),'perspective-name'));
   if(p.body)bubble.append(el('p',p.body,'story-text'));
@@ -43,7 +44,8 @@ function conversation(r){
   if(!p.body&&!p.photos.length)bubble.append(el('p','还没有写下文字或照片。','hint'));
   box.append(bubble);
  }
- if((r.perspectives||[]).length<2)box.append(el('p','同一段回忆，也期待另一种视角。','conversation-invite'));
+ if(r.chat_messages?.length){const transcript=el('section',undefined,'memory-chat-transcript');transcript.append(el('h4','收藏的对话'));for(const row of r.chat_messages){const entry=el('article',undefined,'memory-chat-entry');entry.append(el('small',row.name+' · '+new Date(row.created).toLocaleString('zh-CN')));if(row.kind==='text')entry.append(el('p',row.text,'story-text'));else if(row.kind==='image'){const img=el('img');img.src='/api/memory-chat-media/'+row.id;img.alt='收藏的聊天图片';img.loading='lazy';const button=el('button',undefined,'photo-zoom');button.type='button';button.setAttribute('aria-label','放大收藏的聊天图片');button.append(img);button.onclick=()=>openPhoto(img);entry.append(button);}else{const audio=el('audio');audio.controls=true;audio.preload='none';audio.src='/api/memory-chat-media/'+row.id;entry.append(audio);}transcript.append(entry);}box.append(transcript);}
+ if(!r.chat_messages?.length&&(r.perspectives||[]).length<2)box.append(el('p','同一段回忆，也期待另一种视角。','conversation-invite'));
  return box;
 }
 function previews(){const box=$('#photo-preview');box.replaceChildren();kept.forEach(id=>{const wrap=el('div'),img=el('img');img.src='/api/photos/'+id+'?size=thumb';img.dataset.original='/api/photos/'+id;img.decoding='async';img.alt='已保存的照片';const remove=el('button','移除');remove.type='button';remove.onclick=()=>{kept=kept.filter(x=>x!==id);previews();};const zoom=el('button',undefined,'photo-zoom');zoom.type='button';zoom.setAttribute('aria-label','放大已保存的照片');zoom.onclick=()=>openPhoto(img);zoom.append(img);wrap.append(zoom,remove);box.append(wrap);});}

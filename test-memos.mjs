@@ -1,0 +1,69 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {scryptSync} from 'node:crypto';
+import os from 'node:os';
+import path from 'node:path';
+import {createApplication} from './server.mjs';
+import {memoService} from './memos.mjs';
+import {openDatabase} from './db.mjs';
+
+test('私密备忘隔离、自定义分类不发送AI、原文保留、只读和注销清理',async()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-memos-'));let received;
+ const app=createApplication({dataDir:dir,mailer:{ready:false},memoOrganizer:{ready:true,async organize(notes){received=notes;return {items:notes.map(n=>({id:n.id,category:'饮食',text:'喜欢清淡，不加糖'}))};}}});
+ const {db,server}=app;db.prepare('INSERT INTO ledgers(id,code) VALUES(1,?)').run('MEMO1234');
+ for(const [id,name] of [[1,'alice'],[2,'bob']])db.prepare('INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(?,?,?,?,1,?)').run(id,name,scryptSync('password-123','salt',64).toString('hex'),'salt',id);
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;
+ async function call(url,method='GET',data,cookie=''){const r=await fetch(origin+url,{method,headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};}
+ try{
+  const a=(await call('/api/login','POST',{name:'alice',password:'password-123'})).cookie,b=(await call('/api/login','POST',{name:'bob',password:'password-123'})).cookie;
+  assert.equal((await call('/api/memos')).status,401);
+  let data=(await call('/api/memos/categories','POST',{name:'旅行计划'},a)).data;const cid=data.categories[0].id;
+  data=(await call('/api/memos/notes','POST',{body:'秘密旅行地点',category_id:cid},a)).data;
+  data=(await call('/api/memos/notes','POST',{body:'清淡饮食，咖啡不加糖'},a)).data;const nid=data.notes[1].id;
+  assert.equal((await call('/api/memos','GET',undefined,b)).data.notes.length,0);
+  assert.equal((await call('/api/memos/notes','POST',{id:nid,body:'偷改'},b)).status,404);
+  assert.equal((await call('/api/memos/notes/'+nid,'DELETE',{},b)).status,404);
+  assert.equal((await call('/api/memos/notes','POST',{body:'越权分类',category_id:cid},b)).status,400);
+  assert.equal((await call('/api/memos/categories/'+cid,'DELETE',{},b)).status,404);
+  assert.equal((await call('/api/memos/categories/'+cid,'DELETE',{},a)).status,409);
+  const organized=await call('/api/memos/organize','POST',{},a);assert.equal(organized.status,200);
+  assert.deepEqual(received,[{id:nid,body:'清淡饮食，咖啡不加糖'}]);assert.equal(organized.data.notes[0].body,'秘密旅行地点');assert.equal(organized.data.notes[1].body,'清淡饮食，咖啡不加糖');
+  assert.equal((await call('/api/memos','GET',undefined,b)).data.summary,null);
+  assert.equal((await call('/api/memos/organize','POST',{},a)).status,429);
+  assert.equal((await call('/api/memos/notes','POST',{id:nid,body:'更新'},a)).data.summary,null);
+  db.prepare("UPDATE ledgers SET delete_at=?,delete_kind='ledger' WHERE id=1").run(Date.now()+100000);
+  assert.equal((await call('/api/memos/notes','POST',{body:'禁止修改'},a)).status,423);
+  assert.equal((await call('/api/memos/organize','POST',{},a)).status,423);
+  assert.equal((await call('/api/memos','GET',undefined,a)).status,200);
+  db.prepare('UPDATE ledgers SET delete_at=1 WHERE id=1').run();app.lifecycle.purge();
+  for(const table of ['memo_notes','memo_categories','memo_summaries'])assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,0);
+ }finally{await new Promise(r=>server.close(r));db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('整理期间编辑不会覆盖原文或保存过期结果',async()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-memo-failure-'));let respond;
+ const app=createApplication({dataDir:dir,mailer:{ready:false},memoOrganizer:{ready:true,organize:()=>new Promise(r=>respond=r)}}),{db,server}=app;
+ db.exec("INSERT INTO ledgers(id,code) VALUES(1,'FAIL1234');");db.prepare('INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(1,?,?,?,?,1)').run('test',scryptSync('password-123','salt',64).toString('hex'),'salt',1);
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;
+ const login=await fetch(origin+'/api/login',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({name:'test',password:'password-123'})}),cookie=login.headers.get('set-cookie').split(';')[0];
+ async function call(url,body){return fetch(origin+url,{method:'POST',headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify(body)});}
+ try{
+  await call('/api/memos/notes',{body:'原文'});const pending=call('/api/memos/organize',{});
+  while(!respond)await new Promise(r=>setTimeout(r,5));await call('/api/memos/notes',{id:1,body:'新原文'});respond({items:[{id:1,category:'饮食',text:'原文'}]});assert.equal((await pending).status,409);
+  assert.equal(db.prepare('SELECT body FROM memo_notes').get().body,'新原文');assert.equal(db.prepare('SELECT COUNT(*) AS n FROM memo_summaries').get().n,0);
+ }finally{await new Promise(r=>server.close(r));db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('AI遗漏、重复ID、非法分类和非文本结果均拒绝保存',async()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-memo-invalid-')),db=openDatabase(dir);
+ try{
+  db.exec("INSERT INTO ledgers(id,code) VALUES(1,'VALID123'); INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(1,'test','x','x',1,1); INSERT INTO memo_notes(id,user_id,body) VALUES(1,1,'原文一'),(2,1,'原文二');");
+  const valid={id:1,category:'饮食',text:'条目'};
+  for(const items of [[],[valid,valid],[valid,{id:2,category:'编造分类',text:'条目'}],[valid,{id:2,category:'饮食',text:{html:'bad'}}]]){
+   const service=memoService(db,{ready:true,async organize(){return {items};}});
+   await assert.rejects(service.route({method:'POST'},{pathname:'/api/memos/organize'},{id:1},{},()=>{}),error=>error.status===502);
+  }
+  assert.deepEqual(db.prepare('SELECT body FROM memo_notes ORDER BY id').all(),[{body:'原文一'},{body:'原文二'}]);assert.equal(db.prepare('SELECT COUNT(*) AS n FROM memo_summaries').get().n,0);
+ }finally{db.close();rmSync(dir,{recursive:true,force:true});}
+});

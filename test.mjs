@@ -69,7 +69,7 @@ test('打开编辑框立即报告状态，编辑窗口内显示对方提示，�
  const get=selector=>{if(!elements.has(selector))elements.set(selector,{hidden:true,textContent:'',open:false,attributes:{},append(child){child.host=this;},classList:{toggle(){}},setAttribute(k,v){this.attributes[k]=v;},getAttribute(k){return this.attributes[k];},elements:{day:{value:'2026-09-29',addEventListener(){}}},addEventListener(type,fn){events[selector+':'+type]=fn;}});return elements.get(selector);};
  const document={hidden:false,addEventListener(type,fn){events[type]=fn;}};
  const context={document,window:{addEventListener(){}},$:get,currentUser:{id:1},load(){},Intl,Date,Math,console,
- crypto:{getRandomValues(a){return a.fill(1);}},setTimeout(fn,ms){const id=++nextTimer;timers.set(id,{fn,ms});return id;},clearTimeout(id){timers.delete(id);},EventSource:class{close(){}},
+ crypto:{getRandomValues(a){return a.fill(1);}},setTimeout(fn,ms){const id=++nextTimer;timers.set(id,{fn,ms});return id;},clearTimeout(id){timers.delete(id);},EventSource:class{close(){} addEventListener(type,fn){events["sse:"+type]=fn;}},
  fetch(){return Promise.resolve({json:async()=>[]});},api:async(url,method,data)=>{calls.push(data);return {revision:'v1',interval:15000,peer:null};}};
  runInNewContext(readFileSync(new URL('./public/realtime.js',import.meta.url),'utf8')+';this.controls={startRealtime,announceEditing,showPeer,refreshShared};',context);
  context.controls.startRealtime();get('#editor').open=true;context.controls.announceEditing();await new Promise(resolve=>setImmediate(resolve));

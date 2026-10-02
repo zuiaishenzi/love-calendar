@@ -30,5 +30,6 @@ export function createRealtime(authenticate,lifecycleStatus=()=>null){
   for(const [id,c] of clients){if(!authenticate(c.req)){c.res.end();clients.delete(id);edits.delete(id);affected.add(c.user.ledger_id);}else c.res.write(': keepalive\n\n');}
   for(const ledger of affected)publish(ledger);
  },15000);timer.unref();
- return {state,connect,touch,changed,close(){clearInterval(timer);for(const c of clients.values())c.res.end();clients.clear();edits.clear();}};
+ function chat(user){for(const c of clients.values())if(c.user.ledger_id===user.ledger_id&&authenticate(c.req))c.res.write('event: chat\ndata: {}\n\n');}
+ return {state,connect,touch,changed,chat,close(){clearInterval(timer);for(const c of clients.values())c.res.end();clients.clear();edits.clear();}};
 }

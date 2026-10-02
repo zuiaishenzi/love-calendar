@@ -25,6 +25,8 @@ export function lifecycleService(db,mailer,{now=()=>Date.now()}={}){
     db.prepare('DELETE FROM deliveries WHERE user_id IN (SELECT id FROM users WHERE ledger_id=?)').run(id);
     db.prepare('DELETE FROM reminders WHERE ledger_id=?').run(id);
     db.prepare('DELETE FROM memories WHERE ledger_id=?').run(id);
+    db.prepare('DELETE FROM memo_notes WHERE user_id IN (SELECT id FROM users WHERE ledger_id=?)').run(id);
+    db.prepare('DELETE FROM chat_messages WHERE ledger_id=?').run(id);
     db.prepare('DELETE FROM users WHERE ledger_id=?').run(id);
     db.prepare('DELETE FROM ledgers WHERE id=?').run(id);
    }

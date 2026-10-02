@@ -2,6 +2,7 @@ data/
 .env
 node_modules/
 test-data-*/
+local-preview-data/
 .database-key
 *.sqlite
 *.sqlite-wal

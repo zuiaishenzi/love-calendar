@@ -63,6 +63,13 @@ export function openDatabase(dir) {
  db.exec(`CREATE TABLE IF NOT EXISTS ledger_confirmations(id TEXT PRIMARY KEY,ledger_id INTEGER UNIQUE REFERENCES ledgers(id) ON DELETE CASCADE,purpose TEXT NOT NULL,expires INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS ledger_votes(request_id TEXT REFERENCES ledger_confirmations(id) ON DELETE CASCADE,user_id INTEGER REFERENCES users(id),email TEXT NOT NULL,nonce TEXT NOT NULL,digest TEXT NOT NULL,tries INTEGER NOT NULL DEFAULT 0,approved INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(request_id,user_id));
  PRAGMA secure_delete=ON;`);
+ db.exec(`CREATE TABLE IF NOT EXISTS memo_categories(id INTEGER PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,UNIQUE(user_id,name));
+ CREATE TABLE IF NOT EXISTS memo_notes(id INTEGER PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,body TEXT NOT NULL,category_id INTEGER REFERENCES memo_categories(id));
+ CREATE INDEX IF NOT EXISTS memo_notes_user ON memo_notes(user_id);
+ CREATE TABLE IF NOT EXISTS memo_summaries(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,content TEXT NOT NULL);`);
+ db.exec(`CREATE TABLE IF NOT EXISTS chat_messages(id INTEGER PRIMARY KEY,ledger_id INTEGER NOT NULL REFERENCES ledgers(id),sender INTEGER NOT NULL REFERENCES users(id),kind TEXT NOT NULL CHECK(kind IN ('text','image','audio')),text TEXT NOT NULL DEFAULT '',data BLOB,mime TEXT,created INTEGER NOT NULL);
+ CREATE INDEX IF NOT EXISTS chat_ledger_id ON chat_messages(ledger_id,id);`);
+ db.exec(`CREATE TABLE IF NOT EXISTS memory_chat_messages(id TEXT PRIMARY KEY,memory_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,position INTEGER NOT NULL,sender INTEGER NOT NULL REFERENCES users(id),sender_name TEXT NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,data BLOB,mime TEXT,created INTEGER NOT NULL,UNIQUE(memory_id,position));`);
  // Optional bootstrap for an explicitly configured private installation or isolated preview.
  if(!db.prepare('SELECT id FROM users LIMIT 1').get() && process.env.USER1_NAME) {
   for(const n of [1,2])if(!process.env[`USER${n}_NAME`]||String(process.env[`USER${n}_PASSWORD`]||'').length<12)throw Error('预设账号须配置两组不同用户名及至少12位密码');
