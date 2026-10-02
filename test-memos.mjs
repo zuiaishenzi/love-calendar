@@ -70,7 +70,7 @@ test('整理期间编辑不会覆盖原文或保存过期结果',async()=>{
  }finally{await new Promise(r=>server.close(r));db.close();rmSync(dir,{recursive:true,force:true});}
 });
 
-test('AI遗漏、重复ID、非法分类和非文本结果均拒绝保存',async()=>{
+test('AI遗漏、重复要点、非法分类和非文本结果均拒绝保存',async()=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),'love-memo-invalid-')),db=openDatabase(dir);
  try{
   db.exec("INSERT INTO ledgers(id,code) VALUES(1,'VALID123'); INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(1,'test','x','x',1,1); INSERT INTO memo_notes(id,user_id,body) VALUES(1,1,'原文一'),(2,1,'原文二');");
@@ -80,5 +80,21 @@ test('AI遗漏、重复ID、非法分类和非文本结果均拒绝保存',async
    await assert.rejects(service.route({method:'POST'},{pathname:'/api/memos/organize'},{id:1},{},()=>{}),error=>error.status===502);
   }
   assert.deepEqual(db.prepare('SELECT body FROM memo_notes ORDER BY id').all(),[{body:'原文一'},{body:'原文二'}]);assert.equal(db.prepare('SELECT COUNT(*) AS n FROM memo_summaries').get().n,0);
+ }finally{db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('长段原文拆成跨分类的多个要点，保留原文，编辑使该原文全部要点失效',async()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-memo-points-')),db=openDatabase(dir);
+ try{
+  db.exec("INSERT INTO ledgers(id,code) VALUES(1,'POINT123'); INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(1,'test','x','x',1,1);");
+  const body='她喜欢清淡，咖啡不加糖，习惯早睡，不喜欢别人临时取消约定。';
+  db.prepare('INSERT INTO memo_notes(id,user_id,body) VALUES(1,1,?),(2,1,?)').run(body,'喜欢看海');
+  const points=[{id:1,category:'饮食',text:'喜欢清淡饮食'},{id:1,category:'饮食',text:'咖啡不加糖'},{id:1,category:'习惯',text:'习惯早睡'},{id:1,category:'雷点',text:'不喜欢临时取消约定'},{id:2,category:'喜好',text:'喜欢看海'}];
+  const service=memoService(db,{ready:true,async organize(){return {items:points};}});
+  const result=await service.route({method:'POST'},{pathname:'/api/memos/organize'},{id:1},{},()=>{});
+  assert.deepEqual(result.summary,points);assert.equal(result.notes[0].body,body);assert.deepEqual(result.ai_categories,['饮食','习惯','雷点','喜好']);
+  assert.deepEqual((await service.route({method:'GET'},{pathname:'/api/memos'},{id:1},{},()=>{})).summary,points);
+  const edited=await service.route({method:'POST'},{pathname:'/api/memos/notes'},{id:1},{id:1,body:'新原文'},()=>{});
+  assert.deepEqual(edited.summary,[points[4]]);assert.equal(edited.notes[0].body,'新原文');
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });
