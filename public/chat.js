@@ -25,7 +25,7 @@ function chatHeader(){const peer=chatMembers.find(m=>m.id!==chatOwner);$('#chat-
 const chatStatus=text=>$('#chat-status').textContent=text;
 function releaseRecording(){recordGeneration++;clearInterval(voiceTimer);if(voiceRecorder?.state==='recording'){voiceRecorder.onstop=null;voiceRecorder.stop();}voiceRecorder=null;voiceStream?.getTracks().forEach(t=>t.stop());voiceStream=null;voiceBlob=null;if(voiceUrl)URL.revokeObjectURL(voiceUrl);voiceUrl=null;$('#chat-record-preview').pause();$('#chat-record-preview').removeAttribute('src');$('#chat-record-preview').hidden=true;$('#chat-record-send').hidden=$('#chat-record-cancel').hidden=true;$('#chat-record').textContent='录制语音';}
 function releaseCall(){voicePeer?.close();voicePeer=null;callStream?.getTracks().forEach(t=>t.stop());callStream=null;callIceCount=0;callIceQueue=[];$('#chat-call-audio').srcObject=null;$('#chat-call-audio').hidden=true;$('#chat-call-mute').textContent='静音';}
-function stopChat(){chatGeneration++;clearTimeout(chatTimer);chatTimer=null;chatBusy=false;callCreating=false;chatOwner=null;chatRows=[];chatRenderKey='';$('#chat-messages').replaceChildren();$('#chat-form').reset();releaseRecording();releaseCall();voiceCall=null;$('#chat-open').textContent='聊天';}
+function stopChat(){$('#chat-history-dialog').close();$('#chat-history-form').reset();chatGeneration++;clearTimeout(chatTimer);chatTimer=null;chatBusy=false;callCreating=false;chatOwner=null;chatRows=[];chatRenderKey='';$('#chat-messages').replaceChildren();$('#chat-form').reset();releaseRecording();releaseCall();voiceCall=null;$('#chat-open').textContent='聊天';}
 function startChat(){if(chatOwner!==currentUser?.id){stopChat();chatOwner=currentUser?.id;}syncChat();}
 function renderChat(){
  chatHeader();chatSelection();
@@ -35,9 +35,10 @@ function renderChat(){
  for(const row of chatRows)if(row.retracted_at)chatSelected.delete(row.id);chatSelection();
  const key=chatOwner+':'+chatSelecting+':'+JSON.stringify(chatMembers)+':'+chatRows.map(r=>r.id+'-'+(r.retracted_at||0)).join(',');if(key===chatRenderKey)return;chatRenderKey=key;
  const list=$('#chat-messages'),bottom=list.scrollHeight-list.scrollTop-list.clientHeight<70;for(const audio of list.querySelectorAll('audio'))audio.pause();list.replaceChildren();
- for(const row of chatRows){const mine=row.sender===chatOwner,wrap=el('div',undefined,'chat-row'+(mine?' mine':'')),avatar=el('span',undefined,'avatar chat-avatar'),member=chatMembers.find(m=>m.id===row.sender);avatar.setAttribute('aria-label',mine?'我的头像':row.name+'的头像');if(member)drawAvatar(avatar,member);
+ let previous=null;
+ for(const row of chatRows){if(previous===null||row.created-previous>=5*60000||new Date(row.created).toDateString()!==new Date(previous).toDateString())list.append(el('div',new Date(row.created).toLocaleString('zh-CN',{month:'long',day:'numeric',hour:'2-digit',minute:'2-digit',...(new Date(row.created).getFullYear()!==new Date().getFullYear()?{year:'numeric'}:{})}),'chat-time-divider'));previous=row.created;const mine=row.sender===chatOwner,wrap=el('div',undefined,'chat-row'+(mine?' mine':'')),avatar=el('span',undefined,'avatar chat-avatar'),member=chatMembers.find(m=>m.id===row.sender);avatar.setAttribute('aria-label',mine?'我的头像':row.name+'的头像');if(member)drawAvatar(avatar,member);
   if(chatSelecting&&!row.retracted_at){const check=el('input');check.type='checkbox';check.checked=chatSelected.has(row.id);check.disabled=chatSavingMemory;check.setAttribute('aria-label','选择'+row.name+'的'+({text:'文字',image:'图片',audio:'语音'}[row.kind])+'消息');check.onchange=()=>{if(check.checked&&chatSelected.size>=50){check.checked=false;chatStatus('一次最多选择50条消息');return;}if(check.checked)chatSelected.add(row.id);else chatSelected.delete(row.id);wrap.classList.toggle('selected',check.checked);chatSelection();};wrap.append(check);wrap.classList.toggle('selected',check.checked);}
-  const card=el('article',undefined,'chat-message'+(mine?' mine':''));card.append(el('small',(mine?'':row.name+' · ')+new Date(row.created).toLocaleString('zh-CN'),'chat-meta'));
+  const card=el('article',undefined,'chat-message'+(mine?' mine':''));if(!mine)card.append(el('small',row.name,'chat-meta'));
   if(row.retracted_at){wrap.classList.add('retracted');card.append(el('p',mine?'你撤回了一条消息':'对方撤回了一条消息','chat-retracted'));wrap.append(card);list.append(wrap);continue;}
   chatMessageMenu(card,row);
   if(row.kind==='text')card.append(el('p',row.text,'chat-text'));
@@ -117,4 +118,26 @@ $('#chat-call-accept').onclick=async()=>{
 async function endCall(){const id=voiceCall?.id;releaseCall();voiceCall=null;renderCall();if(id)try{await api('/api/chat/call','POST',{action:'hangup',id});}catch{}chatStatus('通话已结束');}
 $('#chat-call-end').onclick=endCall;
 $('#chat-call-mute').onclick=()=>{const track=callStream?.getAudioTracks()[0];if(track){track.enabled=!track.enabled;$('#chat-call-mute').textContent=track.enabled?'静音':'取消静音';}};
+let chatHistoryRequest=0,chatHistoryCursor=null,chatHistoryQuery='',chatHistoryLoading=false;
+async function searchChatHistory(append=false){
+ if(append&&chatHistoryLoading)return;
+ const request=++chatHistoryRequest,owner=chatOwner,params=new URLSearchParams(append?chatHistoryQuery:new FormData($('#chat-history-form')));
+ if(!append){chatHistoryQuery=params.toString();chatHistoryCursor=null;$('#chat-history-results').replaceChildren();}
+ if(append&&chatHistoryCursor)params.set('before',chatHistoryCursor);
+ chatHistoryLoading=true;$('#chat-history-more').disabled=true;$('#chat-history-status').textContent='正在查找…';
+ try{const data=await api('/api/chat/history?'+params);if(request!==chatHistoryRequest||owner!==chatOwner||!$('#chat-history-dialog').open)return;
+  const list=$('#chat-history-results');for(const row of data.messages){const card=el('article',undefined,'chat-history-entry');card.append(el('small',(row.sender===chatOwner?'我':row.name)+' · '+new Date(row.created).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'})));
+   if(row.kind==='text')card.append(el('p',row.text,'chat-text'));
+   if(row.kind==='image'){const img=el('img');img.src='/api/chat/media/'+row.id;img.alt='历史聊天图片';img.loading='lazy';const button=el('button',undefined,'chat-image');button.type='button';button.setAttribute('aria-label','放大历史聊天图片');button.append(img);button.onclick=()=>openPhoto(img);card.append(button);}
+   if(row.kind==='audio'){const audio=el('audio');audio.src='/api/chat/media/'+row.id;audio.controls=true;audio.preload='none';audio.setAttribute('aria-label','播放历史语音');card.append(audio);}list.append(card);
+  }
+  chatHistoryCursor=data.messages.at(-1)?.id||null;$('#chat-history-more').hidden=!data.more;$('#chat-history-status').textContent=list.children.length?'已显示 '+list.children.length+' 条记录'+(data.more?'，可继续加载':''):'没有找到符合条件的记录';
+ }catch(e){if(request===chatHistoryRequest&&owner===chatOwner){$('#chat-history-status').textContent=e.message;$('#chat-history-more').hidden=!append;}}finally{if(request===chatHistoryRequest){chatHistoryLoading=false;$('#chat-history-more').disabled=false;}}
+}
+$('#chat-history-open').onclick=()=>{closeChatMenu();$('#chat-history-dialog').showModal();searchChatHistory();};
+$('#chat-history-close').onclick=()=>$('#chat-history-dialog').close();
+$('#chat-history-form').onsubmit=e=>{e.preventDefault();searchChatHistory();};
+$('#chat-history-reset').onclick=()=>{$('#chat-history-form').reset();searchChatHistory();};
+$('#chat-history-more').onclick=()=>searchChatHistory(true);
+$('#chat-history-dialog').addEventListener('close',()=>{chatHistoryRequest++;chatHistoryLoading=false;for(const audio of $('#chat-history-results').querySelectorAll('audio'))audio.pause();$('#chat-history-results').replaceChildren();});
 window.addEventListener('pagehide',()=>{if(voiceCall)fetch('/api/chat/call',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'hangup',id:voiceCall.id}),keepalive:true}).catch(()=>{});releaseRecording();releaseCall();});

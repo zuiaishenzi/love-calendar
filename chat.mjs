@@ -39,6 +39,16 @@ export function chatService(db,notify,{now=()=>Date.now()}={}){
     rows.forEach((r,position)=>db.prepare('INSERT INTO memory_chat_messages(id,memory_id,position,sender,sender_name,kind,text,data,mime,created) VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomBytes(18).toString('hex'),id,position,r.sender,r.name,r.kind,r.text,r.data,r.mime,r.created));return id;
    })();notify(user,'memory');return {id:memoryId,day,count:rows.length};
   }
+  if(p==='/api/chat/history'&&req.method==='GET'){
+   const kind=url.searchParams.get('kind')||'',q=(url.searchParams.get('q')||'').trim(),before=Number(url.searchParams.get('before')||0);
+   if(kind&&!['text','image','audio'].includes(kind)||q.length>200||!Number.isSafeInteger(before)||before<0)throw fail(400,'检索条件无效');
+   function boundary(key,end){const value=url.searchParams.get(key);if(!value)return null;if(!/^\d{4}-\d{2}-\d{2}$/.test(value))throw fail(400,'日期无效');const stamp=Date.parse(value+'T00:00:00+08:00');if(!Number.isFinite(stamp)||new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(stamp)!==value)throw fail(400,'日期无效');return stamp+(end?86400000:0);}
+   const from=boundary('from',false),to=boundary('to',true);if(from!==null&&to!==null&&from>=to)throw fail(400,'开始日期不能晚于结束日期');
+   const clauses=['m.ledger_id=?','m.retracted_at IS NULL'],args=[ledger];
+   if(kind){clauses.push('m.kind=?');args.push(kind);}if(q){clauses.push('instr(lower(m.text),lower(?))>0');args.push(q);}if(from!==null){clauses.push('m.created>=?');args.push(from);}if(to!==null){clauses.push('m.created<?');args.push(to);}if(before){clauses.push('m.id<?');args.push(before);}
+   const rows=db.prepare('SELECT m.id,m.sender,m.kind,m.text,m.mime,m.created,u.name FROM chat_messages m JOIN users u ON u.id=m.sender WHERE '+clauses.join(' AND ')+' ORDER BY m.id DESC LIMIT 51').all(...args);
+   return {messages:rows.slice(0,50),more:rows.length>50};
+  }
   if(p==='/api/chat/messages'&&req.method==='GET'){
    const since=Number(url.searchParams.get('since')||0);if(!Number.isSafeInteger(since)||since<0)throw fail(400,'同步信息无效');const revision=now();
    const cursor=Number(url.searchParams.get('before')||0);if(!Number.isSafeInteger(cursor)||cursor<0)throw fail(400,'分页信息无效');

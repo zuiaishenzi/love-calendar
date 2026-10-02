@@ -11,6 +11,21 @@ import {chatService} from './chat.mjs';
 import {openDatabase} from './db.mjs';
 
 function seed(db){db.exec("INSERT INTO ledgers(id,code) VALUES(1,'CHAT1234'),(2,'OTHER123');");for(const [id,name,ledger,seat] of [[1,'alice',1,1],[2,'bob',1,2],[3,'other',2,1]])db.prepare('INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(?,?,?,?,?,?)').run(id,name,scryptSync('password-123','salt',64).toString('hex'),'salt',ledger,seat);}
+test('历史检索组合筛选、北京时间边界、字面关键词、分页及账本隔离',async()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-chat-history-')),db=openDatabase(dir);seed(db);const service=chatService(db,()=>{});
+ const insert=db.prepare('INSERT INTO chat_messages(ledger_id,sender,kind,text,created,retracted_at) VALUES(?,?,?,?,?,?)'),start=Date.parse('2026-10-02T00:00:00+08:00');
+ try{
+  insert.run(1,1,'text','边界前',start-1,null);insert.run(1,1,'text','Coffee 100%_你好',start,null);insert.run(1,2,'image','',start+1,null);insert.run(1,2,'audio','',start+2,null);insert.run(1,1,'text','已撤回',start+3,start+4);insert.run(1,1,'text','次日',start+86400000,null);insert.run(2,3,'text','Coffee 100%_你好',start,null);
+  const query=params=>service.route({method:'GET'},null,new URL('http://local/api/chat/history?'+params),{id:1,ledger_id:1},{},()=>{});
+  assert.equal((await query('from=2026-10-02&to=2026-10-02')).messages.length,3);
+  assert.equal((await query('kind=image')).messages[0].kind,'image');assert.equal((await query('kind=audio')).messages.length,1);
+  assert.equal((await query('from=2026-10-02&to=2026-10-02&kind=text&q=coffee')).messages.length,1);
+  assert.equal((await query('q='+encodeURIComponent('%_'))).messages.length,1);assert.equal((await query('q=已撤回')).messages.length,0);
+  for(const params of ['kind=bad','from=2026-02-30','from=2026-10-03&to=2026-10-02','before=-1'])await assert.rejects(query(params),e=>e.status===400);
+  for(let i=0;i<55;i++)insert.run(1,1,'text','分页',start+i,null);
+  const page=await query('q=分页');assert.equal(page.messages.length,50);assert.equal(page.more,true);const next=await query('q=分页&before='+page.messages.at(-1).id);assert.equal(next.messages.length,5);assert.equal(next.more,false);assert.equal(new Set([...page.messages,...next.messages].map(r=>r.id)).size,55);
+ }finally{service.close();db.close();rmSync(dir,{recursive:true,force:true});}
+});
 test('聊天右键、触屏长按、移动取消及长按后不误触图片',()=>{
  const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8'),start=source.indexOf('function chatMessageMenu('),end=source.indexOf('function chatHeader',start),handlers={},opened=[],timers=new Map();let next=0;
  const context={chatPressTimer:null,chatPressStart:null,chatLongPressed:false,Math,openChatMenu:(...args)=>opened.push(args),setTimeout(fn){timers.set(++next,fn);return next;},clearTimeout(id){timers.delete(id);}};
