@@ -28,6 +28,12 @@ const chatStatus=text=>$('#chat-status').textContent=text;
 function releaseRecording(){recordGeneration++;clearInterval(voiceTimer);if(voiceRecorder?.state==='recording'){voiceRecorder.onstop=null;voiceRecorder.stop();}voiceRecorder=null;voiceStream?.getTracks().forEach(t=>t.stop());voiceStream=null;voiceBlob=null;if(voiceUrl)URL.revokeObjectURL(voiceUrl);voiceUrl=null;$('#chat-record-preview').pause();$('#chat-record-preview').removeAttribute('src');$('#chat-record-preview').hidden=true;$('#chat-record-send').hidden=$('#chat-record-cancel').hidden=true;$('#chat-record').textContent='录制语音';}
 function stopChat(){updateChatPresence(false);$('#chat-history-dialog').close();$('#chat-history-form').reset();chatGeneration++;clearTimeout(chatTimer);chatTimer=null;chatBusy=false;chatOwner=null;chatMembers=[];chatRows=[];chatRenderKey='';$('#chat-messages').replaceChildren();$('#chat-form').reset();releaseRecording();$('#chat-open').textContent='聊天';}
 function startChat(){if(chatOwner!==currentUser?.id){stopChat();chatOwner=currentUser?.id;}syncChat();}
+function chatSelectableRow(wrap,check){
+ const toggle=()=>{if(check.disabled)return;check.checked=!check.checked;check.onchange();};
+ wrap.tabIndex=0;
+ wrap.addEventListener('click',e=>{if(e.target===check)return;e.preventDefault();e.stopPropagation();if(chatLongPressed){chatLongPressed=false;return;}toggle();},true);
+ wrap.addEventListener('keydown',e=>{if(e.target===wrap&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopPropagation();toggle();}});
+}
 function renderChat(){
  chatHeader();chatSelection();
  $('#chat-earlier').hidden=!chatMore;
@@ -38,8 +44,8 @@ function renderChat(){
  const list=$('#chat-messages'),bottom=list.scrollHeight-list.scrollTop-list.clientHeight<70;for(const audio of list.querySelectorAll('audio'))audio.pause();list.replaceChildren();
  let previous=null;
  for(const row of chatRows){appendChatTime(list,row.created,previous);previous=row.created;const mine=row.sender===chatOwner,wrap=el('div',undefined,'chat-row'+(mine?' mine':'')),avatar=el('span',undefined,'avatar chat-avatar'),member=chatMembers.find(m=>m.id===row.sender);avatar.setAttribute('aria-label',mine?'我的头像':row.name+'的头像');if(member)drawAvatar(avatar,member);
-  if(chatSelecting&&!row.retracted_at){const check=el('input');check.type='checkbox';check.checked=chatSelected.has(row.id);check.disabled=chatSavingMemory;check.setAttribute('aria-label','选择'+row.name+'的'+({text:'文字',image:'图片',audio:'语音'}[row.kind])+'消息');check.onchange=()=>{if(check.checked&&chatSelected.size>=50){check.checked=false;chatStatus('一次最多选择50条消息');return;}if(check.checked)chatSelected.add(row.id);else chatSelected.delete(row.id);wrap.classList.toggle('selected',check.checked);chatSelection();};wrap.append(check);wrap.classList.toggle('selected',check.checked);}
-  const card=el('article',undefined,'chat-message'+(mine?' mine':''));if(!mine)card.append(el('small',row.name,'chat-meta'));
+  if(chatSelecting&&!row.retracted_at){const check=el('input');check.type='checkbox';check.checked=chatSelected.has(row.id);check.disabled=chatSavingMemory;check.setAttribute('aria-label','选择'+row.name+'的'+({text:'文字',image:'图片',audio:'语音'}[row.kind])+'消息');check.onchange=()=>{if(check.checked&&chatSelected.size>=50){check.checked=false;chatStatus('一次最多选择50条消息');return;}if(check.checked)chatSelected.add(row.id);else chatSelected.delete(row.id);wrap.classList.toggle('selected',check.checked);chatSelection();};wrap.append(check);wrap.classList.toggle('selected',check.checked);wrap.classList.add('selectable');chatSelectableRow(wrap,check);}
+  const card=el('article',undefined,'chat-message'+(mine?' mine':''));
   if(row.retracted_at){wrap.classList.add('retracted');card.append(el('p',mine?'你撤回了一条消息':'对方撤回了一条消息','chat-retracted'));wrap.append(card);list.append(wrap);continue;}
   chatMessageMenu(card,row);
   if(row.kind==='text')card.append(el('p',row.text,'chat-text'));

@@ -7,11 +7,19 @@ function appendChatTime(list,created,previous){
 const localDay=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let selected=localDay()<'2000-01-01'?'2000-01-01':localDay(), month=selected.slice(0,7), memories=[], editing=null, kept=[],keptAttachments=[], loadVersion=0;
 let activeVoiceAudio=null;
+const voiceDurations=new Map();
+let voiceDurationQueue=Promise.resolve();
+function resolveVoiceDuration(url){
+ if(voiceDurations.has(url))return voiceDurations.get(url);
+ const pending=voiceDurationQueue.catch(()=>{}).then(async()=>{const response=await fetch(url);if(!response.ok)throw Error('语音读取失败');const bytes=await response.arrayBuffer(),Context=window.AudioContext||window.webkitAudioContext;if(!Context)throw Error('浏览器无法读取语音时长');const context=new Context();try{const decoded=await context.decodeAudioData(bytes);if(!Number.isFinite(decoded.duration)||decoded.duration<=0)throw Error('语音时长无效');return decoded.duration;}finally{await context.close();}});
+ voiceDurationQueue=pending;voiceDurations.set(url,pending);pending.catch(()=>voiceDurations.delete(url));return pending;
+}
 function voiceMessage(url,duration=null){
- const box=el('span',undefined,'voice-message'),button=el('button',undefined,'voice-play'),icon=el('span',undefined,'voice-icon'),wave=el('span',undefined,'voice-wave'),time=el('span',duration?Math.max(1,Math.ceil(duration))+'″':'语音','voice-duration'),audio=el('audio');
+ const known=Number.isFinite(duration)&&duration>0,box=el('span',undefined,'voice-message'),button=el('button',undefined,'voice-play'),icon=el('span',undefined,'voice-icon'),wave=el('span',undefined,'voice-wave'),time=el('span',known?Math.max(1,Math.ceil(duration))+'″':'…″','voice-duration'),audio=el('audio');
  button.type='button';button.setAttribute('aria-label','播放语音消息');button.setAttribute('aria-pressed','false');icon.setAttribute('aria-hidden','true');wave.setAttribute('aria-hidden','true');for(let i=0;i<7;i++)wave.append(el('i'));button.append(icon,wave,time);audio.src=url;audio.preload='metadata';audio.hidden=true;
  const update=playing=>{button.classList.toggle('playing',playing);button.setAttribute('aria-pressed',String(playing));button.setAttribute('aria-label',playing?'暂停语音消息':'播放语音消息');};
  const readDuration=()=>{if(Number.isFinite(audio.duration)&&audio.duration>0)time.textContent=Math.max(1,Math.ceil(audio.duration))+'″';};audio.addEventListener('loadedmetadata',readDuration);audio.addEventListener('durationchange',readDuration);audio.addEventListener('play',()=>update(true));audio.addEventListener('pause',()=>update(false));audio.addEventListener('ended',()=>{update(false);if(activeVoiceAudio===audio)activeVoiceAudio=null;});
+ if(!known)resolveVoiceDuration(url).then(seconds=>{time.textContent=Math.max(1,Math.ceil(seconds))+'″';}).catch(()=>{if(time.textContent==='…″'){time.textContent='—″';time.title='无法读取时长，可下载后收听';}});
  button.onclick=async()=>{if(!audio.paused){audio.pause();return;}if(activeVoiceAudio&&activeVoiceAudio!==audio)activeVoiceAudio.pause();activeVoiceAudio=audio;try{await audio.play();}catch{update(false);if(activeVoiceAudio===audio)activeVoiceAudio=null;$('#status').textContent='语音无法播放，请重试或下载后收听';if(typeof chatStatus==='function')chatStatus('语音无法播放，请重试或下载后收听');}};
  box.append(button,audio);return box;
 }

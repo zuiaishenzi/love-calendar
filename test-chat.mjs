@@ -13,6 +13,24 @@ import {createRealtime} from './realtime.mjs';
 import {EventEmitter} from 'node:events';
 import {memoryAttachments} from './media.mjs';
 
+test('多选点击消息行、头像或语音按钮只切换勾选，复选框不重复切换，保存与长按受保护',()=>{
+ const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8'),start=source.indexOf('function chatSelectableRow('),end=source.indexOf('function renderChat',start),handlers={};
+ const context={chatLongPressed:false},attach=runInNewContext(source.slice(start,end)+';chatSelectableRow',context),wrap={addEventListener(type,fn){handlers[type]=fn;}},check={checked:false,disabled:false,onchange(){this.changes=(this.changes||0)+1;}};attach(wrap,check);
+ const event=target=>({target,preventDefault(){this.prevented=true;},stopPropagation(){this.stopped=true;}});
+ const click=event({tag:'voice-button'});handlers.click(click);assert.equal(check.checked,true);assert.equal(click.prevented,true);assert.equal(click.stopped,true);
+ handlers.click(event({tag:'avatar'}));assert.equal(check.checked,false);handlers.click(event(check));assert.equal(check.changes,2);
+ check.disabled=true;handlers.click(event(wrap));assert.equal(check.changes,2);check.disabled=false;context.chatLongPressed=true;handlers.click(event(wrap));assert.equal(check.changes,2);assert.equal(context.chatLongPressed,false);
+ handlers.keydown({...event(wrap),key:'Enter'});assert.equal(check.checked,true);
+});
+
+test('旧语音无时长且媒体时长为Infinity时自动解码秒数，并复用缓存',async()=>{
+ const source=readFileSync(new URL('./public/app.js',import.meta.url),'utf8'),start=source.indexOf('const voiceDurations='),end=source.indexOf('function memoryAttachment',start);let fetched=0,closed=0;
+ const make=tag=>({tag,children:[],events:{},duration:Infinity,paused:true,classList:{toggle(){}},append(...nodes){this.children.push(...nodes);},setAttribute(){},addEventListener(k,fn){this.events[k]=fn;}});
+ const context={activeVoiceAudio:null,Map,Promise,Number,Math,el:(tag,text)=>Object.assign(make(tag),{textContent:text}),fetch:async()=>{fetched++;return {ok:true,arrayBuffer:async()=>new ArrayBuffer(8)};},window:{AudioContext:class{async decodeAudioData(){return {duration:3.4};}async close(){closed++;}}}};
+ const controls=runInNewContext(source.slice(start,end)+';({voiceMessage,resolveVoiceDuration})',context),first=controls.voiceMessage('/legacy'),second=controls.voiceMessage('/legacy');
+ assert.equal(first.children[0].children[2].textContent,'…″');first.children[1].events.loadedmetadata();await controls.resolveVoiceDuration('/legacy');await Promise.resolve();assert.equal(first.children[0].children[2].textContent,'4″');assert.equal(second.children[0].children[2].textContent,'4″');assert.equal(fetched,1);assert.equal(closed,1);
+});
+
 test('语音气泡点击播放与暂停，互斥播放，元数据更新时长',async()=>{
  const source=readFileSync(new URL('./public/app.js',import.meta.url),'utf8'),start=source.indexOf('function voiceMessage('),end=source.indexOf('function memoryAttachment',start);
  const make=tag=>({tag,children:[],events:{},attributes:{},paused:true,duration:3,classList:{toggle(){}},append(...nodes){this.children.push(...nodes);},setAttribute(k,v){this.attributes[k]=v;},addEventListener(k,fn){this.events[k]=fn;},async play(){this.paused=false;this.events.play();},pause(){this.paused=true;this.events.pause();}});
