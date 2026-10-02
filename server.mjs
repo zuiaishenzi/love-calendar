@@ -1,7 +1,7 @@
 import {createRealtime} from './realtime.mjs';
 import sharp from 'sharp';
 import http from 'node:http';
-import { randomBytes } from 'node:crypto';
+import { randomBytes,createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -209,7 +209,8 @@ const server=http.createServer(async(req,res)=>{
     }
     const file=files[url.pathname]; if(!file || req.method!=='GET') throw fail(404,'页面不存在');
     const content=readFileSync(path.join(root,'public',file[0]));
-    res.writeHead(200,{'Content-Type':file[1]});res.end(file[0]==='index.html'?content.toString('utf8').replaceAll('{{APP_VERSION}}',appVersion):content);
+    const page=file[0]==='index.html'?content.toString('utf8').replaceAll('{{APP_VERSION}}',appVersion).replace(/(src|href)="(\/[^"?]+\.(?:js|css))\?v=[^"]*"/g,(match,attribute,url)=>{const asset=files[url];if(!asset)return match;const digest=createHash('sha256').update(readFileSync(path.join(root,'public',asset[0]))).digest('hex').slice(0,16);return `${attribute}="${url}?v=${appVersion}-${digest}"`;}):content;
+    res.writeHead(200,{'Content-Type':file[1]});res.end(page);
   } catch(e) {if(!e.status) console.error('请求处理失败',e.code||'internal');send(e.status||500,{error:e.status?e.message:'服务暂时不可用，请稍后重试'});}
 });
 server.on('close',()=>{clearInterval(cleanup);chat.close();realtime.close();});
