@@ -1,11 +1,11 @@
 {
   "name": "our-calendar",
   "private": true,
-  "version": "1.6.1",
+  "version": "1.7.0",
   "type": "module",
   "scripts": {
     "start": "node --env-file-if-exists=.env server.mjs",
-    "test": "node --test test.mjs test-v13.mjs test-encryption.mjs test-settings.mjs test-memos.mjs test-chat.mjs"
+    "test": "node --test test.mjs test-v13.mjs test-encryption.mjs test-settings.mjs test-memos.mjs test-chat.mjs test-speech.mjs"
   },
   "engines": {
     "node": ">=24"

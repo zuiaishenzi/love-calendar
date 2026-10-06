@@ -15,17 +15,18 @@ import {memoirDocument} from './memoir-export.mjs';
 import {Readable} from 'node:stream';
 import {memoService,createMemoOrganizer} from './memos.mjs';
 import {chatService} from './chat.mjs';
+import {createSpeechRecognizer} from './speech.mjs';
 import {memoryAttachments,sendMedia} from './media.mjs';
 const root=path.dirname(fileURLToPath(import.meta.url));
 const {version:appVersion}=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8'));
 async function body(req,max=24*1024*1024) {let size=0, chunks=[]; for await(const c of req) {size+=c.length; if(size>max) throw fail(413,'上传内容总大小过大'); chunks.push(c);} try{return JSON.parse(Buffer.concat(chunks));}catch{throw fail(400,'请求格式错误');}}
-export function createApplication({dataDir=process.env.DATA_DIR||path.join(root,'data'),mailer=createMailer(),memoOrganizer=createMemoOrganizer()}={}) {
+export function createApplication({dataDir=process.env.DATA_DIR||path.join(root,'data'),mailer=createMailer(),memoOrganizer=createMemoOrganizer(),speechRecognizer=createSpeechRecognizer()}={}) {
 const db=openDatabase(dataDir),lifecycle=lifecycleService(db,mailer),accounts=accountService(db,mailer,lifecycle),worker=createReminderWorker(db,mailer);
 lifecycle.purge();
 const cleanup=setInterval(()=>{try{lifecycle.purge();}catch{console.error('账本到期清理失败');}},60000);cleanup.unref();
 const realtime=createRealtime(accounts.authenticate,lifecycle.status);
 const memos=memoService(db,memoOrganizer);
-const chat=chatService(db,(user,type)=>{if(type==='memory')realtime.changed(user);else realtime.chat(user);});
+const chat=chatService(db,(user,type)=>{if(type==='memory')realtime.changed(user);else realtime.chat(user);},{speechRecognizer});
 const pendingThumbnails=new Map();
 const avatarAssets=new Map();
 function attachPerspectives(row){
@@ -202,6 +203,7 @@ const server=http.createServer(async(req,res)=>{
     files['/settings.js']=['settings.js','text/javascript; charset=utf-8'];
     files['/memos.js']=['memos.js','text/javascript; charset=utf-8'];
     files['/chat.js']=['chat.js','text/javascript; charset=utf-8'];
+    files['/speech.js']=['speech.js','text/javascript; charset=utf-8'];
     const presetAsset=url.pathname.match(/^\/avatars\/pair-([1-5])\.png$/);
     if(presetAsset&&req.method==='GET'){
       const id=presetAsset[1];if(!avatarAssets.has(id))avatarAssets.set(id,sharp(path.join(root,'public','avatars',`pair-${id}.png`)).resize(512,256).webp({quality:82}).toBuffer().catch(error=>{avatarAssets.delete(id);throw error;}));

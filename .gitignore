@@ -8,3 +8,13 @@ local-preview-data/
 *.sqlite-wal
 *.sqlite-shm
 *.encrypting-*
+apps/windows/dist/
+apps/android/.gradle/
+apps/android/**/build/
+apps/android/local.properties
+*.jks
+*.keystore
+*.apk
+*.aab
+*.exe
+*.exe.blockmap

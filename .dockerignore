@@ -10,3 +10,5 @@ data
 node_modules
 test-data-*
 local-preview-data
+apps/
+.github/

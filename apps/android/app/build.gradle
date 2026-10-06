@@ -1,0 +1,25 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'xyz.ourdays.mobile'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'xyz.ourdays.mobile'
+        minSdk 26
+        targetSdk 35
+        versionCode 10700
+        versionName '1.7.0'
+        buildConfigField 'String', 'SERVER_URL', '"https://love.11215739.xyz:11961/"'
+    }
+    buildFeatures { buildConfig true }
+    signingConfigs {
+        release {
+            if (System.getenv('ANDROID_KEYSTORE_PATH')) {
+                storeFile file(System.getenv('ANDROID_KEYSTORE_PATH'))
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes { release { if (System.getenv('ANDROID_KEYSTORE_PATH')) signingConfig signingConfigs.release } }
+}

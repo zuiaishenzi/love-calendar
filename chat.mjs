@@ -2,10 +2,13 @@ import {randomBytes} from 'node:crypto';
 import sharp from 'sharp';
 import {fail} from './accounts.mjs';
 import {sendMedia} from './media.mjs';
+import {speechService,createSpeechRecognizer} from './speech.mjs';
 
-export function chatService(db,notify,{now=()=>Date.now()}={}){
+export function chatService(db,notify,{now=()=>Date.now(),speechRecognizer=createSpeechRecognizer()}={}){
+ const transcribe=speechService(db,speechRecognizer,{now});
  async function route(req,res,url,user,input,check){
   const p=url.pathname,ledger=user.ledger_id;
+  if(p.startsWith('/api/chat/transcriptions'))return transcribe(req,url,user,input,check);
   if(p==='/api/chat/memory'&&req.method==='POST'){
    check();const ids=input.ids;
    if(!Array.isArray(ids)||ids.length<1||ids.length>50||ids.some(id=>!Number.isSafeInteger(id)||id<1)||new Set(ids).size!==ids.length)throw fail(400,'请选择1至50条不同的聊天消息');
@@ -26,13 +29,13 @@ export function chatService(db,notify,{now=()=>Date.now()}={}){
    const from=boundary('from',false),to=boundary('to',true);if(from!==null&&to!==null&&from>=to)throw fail(400,'开始日期不能晚于结束日期');
    const clauses=['m.ledger_id=?','m.retracted_at IS NULL'],args=[ledger];
    if(kind){clauses.push('m.kind=?');args.push(kind);}if(q){clauses.push('instr(lower(m.text),lower(?))>0');args.push(q);}if(from!==null){clauses.push('m.created>=?');args.push(from);}if(to!==null){clauses.push('m.created<?');args.push(to);}if(before){clauses.push('m.id<?');args.push(before);}
-   const rows=db.prepare('SELECT m.id,m.sender,m.kind,m.text,m.mime,m.duration,m.created,u.name FROM chat_messages m JOIN users u ON u.id=m.sender WHERE '+clauses.join(' AND ')+' ORDER BY m.id DESC LIMIT 51').all(...args);
+   const rows=db.prepare('SELECT m.id,m.sender,m.kind,m.text,m.mime,m.duration,m.created,u.name,(SELECT text FROM chat_transcriptions t WHERE t.message_id=m.id AND t.user_id=?) AS transcript FROM chat_messages m JOIN users u ON u.id=m.sender WHERE '+clauses.join(' AND ')+' ORDER BY m.id DESC LIMIT 51').all(user.id,...args);
    return {messages:rows.slice(0,50),more:rows.length>50};
   }
   if(p==='/api/chat/messages'&&req.method==='GET'){
    const since=Number(url.searchParams.get('since')||0);if(!Number.isSafeInteger(since)||since<0)throw fail(400,'同步信息无效');const revision=now();
    const cursor=Number(url.searchParams.get('before')||0);if(!Number.isSafeInteger(cursor)||cursor<0)throw fail(400,'分页信息无效');
-   const rows=db.prepare('SELECT m.id,m.sender,m.kind,m.text,m.mime,m.duration,m.created,m.retracted_at,u.name FROM chat_messages m JOIN users u ON u.id=m.sender WHERE m.ledger_id=? AND (?=0 OR m.id<?) ORDER BY m.id DESC LIMIT 51').all(ledger,cursor,cursor);
+   const rows=db.prepare('SELECT m.id,m.sender,m.kind,m.text,m.mime,m.duration,m.created,m.retracted_at,u.name,(SELECT text FROM chat_transcriptions t WHERE t.message_id=m.id AND t.user_id=?) AS transcript FROM chat_messages m JOIN users u ON u.id=m.sender WHERE m.ledger_id=? AND (?=0 OR m.id<?) ORDER BY m.id DESC LIMIT 51').all(user.id,ledger,cursor,cursor);
    const more=rows.length>50;return {messages:rows.slice(0,50).reverse(),more,revision,retractions:db.prepare('SELECT id,retracted_at FROM chat_messages WHERE ledger_id=? AND retracted_at>=?').all(ledger,since),members:db.prepare('SELECT id,name,avatar,avatar_data IS NOT NULL AS avatar_uploaded,ledger_id,seat FROM users WHERE ledger_id=? ORDER BY seat').all(ledger).map(u=>({id:u.id,name:u.name,avatar:u.avatar||`pair-${(u.ledger_id-1)%5+1}-${u.seat}`,avatar_uploaded:Boolean(u.avatar_uploaded)}))};
   }
   if(p==='/api/chat/messages'&&req.method==='POST'){
@@ -49,7 +52,7 @@ export function chatService(db,notify,{now=()=>Date.now()}={}){
    check();const id=Number(db.prepare('INSERT INTO chat_messages(ledger_id,sender,kind,text,data,mime,created,duration) VALUES(?,?,?,?,?,?,?,?)').run(ledger,user.id,kind,text,data,mime,now(),kind==='audio'?duration:null).lastInsertRowid);notify(user);return {id};
   }
   const retract=p.match(/^\/api\/chat\/messages\/(\d+)\/retract$/);
-  if(retract&&req.method==='POST'){check();const row=db.prepare('SELECT sender FROM chat_messages WHERE id=? AND ledger_id=?').get(Number(retract[1]),ledger);if(!row)throw fail(404,'消息不存在');if(row.sender!==user.id)throw fail(403,'只能撤回自己发送的消息');db.prepare("UPDATE chat_messages SET text='',data=NULL,mime=NULL,retracted_at=COALESCE(retracted_at,?) WHERE id=? AND ledger_id=?").run(now(),Number(retract[1]),ledger);notify(user);return {ok:true};}
+  if(retract&&req.method==='POST'){check();const row=db.prepare('SELECT sender FROM chat_messages WHERE id=? AND ledger_id=?').get(Number(retract[1]),ledger);if(!row)throw fail(404,'消息不存在');if(row.sender!==user.id)throw fail(403,'只能撤回自己发送的消息');db.prepare("UPDATE chat_messages SET text='',data=NULL,mime=NULL,retracted_at=COALESCE(retracted_at,?) WHERE id=? AND ledger_id=?").run(now(),Number(retract[1]),ledger);db.prepare("DELETE FROM chat_transcriptions WHERE message_id=?").run(Number(retract[1]));notify(user);return {ok:true};}
   const media=p.match(/^\/api\/chat\/media\/(\d+)$/);
   if(media&&req.method==='GET'){
    const row=db.prepare('SELECT data,mime FROM chat_messages WHERE id=? AND ledger_id=? AND kind!=? AND retracted_at IS NULL').get(Number(media[1]),ledger,'text');if(!row)throw fail(404,'附件不存在');const ext={'audio/webm':'webm','audio/ogg':'ogg','audio/mp4':'m4a','audio/wav':'wav','image/webp':'webp'}[row.mime]||'bin';sendMedia(req,res,row,url.searchParams.get('download')==='1'?`语音-${media[1]}.${ext}`:null);return null;

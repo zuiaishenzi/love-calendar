@@ -1,6 +1,6 @@
 # 朝夕 · 恋爱万年历
 
-当前版本：**v1.6.1**。版本记录见 [CHANGELOG.md](CHANGELOG.md)。Node.js 24 + SQLite，使用 Nodemailer 发送邮件、lunar-javascript 计算农历和节气。
+当前版本：**v1.7.0**。版本记录见 [CHANGELOG.md](CHANGELOG.md)。Node.js 24 + SQLite，使用 Nodemailer 发送邮件、lunar-javascript 计算农历和节气。
 
 ## 个人设置、安全设置与岁月拾忆
 
@@ -205,3 +205,11 @@ sudo env CALENDAR_IMAGE="love-calendar:$(sudo cat /opt/love-calendar/current)" d
 AI 整理生成的分类会保存在本账号下，新增和编辑备忘可直接选择这些分类，或选择「待整理」。自定义分类继续手动维护，不发送给 AI。新增记录保留其他记录的整理结果，编辑只使该条记录的整理结果失效。
 
 聊天消息支持电脑右键、手机长按500毫秒打开菜单，也可用键盘 Shift+F10 打开。文字可复制，未撤回消息可多选存入今日回忆，只能撤回自己发送的消息；撤回后清除原聊天文字或附件并同步显示提示，不能再选中收藏。已存入回忆的独立副本保留。
+
+## 客户端安装包
+
+Windows 与 Android 客户端默认连接 `https://love.11215739.xyz:11961/`，构建、安装和签名说明见 [客户端文档](docs/APPS.md)。GitHub Actions 的 **Build clients** 可手动生成 Windows 安装包及 Android 测试 APK。
+
+## 腾讯云语音转文字
+
+自己和对方已发送的语音支持右键/长按转写，文字直接显示在对应语音下方。服务器密钥配置与应用更新说明见 [语音转文字文档](docs/SPEECH.md)。
