@@ -15,6 +15,13 @@ test('16k PCM 转换、腾讯云签名和结果解析；密钥与空结果错误
  await assert.rejects(createSpeechRecognizer({env:{}}).create(data),e=>e.status===503);
  for(const [response,status] of [[{Error:{Code:'AuthFailure',Message:'test-secret'}},503],[{Data:{Status:2,Result:''}},422]]){const r=createSpeechRecognizer({env,fetcher:async()=>({ok:true,json:async()=>({Response:response})})});await assert.rejects(r.status(123),e=>e.status===status&&!e.message.includes('test-secret'));}
 });
+test('鉴权错误区分密钥、权限、时间及Token，凭证去除首尾空格且不回传原始错误',async()=>{
+ const reasons={'AuthFailure.SecretIdNotFound':'SecretId','AuthFailure.SignatureFailure':'同一对','AuthFailure.SignatureExpire':'服务器时间','AuthFailure.TokenFailure':'Token','AuthFailure.UnauthorizedOperation':'权限'};
+ for(const [code,reason] of Object.entries(reasons)){
+  const recognizer=createSpeechRecognizer({env:{TENCENT_ASR_SECRET_ID:' test-id ',TENCENT_ASR_SECRET_KEY:' test-secret ',TENCENT_ASR_TOKEN:' '},fetcher:async(_url,options)=>{assert.match(options.headers.Authorization,/Credential=test-id\//);assert.equal(options.headers['X-TC-Token'],undefined);return {ok:true,json:async()=>({Response:{Error:{Code:code,Message:'test-secret'}}})};}});
+  await assert.rejects(recognizer.status(123),error=>error.status===503&&error.message.includes(code)&&error.message.includes(reason)&&!error.message.includes('test-secret'));
+ }
+});
 test('转写鉴权、账本隔离、任务复用、不自动发送文字、撤回与只读保护',async()=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),'love-speech-'));let creates=0;
  const app=createApplication({dataDir:dir,mailer:{ready:false},speechRecognizer:{async create(){creates++;return 123;},async status(){return {status:'done',text:'测试识别结果'};}}}),{db,server}=app;

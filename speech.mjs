@@ -11,13 +11,18 @@ export function signSpeechRequest(secretId,secretKey,action,payload,timestamp){
 }
 export function createSpeechRecognizer({env=process.env,fetcher=fetch,now=()=>Date.now()}={}){
  async function call(action,payload){
-  if(!env.TENCENT_ASR_SECRET_ID||!env.TENCENT_ASR_SECRET_KEY)throw fail(503,'服务器尚未配置腾讯云语音识别');
-  const request=signSpeechRequest(env.TENCENT_ASR_SECRET_ID,env.TENCENT_ASR_SECRET_KEY,action,payload,Math.floor(now()/1000));
-  request.headers['X-TC-Region']=env.TENCENT_ASR_REGION||'ap-shanghai';
-  if(env.TENCENT_ASR_TOKEN)request.headers['X-TC-Token']=env.TENCENT_ASR_TOKEN;
+  const secretId=env.TENCENT_ASR_SECRET_ID?.trim(),secretKey=env.TENCENT_ASR_SECRET_KEY?.trim(),token=env.TENCENT_ASR_TOKEN?.trim();
+  if(!secretId||!secretKey)throw fail(503,'服务器尚未配置腾讯云语音识别');
+  const request=signSpeechRequest(secretId,secretKey,action,payload,Math.floor(now()/1000));
+  request.headers['X-TC-Region']=env.TENCENT_ASR_REGION?.trim()||'ap-shanghai';
+  if(token)request.headers['X-TC-Token']=token;
   let response;
   try{const result=await fetcher('https://asr.tencentcloudapi.com',{method:'POST',...request,signal:AbortSignal.timeout(20000)});if(!result.ok)throw Error();response=(await result.json()).Response;}catch{throw fail(502,'腾讯云语音识别暂时无法连接，请稍后重试');}
-  if(response?.Error){const code=response.Error.Code||'';if(/AuthFailure|CheckAuthInfo|Unauthorized/.test(code))throw fail(503,'腾讯云语音识别密钥或权限配置有误');if(/UserNotRegistered|ServiceIsolate|Amount/.test(code))throw fail(503,'请检查腾讯云语音识别服务开通状态及可用额度');throw fail(502,'腾讯云语音识别失败，请检查音频及服务配置');}
+  if(response?.Error){
+   const code=typeof response.Error.Code==='string'&&/^[A-Za-z][A-Za-z0-9.]{0,100}$/.test(response.Error.Code)?response.Error.Code:'UnknownError';
+   const reasons=[[/InvalidSecretId|SecretIdNotFound/,'腾讯云 SecretId 无效、不存在或已停用，请检查云 API 密钥'],[/SignatureExpire/,'腾讯云请求签名已过期，请校准服务器时间'],[/SignatureFailure/,'腾讯云签名校验失败，请检查 SecretId 与 SecretKey 是否为同一对有效密钥'],[/TokenFailure/,'腾讯云临时凭证 Token 无效或已过期；长期密钥应清空 Token'],[/Unauthorized/,'腾讯云凭证缺少语音识别权限，请授权 CreateRecTask 和 DescribeTaskStatus'],[/AuthFailure|CheckAuthInfo/,'腾讯云鉴权失败，请检查云 API 密钥及权限'],[/UserNotRegistered|ServiceIsolate|Amount/,'请检查腾讯云语音识别服务开通状态及可用额度']];
+   const reason=reasons.find(([pattern])=>pattern.test(code));throw fail(reason?503:502,(reason?.[1]||'腾讯云语音识别失败，请检查音频及服务配置')+'（'+code+'）');
+  }
   if(!response)throw fail(502,'腾讯云返回了无效识别结果');return response;
  }
  return {

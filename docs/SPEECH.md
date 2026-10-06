@@ -24,6 +24,14 @@ CALENDAR_IMAGE="love-calendar:$(cat current)" docker compose -p love-calendar -f
 
 ## 数据与限制
 
+### 鉴权失败排查
+
+凭证必须是腾讯云「云 API 密钥」的 SecretId/SecretKey，不是语音应用的 AppId。两项必须来自同一对有效凭证，CAM 权限需包含 `asr:CreateRecTask` 与 `asr:DescribeTaskStatus`。长期密钥请清空 `TENCENT_ASR_TOKEN`；临时凭证必须完整更新 SecretId、SecretKey、Token 三项。
+
+错误提示会区分 `SecretIdNotFound`、`SignatureFailure`、`SignatureExpire`、`TokenFailure`、`UnauthorizedOperation`。分别检查有效密钥、匹配的密钥对、服务器时间、临时 Token 和 CAM 权限。不要提供密钥内容，只需提供错误码即可继续定位。
+
+修改 `/opt/love-calendar/shared/.env` 后使用上面的 `up -d --force-recreate` 命令加载配置，`docker restart` 不会加载新的环境变量。
+
 浏览器将 WebM/Ogg/M4A 等录音解码为 16kHz 单声道 WAV，然后由服务器签名提交音频数据，无需公开聊天附件地址或配置 COS。已有语音只能从当前账本读取；识别结果和任务仅供发起账号查询。识别任务暂存在服务器内存，15 分钟过期；已完成的消息转写按账号保存到加密数据库，重启后仍可查看。相同音频在有效期内复用任务，避免重复创建；每账号最多保留 10 个任务。
 
 识别结果直接附在原语音消息下方，不改写原语音或产生新消息。未配置密钥、额度不足、格式不支持或无人声会显示明确提示。密钥、原始腾讯云错误信息不返回客户端。
