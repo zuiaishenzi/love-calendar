@@ -14,21 +14,39 @@ function Invoke-RepoGit([string]$Root, [string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "Git 操作失败：$($Arguments[0])" }
     return $result
 }
+function Get-RepositoryInfo([string]$Name, $Headers) {
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try { return Invoke-RestMethod ("https://api.github.com/repos/" + $Name) -Headers $Headers -TimeoutSec 15 }
+        catch {
+            $status = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
+            if ($status -eq 401) { throw 'GitHub 登录已失效，请重新登录 Git Credential Manager 后重试。' }
+            if ($status -eq 403) { throw "GitHub 拒绝访问 $Name（HTTP 403），请检查账号权限或 API 限流。" }
+            if ($status -eq 404) { throw "无法访问 $Name（HTTP 404），请确认当前登录账号有此仓库权限。" }
+            if ($attempt -eq 3) { throw "连接 GitHub API 失败：$Name（HTTP $status）。请检查网络或代理；未推送。" }
+            Write-Host "GitHub 网络连接失败，正在重试（$attempt/3）…"
+        }
+    }
+}
 function VerifyRepositories {
     $previousPrompt = $env:GIT_TERMINAL_PROMPT
     $previousInteractive = $env:GCM_INTERACTIVE
+    $previousTls = [Net.ServicePointManager]::SecurityProtocol
     try {
-        $env:GIT_TERMINAL_PROMPT = '0'; $env:GCM_INTERACTIVE = 'Never'
-        $lines = "protocol=https`nhost=github.com`n`n" | & git credential fill 2>$null
-        if ($LASTEXITCODE -ne 0) { throw '请先使用 Git Credential Manager 登录 GitHub。' }
+        [Net.ServicePointManager]::SecurityProtocol = $previousTls -bor [Net.SecurityProtocolType]::Tls12
+        $env:GIT_TERMINAL_PROMPT = '0'; $env:GCM_INTERACTIVE = 'Auto'
+        # Node supplies exact UTF-8 protocol bytes consistently across Windows PowerShell versions.
+        $lines = & node (Join-Path $PSScriptRoot 'github-credential.mjs')
+        $credentialExit = $LASTEXITCODE
+        if ($credentialExit -ne 0) { throw 'GitHub 未登录。请运行 git credential-manager github login，然后重试。' }
         $passwordLine = $lines | Where-Object { $_.StartsWith('password=') } | Select-Object -First 1
-        if (-not $passwordLine) { throw 'GitHub 登录凭据不可用。' }
+        if (-not $passwordLine) { throw 'GitHub 凭据不可用。请运行 git credential-manager github login，然后重试。' }
         $headers = @{ Authorization = 'Bearer ' + $passwordLine.Substring(9); Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
-        $public = Invoke-RestMethod 'https://api.github.com/repos/zuiaishenzi/love-calendar' -Headers $headers -TimeoutSec 30
-        $private = Invoke-RestMethod 'https://api.github.com/repos/zuiaishenzi/love-app' -Headers $headers -TimeoutSec 30
-        if ($public.private -or -not $private.private) { throw '仓库可见性不符合公开源码、私有安装包的约定。' }
-    } catch { throw 'GitHub 仓库隐私校验失败。请确认已登录、网络正常，且 love-app 是私有仓库；未执行推送。' }
-    finally { $headers = $null; $passwordLine = $null; $lines = $null; $env:GIT_TERMINAL_PROMPT = $previousPrompt; $env:GCM_INTERACTIVE = $previousInteractive }
+        $public = Get-RepositoryInfo 'zuiaishenzi/love-calendar' $headers
+        $private = Get-RepositoryInfo 'zuiaishenzi/love-app' $headers
+        if ($public.private -or -not $private.private) { throw '仓库可见性不符合公开源码、私有安装包的约定；未推送。' }
+        Write-Host '仓库校验通过：love-calendar 公开，love-app 私有。'
+    }
+    finally { $headers = $null; $passwordLine = $null; $lines = $null; $env:GIT_TERMINAL_PROMPT = $previousPrompt; $env:GCM_INTERACTIVE = $previousInteractive; [Net.ServicePointManager]::SecurityProtocol = $previousTls }
 }
 function CommitAndPush([string]$Root, [string]$CommitMessage) {
     & git -C $Root diff --cached --quiet
