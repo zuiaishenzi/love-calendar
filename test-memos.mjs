@@ -118,3 +118,21 @@ test('备忘日记日期与事情保存，旧记录不伪造日期，旧客户�
   }finally{reopened.close();}
  }finally{try{db.close();}catch{}rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('单个AI要点跨分类移动保留原文，增量整理仅发送待整理，冷却30秒',async()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-memo-move-')),db=openDatabase(dir);let calls=0,received,now=100000;const originalNow=Date.now;Date.now=()=>now;
+ try{
+  db.exec("INSERT INTO ledgers(id,code) VALUES(1,'MOVE1234'); INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(1,'test','x','x',1,1),(2,'other','x','x',1,2); INSERT INTO memo_categories(id,user_id,name) VALUES(1,1,'手动'),(2,2,'他人');");
+  const service=memoService(db,{ready:true,async organize(notes){calls++;received=notes;return {items:notes.flatMap(n=>[{id:n.id,category:'饮食',text:'饮食要点'+n.id},{id:n.id,category:'习惯',text:'习惯要点'+n.id}])};}}),call=(route,input={},id=1)=>service.route({method:'POST'},{pathname:'/api/memos/'+route},{id},input,()=>{});
+  await call('notes',{body:'完整原文'});let data=await call('organize');assert.equal(calls,1);
+  data=await call('move',{id:1,extracted:true,index:0,text:'饮食要点1',target:'custom:1'});assert.equal(data.summary[0].category_id,1);assert.equal(data.summary[1].category,'习惯');assert.equal(data.notes[0].body,'完整原文');
+  await assert.rejects(call('move',{id:1,extracted:true,index:0,text:'过期文本',target:'ai:习惯'}),e=>e.status===409);
+  await assert.rejects(call('move',{id:1,extracted:true,index:0,text:'饮食要点1',target:'custom:2'}),e=>e.status===400);
+  await assert.rejects(call('move',{id:1,target:'pending'},2),e=>e.status===404);
+  await call('organize');assert.equal(calls,1);
+  await call('notes',{body:'新的待整理'});now+=29999;await assert.rejects(call('organize'),e=>e.status===429);assert.equal(calls,1);
+  now++;data=await call('organize');assert.equal(calls,2);assert.deepEqual(received,[{id:2,body:'新的待整理'}]);assert.equal(data.summary.length,4);assert.equal(data.summary[0].category_id,1);
+  await call('move',{id:2,extracted:true,index:2,text:'饮食要点2',target:'ai:习惯'});assert.equal(db.prepare('SELECT body FROM memo_notes WHERE id=2').get().body,'新的待整理');
+ }finally{Date.now=originalNow;db.close();rmSync(dir,{recursive:true,force:true});}
+});
