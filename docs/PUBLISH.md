@@ -79,7 +79,7 @@ sudo systemctl start love-calendar-update.timer
 
 SSH 成功会显示已认证但 GitHub 不提供 shell，退出码 1 是正常行为。主机指纹请对照 [GitHub 官方文档](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints)，不禁用主机验证。服务器需要能连接 GitHub SSH；若 22 端口受限，需按 GitHub 文档配置 ssh.github.com:443。
 
-接口应显示 `available:true`、`versionCode:10801`。用户先手动安装带更新功能的 APK 一次，以后通过 App 个人设置 → 检查客户端更新进行覆盖升级。
+接口应显示 `available:true`、`versionCode:10801`。用户先手动安装带更新功能的 APK 一次，以后通过 App 右上角下拉菜单 → 版本更新进行覆盖升级。
 
 ## 后续更新
 

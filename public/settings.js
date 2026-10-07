@@ -89,4 +89,4 @@ $('#lifecycle-form').onsubmit=async event=>{event.preventDefault();const b=$('#l
  }catch(e){$('#lifecycle-error').textContent=e.message;}finally{b.disabled=false;renderLifecycleProgress();}};
 setInterval(()=>{if(currentUser&&$('#lifecycle-dialog').open)renderLifecycleProgress();},1000);
 
-if(navigator.userAgent.includes('OurDaysAndroid/'))$('#android-update-entry').hidden=false;
+if(navigator.userAgent.includes('OurDaysAndroid/')){const update=$('#android-update-entry');update.hidden=false;update.onclick=()=>menuOpen(false);}
