@@ -29,7 +29,9 @@ const memos=memoService(db,memoOrganizer);
 const chat=chatService(db,(user,type)=>{if(type==='memory')realtime.changed(user);else realtime.chat(user);},{speechRecognizer});
 const pendingThumbnails=new Map();
 const avatarAssets=new Map();
+function memoryReplies(id){return db.prepare('SELECT r.id,r.author,r.body,r.created,u.name AS author_name FROM memory_replies r JOIN users u ON u.id=r.author WHERE r.memory_id=? ORDER BY r.id').all(id);}
 function attachPerspectives(row){
+ row.replies=memoryReplies(row.id);
  row.chat_messages=db.prepare('SELECT id,sender,sender_name AS name,kind,text,mime,created,duration FROM memory_chat_messages WHERE memory_id=? ORDER BY position').all(row.id);
  row.perspectives=db.prepare('SELECT p.*,u.name AS author_name FROM perspectives p JOIN users u ON u.id=p.author WHERE p.memory_id=? ORDER BY p.rowid').all(row.id);
  for(const p of row.perspectives){p.photos=db.prepare('SELECT id FROM photos WHERE memory_id=? AND author=? ORDER BY rowid').all(row.id,p.author).map(x=>x.id);p.attachments=db.prepare('SELECT id,name,kind,mime,length(data) AS size FROM memory_attachments WHERE memory_id=? AND author=? ORDER BY rowid').all(row.id,p.author);}
@@ -61,6 +63,16 @@ const server=http.createServer(async(req,res)=>{
       if(chatAttachment&&req.method==='GET'){
         const row=db.prepare('SELECT c.data,c.mime FROM memory_chat_messages c JOIN memories m ON m.id=c.memory_id WHERE c.id=? AND m.ledger_id=? AND c.kind!=?').get(chatAttachment[1],user.ledger_id,'text');if(!row)throw fail(404,'附件不存在');
         sendMedia(req,res,row);return;
+      }
+      const replyMatch=url.pathname.match(/^\/api\/memories\/(\d+)\/replies$/);
+      if(replyMatch){
+        const id=Number(replyMatch[1]);if(!db.prepare('SELECT id FROM memories WHERE id=? AND ledger_id=?').get(id,user.ledger_id))throw fail(404,'回忆不存在');
+        if(req.method==='GET')return send(200,memoryReplies(id));
+        if(req.method==='POST'){
+          const input=await body(req,32*1024);ensureWritable();if(typeof input.body!=='string'||!input.body.trim()||input.body.length>2000)throw fail(400,'请输入2000字以内的回复');
+          db.transaction(()=>{if(!db.prepare('SELECT id FROM memories WHERE id=? AND ledger_id=?').get(id,user.ledger_id))throw fail(404,'回忆不存在');if(db.prepare('SELECT count(*) AS n FROM memory_replies WHERE memory_id=? AND author=?').get(id,user.id).n>=5)throw fail(400,'你在这条回忆下已发送5条回复');db.prepare('INSERT INTO memory_replies(memory_id,author,body,created) VALUES(?,?,?,?)').run(id,user.id,input.body.trim(),Date.now());db.prepare('UPDATE memories SET updated=? WHERE id=?').run(Date.now(),id);})();realtime.changed(user);return send(200,memoryReplies(id));
+        }
+        throw fail(405,'请求方法不支持');
       }
       if(url.pathname.startsWith('/api/chat/')){const result=await chat.route(req,res,url,user,req.method==='POST'?await body(req):{},ensureWritable);if(result!==null)send(200,result);return;}
       if(url.pathname==='/api/memos'||url.pathname.startsWith('/api/memos/'))return send(200,await memos.route(req,url,user,req.method==='POST'?await body(req):{},ensureWritable));

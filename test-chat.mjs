@@ -165,3 +165,24 @@ test('聊天分页及发送频率限制',async()=>{
   time+=60001;for(let i=0;i<25;i++)await route(user,'POST','/api/chat/messages',{kind:'text',text:'下一批'+i});const page=await route(user,'GET','/api/chat/messages');assert.equal(page.messages.length,50);assert.equal(page.more,true);assert.equal((await route(user,'GET','/api/chat/messages?before='+page.messages[0].id)).messages.length,5);
  }finally{service.close();db.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('回忆回复双方各五条、并发限额、账本隔离、导出与删除级联',async()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-replies-')),app=createApplication({dataDir:dir,mailer:{ready:false}}),{db,server}=app;seed(db);await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;
+ async function call(url,method='GET',input,cookie=''){const response=await fetch(origin+url,{method,headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:input===undefined?undefined:JSON.stringify(input)});return {status:response.status,cookie:response.headers.get('set-cookie')?.split(';')[0],data:response.headers.get('content-type')?.includes('json')?await response.json():await response.text()};}
+ try{
+  const a=(await call('/api/login','POST',{name:'alice',password:'password-123'})).cookie,b=(await call('/api/login','POST',{name:'bob',password:'password-123'})).cookie,c=(await call('/api/login','POST',{name:'other',password:'password-123'})).cookie;
+  const memory=(await call('/api/memories','POST',{day:'2026-10-07',title:'A',body:'原文',photos:[],keepPhotos:[]},a)).data.id,url='/api/memories/'+memory+'/replies';
+  assert.equal((await call(url)).status,401);assert.equal((await call(url,'GET',undefined,c)).status,404);assert.equal((await call(url,'POST',{body:'越权'},c)).status,404);assert.equal((await call(url,'POST',{body:' '},a)).status,400);
+  const sent=await Promise.all(Array.from({length:6},(_,i)=>call(url,'POST',{body:'回应'+i},a)));assert.equal(sent.filter(r=>r.status===200).length,5);assert.equal(sent.filter(r=>r.status===400).length,1);
+  for(let i=0;i<5;i++)assert.equal((await call(url,'POST',{body:'对方'+i},b)).status,200);
+  assert.equal((await call(url,'POST',{body:'第六条'},b)).status,400);const rows=(await call(url,'GET',undefined,a)).data;assert.equal(rows.length,10);assert.deepEqual(rows.map(r=>r.id),[...rows.map(r=>r.id)].sort((a,b)=>a-b));assert.equal((await call('/api/timeline','GET',undefined,a)).data[0].replies.length,10);assert.equal(db.prepare('SELECT body FROM perspectives WHERE memory_id=?').get(memory).body,'原文');
+  const {memoirDocument}=await import('./memoir-export.mjs');const exported=[...memoirDocument(db,1)].join('');assert.ok(exported.includes('后来的回应'));assert.ok(exported.includes('对方4'));
+  db.prepare('UPDATE ledgers SET delete_at=? WHERE id=1').run(Date.now()+86400000);assert.equal((await call(url,'POST',{body:'只读'},a)).status,423);db.prepare('UPDATE ledgers SET delete_at=NULL WHERE id=1').run();assert.equal((await call('/api/memories/'+memory,'DELETE',undefined,a)).status,200);assert.equal(db.prepare('SELECT count(*) AS n FROM memory_replies').get().n,0);assert.equal((await call(url,'GET',undefined,b)).status,404);
+ }finally{await new Promise(r=>server.close(r));db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('回忆录同一天共享日期节点，保留独立回忆卡片',async()=>{
+ const source=readFileSync(new URL('./public/app.js',import.meta.url),'utf8'),nodes=new Map();class Node{constructor(tag,text,cls){this.tag=tag;this.text=text;this.cls=cls;this.children=[];}append(...items){this.children.push(...items);}replaceChildren(){this.children=[];}setAttribute(){}}
+ const rows=[{id:1,day:'2026-10-07',title:'A'},{id:2,day:'2026-10-07',title:'B'},{id:3,day:'2026-10-08',title:'C'}];const context={timelineVersion:0,view:'timeline',api:async()=>rows,$:key=>{if(!nodes.has(key))nodes.set(key,new Node());return nodes.get(key);},el:(...args)=>new Node(...args),conversation:()=>new Node(),Set};
+ const load=runInNewContext(source.slice(source.indexOf('async function loadTimeline(){'),source.indexOf("$('#calendar-view').onclick"))+';loadTimeline',context);await load();const days=nodes.get('#timeline-list').children.filter(n=>n.cls==='timeline-item');assert.equal(days.length,2);assert.equal(days[0].children[0].dateTime,'2026-10-07');assert.equal(days[0].children[1].children.length,2);assert.equal(days[1].children[1].children.length,1);
+});

@@ -33,8 +33,10 @@ $('#chat-context-transcribe').onclick=async()=>{
   const response=await fetch('/api/chat/media/'+row.id,{credentials:'same-origin'});if(!response.ok)throw Error('语音消息不存在或已撤回');
   const data=await chatBase64(await speechAudio(await response.blob()));if(!active())return;
   const job=await api('/api/chat/transcriptions','POST',{data,messageId:row.id});
-  for(let i=0;i<150&&active();i++){
-   await new Promise(resolve=>setTimeout(resolve,2000));if(!active())return;
+  if(!active())return;if(job.status==='done'){paintSpeech(row.id,job);return;}
+  const deadline=Date.now()+5*60000;
+  for(let i=0;Date.now()<deadline&&active();i++){
+   if(i)await new Promise(resolve=>setTimeout(resolve,i<5?2000:4000));if(!active())return;
    const result=await api('/api/chat/transcriptions/'+job.id);if(!active())return;
    if(result.status==='done'){paintSpeech(row.id,result);return;}
   }

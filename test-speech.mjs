@@ -23,8 +23,8 @@ test('鉴权错误区分密钥、权限、时间及Token，凭证去除首尾空
  }
 });
 test('转写鉴权、账本隔离、任务复用、不自动发送文字、撤回与只读保护',async()=>{
- const dir=mkdtempSync(path.join(os.tmpdir(),'love-speech-'));let creates=0;
- const app=createApplication({dataDir:dir,mailer:{ready:false},speechRecognizer:{async create(){creates++;return 123;},async status(){return {status:'done',text:'测试识别结果'};}}}),{db,server}=app;
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-speech-'));let creates=0,shortCalls=0;
+ const app=createApplication({dataDir:dir,mailer:{ready:false},speechRecognizer:{async short(){shortCalls++;if(shortCalls===1)throw Error('AuthFailure.UnauthorizedOperation');return {status:'done',text:'测试识别结果'};},async create(){creates++;return 123;},async status(){return {status:'done',text:'测试识别结果'};}}}),{db,server}=app;
  db.prepare("INSERT INTO ledgers(id,code) VALUES(1,'SPEECH1'),(2,'SPEECH2')").run();for(const [id,name,ledger,seat] of [[1,'alice',1,1],[2,'bob',1,2],[3,'other',2,1]]){const salt='speech-salt';db.prepare('INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(?,?,?,?,?,?)').run(id,name,scryptSync('password-123',salt,64).toString('hex'),salt,ledger,seat);}
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;
  async function call(url,method='GET',input,cookie=''){const r=await fetch(origin+url,{method,headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:input===undefined?undefined:JSON.stringify(input)});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};}
@@ -34,7 +34,14 @@ test('转写鉴权、账本隔离、任务复用、不自动发送文字、撤�
   const messageId=(await call('/api/chat/messages','POST',{kind:'audio',data},a)).data.id;assert.equal((await call('/api/chat/transcriptions','POST',{data,messageId},c)).status,404);assert.equal(creates,0);
   const job=await call('/api/chat/transcriptions','POST',{data,messageId},a);assert.equal(job.status,200);const url='/api/chat/transcriptions/'+job.data.id;
   assert.equal((await call(url,'GET',undefined,b)).status,404);assert.equal((await call(url,'GET',undefined,c)).status,404);assert.equal((await call('/api/chat/transcriptions','POST',{data,messageId},a)).data.id,job.data.id);assert.equal(creates,1);
-  assert.deepEqual((await call(url,'GET',undefined,a)).data,{status:'done',text:'测试识别结果'});assert.equal(db.prepare('SELECT count(*) AS n FROM chat_messages').get().n,1);assert.equal((await call('/api/chat/messages','GET',undefined,a)).data.messages[0].transcript,'测试识别结果');assert.equal((await call('/api/chat/messages','GET',undefined,b)).data.messages[0].transcript,null);assert.equal((await call('/api/chat/history?kind=audio','GET',undefined,a)).data.messages[0].transcript,'测试识别结果');const peerJob=await call('/api/chat/transcriptions','POST',{data,messageId},b);assert.equal((await call('/api/chat/transcriptions/'+peerJob.data.id,'GET',undefined,b)).data.status,'done');assert.equal((await call('/api/chat/messages','GET',undefined,b)).data.messages[0].transcript,'测试识别结果');
+  assert.deepEqual((await call(url,'GET',undefined,a)).data,{status:'done',text:'测试识别结果'});assert.equal(db.prepare('SELECT count(*) AS n FROM chat_messages').get().n,1);assert.equal((await call('/api/chat/messages','GET',undefined,a)).data.messages[0].transcript,'测试识别结果');assert.equal((await call('/api/chat/messages','GET',undefined,b)).data.messages[0].transcript,null);assert.equal((await call('/api/chat/history?kind=audio','GET',undefined,a)).data.messages[0].transcript,'测试识别结果');const peerJob=await call('/api/chat/transcriptions','POST',{data,messageId},b);assert.equal(peerJob.data.status,'done');assert.equal(peerJob.data.text,'测试识别结果');assert.equal(creates,1);assert.equal(shortCalls,2);assert.equal((await call('/api/chat/transcriptions/'+peerJob.data.id,'GET',undefined,b)).data.status,'done');assert.equal((await call('/api/chat/messages','GET',undefined,b)).data.messages[0].transcript,'测试识别结果');
   await call('/api/chat/messages/'+messageId+'/retract','POST',{},a);assert.equal((await call(url,'GET',undefined,a)).status,404);assert.equal(db.prepare('SELECT count(*) AS n FROM chat_transcriptions').get().n,0);db.prepare('UPDATE ledgers SET delete_at=? WHERE id=1').run(Date.now()+86400000);assert.equal((await call('/api/chat/transcriptions','POST',{data},a)).status,423);
  }finally{await new Promise(r=>server.close(r));db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('同步短音频请求格式及直接结果，空结果拒绝',async()=>{
+ const data=await wav(),env={TENCENT_ASR_SECRET_ID:'id',TENCENT_ASR_SECRET_KEY:'key'};
+ const recognizer=createSpeechRecognizer({env,fetcher:async(_,options)=>{assert.equal(options.headers['X-TC-Action'],'SentenceRecognition');const body=JSON.parse(options.body);assert.equal(body.VoiceFormat,'wav');assert.equal(body.EngSerViceType,'16k_zh');assert.equal(body.DataLen,data.length);assert.equal(Buffer.from(body.Data,'base64').equals(data),true);return {ok:true,json:async()=>({Response:{Result:' 快速结果 '}})};}});
+ assert.deepEqual(await recognizer.short(data),{status:'done',text:'快速结果'});
+ const empty=createSpeechRecognizer({env,fetcher:async()=>({ok:true,json:async()=>({Response:{Result:''}})})});await assert.rejects(empty.short(data),e=>e.status===422);
 });

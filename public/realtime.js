@@ -3,6 +3,7 @@ let liveSource=null,liveTimer=null,liveInterval=24000,liveRevision=null,liveDirt
 let liveClient='',liveMessages=[],livePeerKey='',livePeer=null,liveBusy=false,liveAgain=false;
 function stopRealtime(){clearTimeout(floatTimer);floatNotice=false;$('#presence-float').hidden=true;liveGeneration++;liveSource?.close();liveSource=null;clearTimeout(liveTimer);clearTimeout(liveRefreshTimer);liveDirty=false;livePending=false;liveRevision=null;livePeerKey='';livePeer=null;liveBusy=false;liveAgain=false;for(const id of ['presence-note','editor-presence-note','sync-note','editor-sync-note'])$('#'+id).hidden=true;}
 function refreshShared(){
+ if(typeof replyingMemory!=='undefined'&&replyingMemory)refreshMemoryReplies();
  if($('#editor').open){livePending=true;$('#sync-note').hidden=false;$('#editor-sync-note').hidden=false;return;}
  clearTimeout(liveRefreshTimer);liveRefreshTimer=setTimeout(()=>{if(currentUser)load();},100);
 }

@@ -1,6 +1,6 @@
 # 朝夕 · 恋爱万年历
 
-当前版本：**v1.7.1**。版本记录见 [CHANGELOG.md](CHANGELOG.md)。Node.js 24 + SQLite，使用 Nodemailer 发送邮件、lunar-javascript 计算农历和节气。
+当前版本：**v1.8.0**。版本记录见 [CHANGELOG.md](CHANGELOG.md)。Node.js 24 + SQLite，使用 Nodemailer 发送邮件、lunar-javascript 计算农历和节气。
 
 ## 个人设置、安全设置与岁月拾忆
 
@@ -213,3 +213,5 @@ Windows 与 Android 客户端默认连接 `https://love.11215739.xyz:11961/`，�
 ## 腾讯云语音转文字
 
 自己和对方已发送的语音支持右键/长按转写，文字直接显示在对应语音下方。服务器密钥配置与应用更新说明见 [语音转文字文档](docs/SPEECH.md)。
+
+回忆录按日期归组，同一天的多条回忆共享日期标题。每条回忆可继续发送文字回应，每个账号最多5条、每条2000字，双方可查看并按发送顺序展示；原视角编辑不计入回复条数。回复也包含在离线纪念册中。

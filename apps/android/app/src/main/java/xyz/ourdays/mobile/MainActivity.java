@@ -5,6 +5,10 @@ import android.app.Activity;
 import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.ClipData;
+import android.webkit.MimeTypeMap;
+import java.util.LinkedHashSet;
+import java.util.Locale;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
@@ -89,8 +93,8 @@ public class MainActivity extends Activity {
                 if (!trusted(Uri.parse(view.getUrl()))) { callback.onReceiveValue(null); return true; }
                 if (fileCallback != null) fileCallback.onReceiveValue(null);
                 fileCallback = callback;
-                try { startActivityForResult(params.createIntent(), PICK_FILE); }
-                catch (ActivityNotFoundException error) { fileCallback.onReceiveValue(null); fileCallback = null; toast("未找到文件选择器"); }
+                try { startActivityForResult(filePicker(params), PICK_FILE); }
+                catch (ActivityNotFoundException | SecurityException error) { finishFilePicker(null); toast("无法打开系统文件选择器"); }
                 return true;
             }
             @Override public void onPermissionRequest(PermissionRequest request) {
@@ -133,6 +137,39 @@ public class MainActivity extends Activity {
         web.loadUrl(BuildConfig.SERVER_URL);
     }
 
+    private Intent filePicker(WebChromeClient.FileChooserParams params) {
+        LinkedHashSet<String> types = new LinkedHashSet<>();
+        for (String accepted : params.getAcceptTypes()) {
+            if (accepted == null) continue;
+            for (String part : accepted.split(",")) {
+                String type = part.trim().toLowerCase(Locale.ROOT);
+                if (type.startsWith(".")) type = MimeTypeMap.getSingleton().getMimeTypeFromExtension(type.substring(1));
+                if (type != null && type.matches("[a-z0-9.+-]+/(?:[a-z0-9.+-]+|\\*)")) types.add(type);
+            }
+        }
+        String common = "*/*";
+        if (types.size() == 1) common = types.iterator().next();
+        else if (!types.isEmpty()) {
+            String family = types.iterator().next().split("/")[0];
+            boolean same = true;
+            for (String type : types) if (!type.startsWith(family + "/")) same = false;
+            if (same) common = family + "/*";
+        }
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType(common);
+        if (!types.isEmpty()) intent.putExtra(Intent.EXTRA_MIME_TYPES, types.toArray(new String[0]));
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, params.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        return intent;
+    }
+
+    private void finishFilePicker(Uri[] files) {
+        ValueCallback<Uri[]> callback = fileCallback;
+        fileCallback = null;
+        if (callback != null) callback.onReceiveValue(files);
+    }
+
     private void showError() {
         if (errorPanel != null) return;
         errorPanel = new LinearLayout(this); errorPanel.setOrientation(LinearLayout.VERTICAL);
@@ -155,7 +192,22 @@ public class MainActivity extends Activity {
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if (request == PICK_FILE && fileCallback != null) { fileCallback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result, data)); fileCallback = null; }
+        if (request == PICK_FILE && fileCallback != null) {
+            if (result != RESULT_OK || data == null || !trusted(Uri.parse(web.getUrl()))) { finishFilePicker(null); return; }
+            LinkedHashSet<Uri> files = new LinkedHashSet<>();
+            ClipData clips = data.getClipData();
+            if (clips != null) for (int i = 0; i < clips.getItemCount(); i++) files.add(clips.getItemAt(i).getUri());
+            else if (data.getData() != null) files.add(data.getData());
+            try {
+                for (Uri uri : files) {
+                    if (uri == null || !"content".equals(uri.getScheme())) throw new SecurityException();
+                    try (android.os.ParcelFileDescriptor descriptor = getContentResolver().openFileDescriptor(uri, "r")) {
+                        if (descriptor == null) throw new java.io.IOException();
+                    }
+                }
+                finishFilePicker(files.isEmpty() ? null : files.toArray(new Uri[0]));
+            } catch (java.io.IOException | SecurityException error) { finishFilePicker(null); toast("无法读取所选文件，请从系统文件选择器重新选择"); }
+        }
     }
     @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(request, permissions, results);

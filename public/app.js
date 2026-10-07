@@ -39,15 +39,15 @@ async function loadTimeline(){
     if(version!==timelineVersion||view!=='timeline')return;
     $('#timeline-summary').textContent=rows.length?`${rows.length} 段回忆 · ${new Set(rows.map(r=>r.day)).size} 个值得记住的日子 · 从最初到现在`:'这里会珍藏你们一起走过的日子。';
     if(!rows.length){const empty=el('div',undefined,'memoir-empty');empty.append(el('h3','你们的故事，从第一条回忆开始'),el('p','在日历上选择一个特别的日子，写下文字或放上照片。'));const add=el('button','＋ 写下第一条回忆','primary');add.onclick=()=>openEditor();empty.append(add);list.append(empty);return;}
-    let year='';
+    let year='',lastDay='',dayCards;
     for(const r of rows){
       if(r.day.slice(0,4)!==year){year=r.day.slice(0,4);list.append(el('h3',year+' 年','timeline-year'));}
-      const item=el('article',undefined,'timeline-item'),date=el('time',r.day.replaceAll('-','.'),'timeline-date');date.dateTime=r.day;
+      if(r.day!==lastDay){lastDay=r.day;const item=el('article',undefined,'timeline-item'),date=el('time',r.day.replaceAll('-','.'),'timeline-date');date.dateTime=r.day;dayCards=el('div',undefined,'timeline-day-cards');item.append(date,dayCards);list.append(item);}
       const card=el('div',undefined,'timeline-card');card.append(el('h3',r.title));
       card.append(conversation(r));
       const actions=el('div',undefined,'timeline-actions');
       const jump=el('button','查看这一天 ↗');jump.onclick=async()=>{selected=r.day;month=r.day.slice(0,7);await switchView('calendar');$('#selected-label').scrollIntoView({block:'center'});};
-      const edit=el('button','写下我的视角');edit.onclick=()=>openEditor(r);actions.append(edit,jump);card.append(actions);item.append(date,card);list.append(item);
+      const edit=el('button','写下我的视角');edit.onclick=()=>openEditor(r);actions.append(edit,jump);card.append(actions);dayCards.append(card);
     }
   }catch(e){if(version===timelineVersion){$('#timeline-summary').textContent='回忆暂时没有加载成功';$('#status').textContent=e.message;$('#timeline-retry').hidden=false;}}
   finally{if(version===timelineVersion)$('#memoir').setAttribute('aria-busy','false');}
@@ -99,3 +99,12 @@ $('#delete-memory-confirm').onclick=async()=>{
  catch(e){$('#delete-memory-error').textContent=e.message;}
  finally{button.disabled=false;}
 };
+
+let replyingMemory=null,replyGeneration=0,replySending=false;
+function replyBubble(reply){const bubble=el('section',undefined,'perspective'+(reply.author===currentUser?.id?' mine':''));bubble.append(el('small',reply.author_name+' · '+new Date(reply.created).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})),el('p',reply.body,'story-text'));return bubble;}
+function renderMemoryReplies(rows){const list=$('#memory-reply-list');list.replaceChildren();for(const reply of rows)list.append(replyBubble(reply));if(!rows.length)list.append(el('p','留下一句话，让这段回忆继续。','hint'));const used=rows.filter(r=>r.author===currentUser.id).length;$('#memory-reply-count').textContent='我的回应 '+used+'/5';$('#memory-reply-send').disabled=replySending||used>=5||Boolean(currentUser.lifecycle?.readonly);$('#memory-reply-form').elements.body.disabled=$('#memory-reply-send').disabled;}
+async function refreshMemoryReplies(){const memory=replyingMemory,generation=replyGeneration;if(!memory)return;try{const rows=await api('/api/memories/'+memory.id+'/replies');if(generation!==replyGeneration||!currentUser)return;memory.replies=rows;renderMemoryReplies(rows);}catch(error){if(generation===replyGeneration)$('#memory-reply-error').textContent=error.message;}}
+function openMemoryReplies(memory){replyingMemory=memory;++replyGeneration;$('#memory-reply-title').textContent=memory.title+' · 继续回应';$('#memory-reply-form').reset();$('#memory-reply-error').textContent='';renderMemoryReplies(memory.replies||[]);$('#memory-reply-dialog').showModal();refreshMemoryReplies();}
+$('#memory-reply-close').onclick=()=>$('#memory-reply-dialog').close();
+$('#memory-reply-dialog').addEventListener('close',()=>{replyingMemory=null;++replyGeneration;});
+$('#memory-reply-form').onsubmit=async event=>{event.preventDefault();const memory=replyingMemory,generation=replyGeneration,form=event.target;if(!memory||replySending)return;replySending=true;$('#memory-reply-send').disabled=true;$('#memory-reply-error').textContent='';try{const rows=await api('/api/memories/'+memory.id+'/replies','POST',{body:form.elements.body.value});if(generation!==replyGeneration||!currentUser)return;memory.replies=rows;form.reset();renderMemoryReplies(rows);await load();}catch(error){if(generation===replyGeneration)$('#memory-reply-error').textContent=error.message;}finally{replySending=false;if(replyingMemory&&currentUser)renderMemoryReplies(replyingMemory.replies||[]);}};
