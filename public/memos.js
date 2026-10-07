@@ -23,7 +23,8 @@ function renderMemos(){
  for(const note of memoData.notes)if(!summarized.has(note.id))entries.push({note,text:note.body,kind:note.ai_category||'待整理',extracted:false});
  function group(name,notes,category=null){
   const card=el('section',undefined,'memo-group'),heading=el('div',undefined,'memo-group-heading');heading.append(el('h3',name),el('small',category?'手动维护 · 不参与 AI':name==='待整理'?'等待整理':'AI 分类 · 原文保留'));
-  card.append(heading);
+  card.dataset.key=category?'custom:'+category.id:name==='待整理'?'pending':'ai:'+name;
+  const handle=el('button','⠿','memo-drag-handle');handle.type='button';handle.setAttribute('aria-label','拖动排序 '+name);handle.title='拖动调整分类顺序，也可使用方向键';handle.disabled=readOnly||memoBusy;heading.prepend(handle);bindMemoDrag(handle,card,list);card.append(heading);
   if(!notes.length)card.append(el('p','还没有记录。','hint'));
   const ul=el('ul');for(const {note,text,extracted} of notes){const li=el('li');li.append(el('p',text,'memo-text'));
    ul.append(li);
@@ -34,6 +35,7 @@ function renderMemos(){
  const pending=automatic.filter(e=>e.kind==='待整理');if(pending.length)group('待整理',pending);
  for(const kind of new Set([...(memoData.ai_categories||[]),...automatic.filter(e=>e.kind!=='待整理').map(e=>e.kind)])){const notes=automatic.filter(e=>e.kind===kind);if(notes.length)group(kind,notes);}
  for(const category of memoData.categories)group(category.name,entries.filter(e=>e.note.category_id===category.id),category);
+ const cards=[...list.querySelectorAll('.memo-group')],rank=new Map((memoData.order||[]).map((key,index)=>[key,index]));cards.sort((a,b)=>(rank.get(a.dataset.key)??1000)-(rank.get(b.dataset.key)??1000));for(const card of cards)list.append(card);
  renderMemoOriginals();
 }
 async function memoMutate(url,method,data,closeEditor=false){
@@ -66,7 +68,18 @@ function renderMemoOriginals(){
  for(const note of [...memoData.notes].sort((a,b)=>(b.day||today).localeCompare(a.day||today)||b.id-a.id)){const day=note.day||today;if(!days.has(day))days.set(day,[]);days.get(day).push(note);}
  if(memoData.categories.length){const categories=el('details',undefined,'memo-category-management');categories.append(el('summary','管理自定义分类'));for(const category of memoData.categories){const row=el('div',undefined,'memo-actions'),remove=el('button','删除分类');remove.disabled=readOnly||memoBusy;remove.onclick=()=>memoMutate('/api/memos/categories/'+category.id,'DELETE',{});row.append(el('span',category.name),remove);categories.append(row);}list.append(categories);}
  if(!days.size)list.append(el('p','还没有记录，先新增一件小事吧。','memo-empty'));
- for(const [day,notes] of days){const section=el('section',undefined,'memo-diary-day');for(const note of notes){const article=el('article',undefined,'memo-diary-entry');article.append(el('h4',dateTitle(day)),el('p',note.body,'memo-text'));const category=memoData.categories.find(c=>c.id===note.category_id);article.append(el('small',category?.name||note.ai_category||'待整理','hint'));const actions=el('div',undefined,'memo-actions'),edit=el('button','编辑'),remove=el('button','删除');edit.disabled=remove.disabled=readOnly||memoBusy;edit.onclick=()=>openMemoEditor(note);remove.onclick=()=>{if(confirm('删除这条原文及从中提取的全部要点？'))memoMutate('/api/memos/notes/'+note.id,'DELETE',{});};actions.append(edit,remove);article.append(actions);section.append(article);}list.append(section);}
+ for(const [day,notes] of days){const section=el('section',undefined,'memo-diary-day');for(const note of notes){const article=el('article',undefined,'memo-diary-entry');article.append(el('h4',dateTitle(day)),el('p',note.body,'memo-text'));const actions=el('div',undefined,'memo-actions'),edit=el('button','编辑'),remove=el('button','删除');edit.disabled=remove.disabled=readOnly||memoBusy;edit.onclick=()=>openMemoEditor(note);remove.onclick=()=>{if(confirm('删除这条原文及从中提取的全部要点？'))memoMutate('/api/memos/notes/'+note.id,'DELETE',{});};actions.append(edit,remove);article.append(actions);section.append(article);}list.append(section);}
 }
 $('#memo-originals-open').onclick=()=>{if(!memoData)return;renderMemoOriginals();$('#memo-originals-dialog').showModal();};
 $('#memo-originals-close').onclick=()=>$('#memo-originals-dialog').close();
+
+function bindMemoDrag(handle,card,list){
+ let start=null,changed=false;
+ const order=()=>[...list.querySelectorAll('.memo-group')].map(c=>c.dataset.key);
+ const save=()=>{const visible=order(),hidden=(memoData.order||[]).filter(key=>!visible.includes(key)&&(['pending',...(memoData.ai_categories||[]).map(name=>'ai:'+name),...memoData.categories.map(c=>'custom:'+c.id)]).includes(key));memoMutate('/api/memos/order','POST',{order:[...visible,...hidden]});};
+ handle.addEventListener('pointerdown',event=>{if(handle.disabled||event.button!==0)return;start={id:event.pointerId,x:event.clientX,y:event.clientY};changed=false;handle.setPointerCapture(event.pointerId);event.preventDefault();});
+ handle.addEventListener('pointermove',event=>{if(!start||start.id!==event.pointerId)return;if(Math.hypot(event.clientX-start.x,event.clientY-start.y)<6&&!card.classList.contains('dragging'))return;card.classList.add('dragging');const target=document.elementFromPoint(event.clientX,event.clientY)?.closest('.memo-group');if(!target||target===card||target.parentElement!==list)return;const cards=[...list.children],forward=cards.indexOf(target)>cards.indexOf(card);list.insertBefore(card,forward?target.nextSibling:target);changed=true;});
+ const finish=event=>{if(!start||start.id!==event.pointerId)return;start=null;card.classList.remove('dragging');if(changed){changed=false;save();}};
+ handle.addEventListener('pointerup',finish);handle.addEventListener('pointercancel',()=>{start=null;changed=false;card.classList.remove('dragging');if(memoData)renderMemos();});
+ handle.addEventListener('keydown',event=>{if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key)||handle.disabled)return;event.preventDefault();const backwards=['ArrowUp','ArrowLeft'].includes(event.key),target=backwards?card.previousElementSibling:card.nextElementSibling;if(!target?.classList.contains('memo-group'))return;list.insertBefore(card,backwards?target:target.nextSibling);save();});
+}

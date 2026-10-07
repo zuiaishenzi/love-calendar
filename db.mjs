@@ -69,6 +69,7 @@ export function openDatabase(dir) {
  CREATE INDEX IF NOT EXISTS memo_notes_user ON memo_notes(user_id);
  CREATE TABLE IF NOT EXISTS memo_summaries(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,content TEXT NOT NULL);`);
  db.exec('CREATE TABLE IF NOT EXISTS memo_ai_categories(user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(user_id,name))');
+ db.exec('CREATE TABLE IF NOT EXISTS memo_display_order(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,content TEXT NOT NULL)');
  for(const [name,type] of [['day','TEXT'],['title',"TEXT NOT NULL DEFAULT ''"]])if(!db.prepare('PRAGMA table_info(memo_notes)').all().some(c=>c.name===name))db.exec(`ALTER TABLE memo_notes ADD COLUMN ${name} ${type}`);
  if(!db.prepare('PRAGMA table_info(memo_notes)').all().some(c=>c.name==='ai_category')){
   db.exec('ALTER TABLE memo_notes ADD COLUMN ai_category TEXT');

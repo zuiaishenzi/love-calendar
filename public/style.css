@@ -395,3 +395,7 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
 .memo-diary-entry h4{margin:0 0 10px;font-size:16px;overflow-wrap:anywhere}
 .memo-diary-entry .memo-actions{margin-top:10px}
 @media(max-width:760px){.memo-diary-fields{grid-template-columns:1fr}#memo-originals-open{align-self:flex-end;margin-top:-2px}}
+
+.memo-group ul{margin-top:10px}.memo-group li{padding:3px 0 5px}.memo-group .memo-text{margin:0;line-height:1.5}
+.memo-group-heading .memo-drag-handle{margin:0;padding:3px 6px;font-size:20px;line-height:1;color:#b38b9c;background:transparent;border:0;cursor:grab;touch-action:none;flex:none}
+.memo-group-heading .memo-drag-handle:active{cursor:grabbing}.memo-group.dragging{border-color:#c18bA3;box-shadow:0 3px 14px #9b58752a;background:#fff8fb}

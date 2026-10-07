@@ -39,6 +39,7 @@ test('私密备忘隔离、自定义分类不发送AI、原文保留、只读和
   assert.equal((await call('/api/memos/categories/'+cid,'DELETE',{},a)).status,409);
   const organized=await call('/api/memos/organize','POST',{},a);assert.equal(organized.status,200);
   assert.deepEqual(received,[{id:nid,body:'清淡饮食，咖啡不加糖'}]);assert.equal(organized.data.notes[0].body,'秘密旅行地点');assert.equal(organized.data.notes[1].body,'清淡饮食，咖啡不加糖');
+  const order=['custom:'+cid,'ai:饮食','pending'];assert.equal((await call('/api/memos/order','POST',{order},a)).status,200);assert.deepEqual((await call('/api/memos','GET',undefined,a)).data.order,order);assert.deepEqual((await call('/api/memos','GET',undefined,b)).data.order,[]);assert.equal((await call('/api/memos/order','POST',{order},b)).status,400);assert.equal((await call('/api/memos/order','POST',{order:['pending','pending']},a)).status,400);
   assert.deepEqual(organized.data.ai_categories,['饮食']);assert.equal(organized.data.notes[1].ai_category,'饮食');
   const placed=await call('/api/memos/notes','POST',{body:'喜欢热茶',ai_category:'饮食'},a);assert.equal(placed.status,200);assert.equal(placed.data.notes.at(-1).ai_category,'饮食');assert.equal(placed.data.summary[0].id,nid);
   assert.equal((await call('/api/memos/notes','POST',{body:'非法分类',ai_category:'饮食'},b)).status,400);
@@ -50,9 +51,10 @@ test('私密备忘隔离、自定义分类不发送AI、原文保留、只读和
   db.prepare("UPDATE ledgers SET delete_at=?,delete_kind='ledger' WHERE id=1").run(Date.now()+100000);
   assert.equal((await call('/api/memos/notes','POST',{body:'禁止修改'},a)).status,423);
   assert.equal((await call('/api/memos/organize','POST',{},a)).status,423);
+  assert.equal((await call('/api/memos/order','POST',{order:['pending']},a)).status,423);
   assert.equal((await call('/api/memos','GET',undefined,a)).status,200);
   db.prepare('UPDATE ledgers SET delete_at=1 WHERE id=1').run();app.lifecycle.purge();
-  for(const table of ['memo_notes','memo_categories','memo_summaries','memo_ai_categories'])assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,0);
+  for(const table of ['memo_notes','memo_categories','memo_summaries','memo_ai_categories','memo_display_order'])assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,0);
  }finally{await new Promise(r=>server.close(r));db.close();rmSync(dir,{recursive:true,force:true});}
 });
 

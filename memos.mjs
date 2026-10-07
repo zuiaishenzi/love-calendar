@@ -18,9 +18,14 @@ export function memoService(db,organizer){
  const snapshot=id=>db.prepare('SELECT id,body,category_id,ai_category,day,title FROM memo_notes WHERE user_id=? ORDER BY id').all(id);
  const invalidate=(id,note)=>{const row=db.prepare('SELECT content FROM memo_summaries WHERE user_id=?').get(id);if(!row)return;const items=JSON.parse(row.content).filter(item=>item.id!==note);if(items.length)db.prepare('UPDATE memo_summaries SET content=? WHERE user_id=?').run(JSON.stringify(items),id);else db.prepare('DELETE FROM memo_summaries WHERE user_id=?').run(id);};
  const required=(value,max,label)=>{if(typeof value!=='string'||!value.trim()||value.length>max)throw fail(400,label);return value.trim();};
- function list(id){return {categories:db.prepare('SELECT id,name FROM memo_categories WHERE user_id=? ORDER BY id').all(id),ai_categories:db.prepare('SELECT name FROM memo_ai_categories WHERE user_id=? ORDER BY rowid').all(id).map(c=>c.name),notes:snapshot(id),summary:JSON.parse(db.prepare('SELECT content FROM memo_summaries WHERE user_id=?').get(id)?.content||'null'),ai_ready:organizer.ready};}
+ function list(id){return {order:JSON.parse(db.prepare('SELECT content FROM memo_display_order WHERE user_id=?').get(id)?.content||'[]'),categories:db.prepare('SELECT id,name FROM memo_categories WHERE user_id=? ORDER BY id').all(id),ai_categories:db.prepare('SELECT name FROM memo_ai_categories WHERE user_id=? ORDER BY rowid').all(id).map(c=>c.name),notes:snapshot(id),summary:JSON.parse(db.prepare('SELECT content FROM memo_summaries WHERE user_id=?').get(id)?.content||'null'),ai_ready:organizer.ready};}
  async function route(req,url,user,input,check){
   const id=user.id,p=url.pathname;
+  if(p==='/api/memos/order'&&req.method==='POST'){
+   check();const allowed=new Set(['pending',...db.prepare('SELECT name FROM memo_ai_categories WHERE user_id=?').all(id).map(c=>'ai:'+c.name),...db.prepare('SELECT id FROM memo_categories WHERE user_id=?').all(id).map(c=>'custom:'+c.id)]);
+   if(!Array.isArray(input.order)||input.order.length>100||new Set(input.order).size!==input.order.length||input.order.some(key=>typeof key!=='string'||!allowed.has(key)))throw fail(400,'分类顺序无效');
+   db.prepare('INSERT INTO memo_display_order(user_id,content) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET content=excluded.content').run(id,JSON.stringify(input.order));return list(id);
+  }
   if(p==='/api/memos'&&req.method==='GET')return list(id);
   if(p==='/api/memos/notes'&&req.method==='POST'){
    check();const body=required(input.body,20000,'请填写20000字以内的备忘'),category=input.category_id??null;
