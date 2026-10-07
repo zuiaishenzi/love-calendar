@@ -186,3 +186,25 @@ test('回忆录同一天共享日期节点，保留独立回忆卡片',async()=>
  const rows=[{id:1,day:'2026-10-07',title:'A'},{id:2,day:'2026-10-07',title:'B'},{id:3,day:'2026-10-08',title:'C'}];const context={timelineVersion:0,view:'timeline',api:async()=>rows,$:key=>{if(!nodes.has(key))nodes.set(key,new Node());return nodes.get(key);},el:(...args)=>new Node(...args),conversation:()=>new Node(),Set};
  const load=runInNewContext(source.slice(source.indexOf('async function loadTimeline(){'),source.indexOf("$('#calendar-view').onclick"))+';loadTimeline',context);await load();const days=nodes.get('#timeline-list').children.filter(n=>n.cls==='timeline-item');assert.equal(days.length,2);assert.equal(days[0].children[0].dateTime,'2026-10-07');assert.equal(days[0].children[1].children.length,2);assert.equal(days[1].children[1].children.length,1);
 });
+
+test('回忆卡片展示继续回应入口、已有回复及点击行为',()=>{
+ const source=readFileSync(new URL('./public/app.js',import.meta.url),'utf8');class Node{constructor(tag,text,cls){this.tag=tag;this.text=text;this.cls=cls;this.children=[];}append(...items){this.children.push(...items);}}let opened=null;const memory={id:12,perspectives:[],replies:[{body:'回应'}]};const render=runInNewContext(source.slice(source.indexOf('function conversation(r){'),source.indexOf('function previews()'))+';conversation',{el:(...args)=>new Node(...args),currentUser:{id:1},replyBubble:r=>new Node('p',r.body),openMemoryReplies:r=>{opened=r;}});const card=render(memory),button=card.children.find(n=>n.cls==='memory-reply-open');assert.ok(button);assert.equal(button.type,'button');assert.equal(button.text,'继续回应 · 1');button.onclick();assert.equal(opened,memory);assert.ok(card.children.find(n=>n.cls==='memory-replies'));
+});
+
+test('录音错误区分权限拒绝、设备占用及启动中断',async()=>{
+ const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8'),code=source.slice(source.indexOf('async function microphone(){'),source.indexOf("$('#chat-record').onclick"));
+ for(const [name,text] of [['NotAllowedError','全局麦克风'],['NotReadableError','其他应用'],['NotFoundError','未找到'],['AbortError','中断']]){const microphone=runInNewContext(code+';microphone',{navigator:{mediaDevices:{getUserMedia:async()=>{throw {name};}}},Error});await assert.rejects(microphone(),error=>error.message.includes(text));}
+ const stream={};const microphone=runInNewContext(code+';microphone',{navigator:{mediaDevices:{getUserMedia:async()=>stream}},Error});assert.equal(await microphone(),stream);
+});
+
+test('App更新接口匿名读取、下载校验、发布单调构建号及路径隔离',async()=>{
+ const {writeFileSync,mkdirSync}=await import('node:fs'),{spawnSync}=await import('node:child_process');const dir=mkdtempSync(path.join(os.tmpdir(),'love-app-update-')),folder=path.join(dir,'app-updates'),apk=path.join(dir,'fixture.apk');writeFileSync(apk,Buffer.from([0x50,0x4b,3,4,1,2,3]));const app=createApplication({dataDir:dir,mailer:{ready:false}});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+app.server.address().port;
+ try{
+  assert.deepEqual(await (await fetch(origin+'/api/app/update')).json(),{available:false});
+  const publish=code=>spawnSync(process.execPath,['scripts/publish-app.mjs',apk,folder,String(code),'1.8.0','升级测试'],{encoding:'utf8'});assert.equal(publish(10801).status,0);assert.notEqual(publish(10801).status,0);assert.notEqual(publish(10800).status,0);
+  const imported=path.join(dir,'imported'),importRelease=()=>spawnSync(process.execPath,['scripts/import-app-release.mjs',folder,imported],{encoding:'utf8'});assert.equal(importRelease().status,0);assert.equal(importRelease().status,0);
+  const result=await fetch(origin+'/api/app/update'),info=await result.json();assert.equal(result.status,200);assert.equal(info.versionCode,10801);assert.equal(info.packageId,'xyz.ourdays.mobile');assert.match(info.sha256,/^[a-f0-9]{64}$/);
+  const download=await fetch(origin+info.downloadUrl),data=Buffer.from(await download.arrayBuffer());assert.equal(download.headers.get('content-type'),'application/vnd.android.package-archive');assert.equal(createHash('sha256').update(data).digest('hex'),info.sha256);assert.equal(data.length,info.size);assert.equal((await fetch(origin+'/api/app/download/missing.apk')).status,404);assert.equal((await fetch(origin+'/api/app/update',{method:'POST'})).status,405);
+  writeFileSync(path.join(folder,'latest.json'),JSON.stringify({...info,sha256:'a'.repeat(64)}));assert.notEqual(importRelease().status,0);writeFileSync(path.join(folder,'latest.json'),JSON.stringify({...info,filename:'../fixture.apk'}));assert.notEqual(importRelease().status,0);assert.equal((await fetch(origin+'/api/app/update')).status,503);
+ }finally{await new Promise(r=>app.server.close(r));app.db.close();rmSync(dir,{recursive:true,force:true});}
+});

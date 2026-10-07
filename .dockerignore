@@ -12,3 +12,7 @@ test-data-*
 local-preview-data
 apps/
 .github/
+
+**/*.apk
+**/*.aab
+app-updates/

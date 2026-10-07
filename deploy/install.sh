@@ -21,6 +21,7 @@ if [[ ! -f "$base/repository" ]]; then
   printf '%s\n' 'main' > "$base/branch"
 fi
 install -m 700 "$source_dir/update.sh" "$base/bin/update.sh"
+install -m 700 "$source_dir/sync-app-updates.sh" "$base/bin/sync-app-updates.sh"
 install -m 600 "$source_dir/compose.yaml" "$base/compose.yaml"
 install -m 644 "$source_dir/love-calendar-update.service" /etc/systemd/system/
 install -m 644 "$source_dir/love-calendar-update.timer" /etc/systemd/system/

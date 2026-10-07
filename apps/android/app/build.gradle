@@ -6,7 +6,7 @@ android {
         applicationId 'xyz.ourdays.mobile'
         minSdk 26
         targetSdk 35
-        versionCode 10800
+        versionCode 10801
         versionName '1.8.0'
         buildConfigField 'String', 'SERVER_URL', '"https://love.11215739.xyz:11961/"'
     }

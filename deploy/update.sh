@@ -16,7 +16,8 @@ if [[ ! -d "$base/source.git" ]]; then git init --bare "$base/source.git"; fi
 git -c http.version=HTTP/1.1 --git-dir="$base/source.git" fetch --depth=1 --no-tags "$repo" "+refs/heads/$branch:refs/heads/deploy"
 revision=$(git --git-dir="$base/source.git" rev-parse refs/heads/deploy)
 old=$(cat "$base/current" 2>/dev/null || true)
-if [[ "$revision" == "$old" ]]; then exit 0; fi
+sync_apps(){ if [[ -f "$base/app-repository" && -f "$base/bin/sync-app-updates.sh" ]]; then if ! bash "$base/bin/sync-app-updates.sh"; then echo "APK sync failed; website and previously published APK remain available."; fi; fi; }
+if [[ "$revision" == "$old" ]]; then sync_apps; exit 0; fi
 if [[ "${1:-}" != '--retry' && -f "$base/failed" && "$(cat "$base/failed")" == "$revision" ]]; then
   echo "Revision $revision failed previously. Fix GitHub or run update.sh --retry."
   exit 1
@@ -68,3 +69,4 @@ printf '%s\n' "$revision" > "$base/current.tmp"
 mv "$base/current.tmp" "$base/current"
 trap - ERR INT TERM
 echo "Deployed $revision; backup: $backup"
+sync_apps

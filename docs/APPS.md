@@ -2,7 +2,7 @@
 
 两端默认连接 `https://love.11215739.xyz:11961/`，复用服务器网页和账号数据，源码版本为 1.8.0。网页更新后应用重新打开即可加载新功能。需联网，退出应用后的消息推送暂未实现。
 
-所有客户端安装包与构建产物统一保存到仓库同级的 ../love-app/（本机 E:\codex\love-app）。后续继续沿用，安装包不提交 Git。
+所有客户端安装包与构建产物统一保存到仓库同级的 ../love-app/（本机 E:\codex\love-app）。后续继续沿用，安装包不提交公开源码仓库；发布 APK 与清单存放在独立私有 love-app 仓库。
 
 ## Windows
 
@@ -38,10 +38,14 @@ Android Studio 打开 `apps/android`，安装 JDK 17、Android SDK 35、Build To
 
 ## GitHub 打包
 
-将代码上传 GitHub 后，在 Actions 找到 **Build clients**，点击 **Run workflow**。完成后在该次运行的 Artifacts 下载 Windows 安装包和 Android 测试 APK。此流程只创建构建产物，不发布 Release，不部署服务器。
+将代码上传 GitHub 后，在 Actions 找到 **Build clients**，点击 **Run workflow**。此流程仅验证构建，不在公开仓库上传安装包 Artifact。正式安装包使用本机固定签名构建，发布到独立私有 love-app 仓库，服务器拉取后提供更新下载。
 
 ## 验收
 
 正式使用前请在 Windows 和 Android 真机分别测试：账号登录与重新打开、文字与图片消息、麦克风拒绝/允许/撤销、录音播放与下载、回忆视频上传与播放、历史检索、多选与保存回忆、软键盘输入、返回键关闭聊天、断网后的重新连接。
 
 构建依据：[Electron 安全配置](https://www.electronjs.org/docs/latest/tutorial/security)、[Android WebChromeClient](https://developer.android.com/reference/android/webkit/WebChromeClient)、[AGP 8.9 工具版本要求](https://developer.android.com/build/releases/agp-8-9-0-release-notes)。
+
+录音授权修复包：`../love-app/OurDays-1.8.0-Android-microphone-fix.apk`。系统授权后等待 Activity 回到前台，再授予本站 WebView 麦克风权限；取消的请求不继续授权。本次保持版本号不变，需要安装修复包；网页错误分类需更新服务器。
+
+应用内更新服务、首次安装及后续发布步骤见 [Android 更新](APP-UPDATES.md)。当前更新版内部构建号为 10801，显示版本不变。

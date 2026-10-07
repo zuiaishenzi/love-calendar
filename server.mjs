@@ -1,3 +1,4 @@
+import {appUpdates} from './app-updates.mjs';
 import {createRealtime} from './realtime.mjs';
 import sharp from 'sharp';
 import http from 'node:http';
@@ -27,6 +28,7 @@ const cleanup=setInterval(()=>{try{lifecycle.purge();}catch{console.error('账�
 const realtime=createRealtime(accounts.authenticate,lifecycle.status);
 const memos=memoService(db,memoOrganizer);
 const chat=chatService(db,(user,type)=>{if(type==='memory')realtime.changed(user);else realtime.chat(user);},{speechRecognizer});
+const updateApp=appUpdates(process.env.APP_UPDATE_DIR||path.join(dataDir,'app-updates'));
 const pendingThumbnails=new Map();
 const avatarAssets=new Map();
 function memoryReplies(id){return db.prepare('SELECT r.id,r.author,r.body,r.created,u.name AS author_name FROM memory_replies r JOIN users u ON u.id=r.author WHERE r.memory_id=? ORDER BY r.id').all(id);}
@@ -43,6 +45,7 @@ const server=http.createServer(async(req,res)=>{
   const send=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data));};
   try {
     const url=new URL(req.url,'http://localhost');
+    if(url.pathname==='/api/app/update'||url.pathname.startsWith('/api/app/download/'))return updateApp(req,res,url);
     if(!['GET','HEAD'].includes(req.method)) {
       const origin=process.env.APP_ORIGIN || `http://${req.headers.host}`;
       if(req.headers.origin!==origin) throw fail(403,'请求来源不正确');

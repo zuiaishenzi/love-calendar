@@ -36,16 +36,18 @@ import android.widget.Toast;
 public class MainActivity extends Activity {
     private static final int PICK_FILE = 10, RECORD_AUDIO = 11;
     private WebView web;
+    private AppUpdater appUpdater;
     private FrameLayout root;
     private LinearLayout errorPanel;
     private ValueCallback<Uri[]> fileCallback;
     private PermissionRequest audioRequest;
+    private boolean audioPermissionReady=false, activityResumed=false;
     private View fullScreen;
     private WebChromeClient.CustomViewCallback fullScreenCallback;
 
     private boolean trusted(Uri uri) {
         Uri base = Uri.parse(BuildConfig.SERVER_URL);
-        return uri != null && "https".equals(uri.getScheme()) && base.getHost().equalsIgnoreCase(uri.getHost()) && base.getPort() == uri.getPort();
+        return uri != null && "https".equals(uri.getScheme()) && base.getHost().equalsIgnoreCase(uri.getHost()) && (base.getPort() == -1 ? 443 : base.getPort()) == (uri.getPort() == -1 ? 443 : uri.getPort());
     }
 
     @Override public void onCreate(Bundle saved) {
@@ -62,10 +64,12 @@ public class MainActivity extends Activity {
                 return insets;
             });
         }
+        appUpdater=new AppUpdater(this);
         web = new WebView(this);
         web.setBackgroundColor(Color.rgb(250, 246, 248));
         root.addView(web, new FrameLayout.LayoutParams(-1, -1));
         WebSettings settings = web.getSettings();
+        settings.setUserAgentString(settings.getUserAgentString()+" OurDaysAndroid/"+BuildConfig.VERSION_CODE);
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(false);
@@ -76,6 +80,7 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if(trusted(request.getUrl())&&"/app/check-update".equals(request.getUrl().getPath())&&request.isForMainFrame()&&request.hasGesture()&&trusted(Uri.parse(view.getUrl()))){appUpdater.check(true);return true;}
                 if (trusted(request.getUrl())) return false;
                 if (request.isForMainFrame() && request.hasGesture()) openExternal(request.getUrl());
                 return true;
@@ -99,17 +104,15 @@ public class MainActivity extends Activity {
             }
             @Override public void onPermissionRequest(PermissionRequest request) {
                 runOnUiThread(() -> {
-                    String[] resources = request.getResources();
-                    if (!trusted(request.getOrigin()) || resources.length != 1 || !PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resources[0])) { request.deny(); return; }
-                    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) request.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
-                    else {
-                        if (audioRequest != null) audioRequest.deny();
-                        audioRequest = request;
-                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, RECORD_AUDIO);
-                    }
+                    boolean audio=false;for(String resource:request.getResources())if(PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource))audio=true;
+                    if (!trusted(request.getOrigin()) || !trusted(Uri.parse(web.getUrl())) || !audio) { request.deny(); return; }
+                    if(audioRequest!=null){audioRequest.deny();audioRequest=null;}
+                    audioRequest=request;audioPermissionReady=checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED;
+                    if(audioPermissionReady)completeAudioPermission();
+                    else requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, RECORD_AUDIO);
                 });
             }
-            @Override public void onPermissionRequestCanceled(PermissionRequest request) { if (audioRequest == request) audioRequest = null; }
+            @Override public void onPermissionRequestCanceled(PermissionRequest request) { if (audioRequest == request) {audioRequest = null;audioPermissionReady=false;} }
             @Override public void onShowCustomView(View view, CustomViewCallback callback) {
                 if (fullScreen != null) { callback.onCustomViewHidden(); return; }
                 fullScreen = view; fullScreenCallback = callback;
@@ -135,6 +138,7 @@ public class MainActivity extends Activity {
             } catch (RuntimeException error) { toast("下载失败，请检查网络和可用存储空间"); }
         });
         web.loadUrl(BuildConfig.SERVER_URL);
+        root.postDelayed(()->{if(!isFinishing())appUpdater.check(false);},2000);
     }
 
     private Intent filePicker(WebChromeClient.FileChooserParams params) {
@@ -192,6 +196,7 @@ public class MainActivity extends Activity {
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if(request==30){appUpdater.installationPermissionResult();return;}
         if (request == PICK_FILE && fileCallback != null) {
             if (result != RESULT_OK || data == null || !trusted(Uri.parse(web.getUrl()))) { finishFilePicker(null); return; }
             LinkedHashSet<Uri> files = new LinkedHashSet<>();
@@ -212,18 +217,26 @@ public class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(request, permissions, results);
         if (request == RECORD_AUDIO && audioRequest != null) {
-            if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED && trusted(Uri.parse(web.getUrl()))) audioRequest.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
-            else audioRequest.deny();
-            audioRequest = null;
+            audioPermissionReady=checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED;
+            if(audioPermissionReady)root.post(this::completeAudioPermission);
+            else {PermissionRequest pending=audioRequest;audioRequest=null;pending.deny();}
         }
     }
+    private void completeAudioPermission(){
+        if(!activityResumed||!audioPermissionReady||audioRequest==null)return;
+        PermissionRequest pending=audioRequest;audioRequest=null;audioPermissionReady=false;
+        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED&&trusted(pending.getOrigin())&&trusted(Uri.parse(web.getUrl())))pending.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+        else pending.deny();
+    }
+    @Override protected void onResume(){super.onResume();activityResumed=true;if(root!=null)root.post(this::completeAudioPermission);}
+
     @Override public void onBackPressed() {
         if (fullScreen != null) { hideFullScreen(); return; }
         web.evaluateJavascript("(()=>{const d=document.querySelector('dialog[open]');if(!d)return false;if(d.requestClose)d.requestClose();else{const e=new Event('cancel',{cancelable:true});if(d.dispatchEvent(e))d.close();}return true;})()", value -> {
             if (!"true".equals(value)) { if (web.canGoBack()) web.goBack(); else super.onBackPressed(); }
         });
     }
-    @Override protected void onPause() { CookieManager.getInstance().flush(); super.onPause(); }
+    @Override protected void onPause() { activityResumed=false;CookieManager.getInstance().flush(); super.onPause(); }
     @Override protected void onDestroy() {
         if (audioRequest != null) { audioRequest.deny(); audioRequest = null; }
         if (fileCallback != null) { fileCallback.onReceiveValue(null); fileCallback = null; }

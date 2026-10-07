@@ -88,3 +88,5 @@ $('#lifecycle-form').onsubmit=async event=>{event.preventDefault();const b=$('#l
  else $('#lifecycle-error').textContent='你的心意已确认，正在等对方。';refreshSettings();
  }catch(e){$('#lifecycle-error').textContent=e.message;}finally{b.disabled=false;renderLifecycleProgress();}};
 setInterval(()=>{if(currentUser&&$('#lifecycle-dialog').open)renderLifecycleProgress();},1000);
+
+if(navigator.userAgent.includes('OurDaysAndroid/'))$('#android-update-entry').hidden=false;
