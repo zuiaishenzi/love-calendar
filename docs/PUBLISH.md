@@ -99,3 +99,21 @@ sudo bash /opt/love-calendar/bin/sync-app-updates.sh
 ```
 
 源码测试失败不会切换网站；APK 拉取或校验失败保留上一安装包并记录错误，不回滚已成功更新的网站。安装包保存在服务器现有数据挂载下，不需要更改 Compose。显示版本按正式发布节奏更新，原生新包只需递增 versionCode。
+
+## HTTPS Token 访问私库（替代 SSH 部署密钥）
+
+GitHub 创建 Fine-grained personal access token：Resource owner 为 zuiaishenzi，Repository access 仅选择 love-app，Repository permissions 的 Contents 为 Read-only。服务器使用 HTTPS 仓库地址，Token 存 /opt/love-calendar/shared/app-repository-token，root所有、权限600。不要把 Token 写到仓库 URL、.env、Git 或 App。
+
+先上传更新的源码，并替换服务器的 sync-app-updates.sh；原脚本仅支持 SSH。以 root 执行：
+
+```bash
+umask 077
+read -rsp 'GitHub Token: ' app_token; printf '\n'
+printf '%s\n' "$app_token" > /opt/love-calendar/shared/app-repository-token
+unset app_token
+chmod 600 /opt/love-calendar/shared/app-repository-token
+printf '%s\n' 'https://github.com/zuiaishenzi/love-app.git' > /opt/love-calendar/app-repository
+bash /opt/love-calendar/bin/sync-app-updates.sh
+```
+
+后续继续执行 update.sh。Token 过期后用同样方式替换文件，无需重新创建应用容器。脚本只在拉取私库时读取 Token，不挂载进网站容器。
