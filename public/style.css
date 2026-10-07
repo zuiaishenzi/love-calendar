@@ -383,7 +383,10 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
  body.android-app .bottom{margin-top:4px;margin-bottom:3px}
 }
 
-.memory-replies{border-top:0;padding-top:0;margin-top:0}
+.memory-replies{display:flex;flex-direction:column;gap:14px;border-top:0;padding-top:0;margin-top:0;min-width:0}
+.memory-replies .perspective,#memory-reply-list .perspective{margin:0;width:fit-content;max-width:90%;box-sizing:border-box}
+#memory-reply-list{display:flex;flex-direction:column;gap:14px}
+.memory-reply-open{align-self:flex-end;width:auto;margin-top:2px;padding:7px 12px;font-size:12px;color:#947680;border-radius:16px}
 #memo-originals-open{margin-left:auto;padding:6px 10px;font-size:12px}
 #memo-originals-dialog{width:min(720px,94vw)}
 .memo-diary-fields{display:grid;grid-template-columns:160px 1fr;gap:14px}
