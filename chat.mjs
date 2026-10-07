@@ -45,7 +45,8 @@ export function chatService(db,notify,{now=()=>Date.now(),speechRecognizer=creat
    const kind=input.kind;if(!['text','image','audio'].includes(kind))throw fail(400,'消息类型无效');let text='',data=null,mime=null;
    if(kind==='text'){if(typeof input.text!=='string'||!input.text.trim()||input.text.length>4000)throw fail(400,'请输入4000字以内的消息');text=input.text.trim();}
    else{
-    if(typeof input.data!=='string'||input.data.length>7000000||!input.data||!/^[A-Za-z0-9+/]*={0,2}$/.test(input.data))throw fail(400,'附件格式错误或超过5MB');data=Buffer.from(input.data,'base64');if(!data.length||data.length>5*1024*1024)throw fail(400,'附件须在5MB以内');
+    const maxBytes=(kind==='image'?20:5)*1024*1024,limitLabel=kind==='image'?'20MB':'5MB';
+    if(typeof input.data!=='string'||input.data.length>Math.ceil(maxBytes/3)*4||!input.data||!/^[A-Za-z0-9+/]*={0,2}$/.test(input.data))throw fail(400,`附件格式错误或超过${limitLabel}`);data=Buffer.from(input.data,'base64');if(!data.length||data.length>maxBytes)throw fail(400,`附件须在${limitLabel}以内`);
     if(kind==='image'){try{const image=sharp(data,{limitInputPixels:20000000}),meta=await image.metadata();if(!['jpeg','png','webp'].includes(meta.format))throw Error();data=await image.rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).webp({quality:85}).toBuffer();mime='image/webp';}catch{throw fail(400,'请选择有效的 JPG、PNG 或 WebP 图片');}}
     else{const signature=data.subarray(0,4).toString('hex');mime=signature==='1a45dfa3'?'audio/webm':data.toString('ascii',0,4)==='OggS'?'audio/ogg':data.toString('ascii',4,8)==='ftyp'?'audio/mp4':data.toString('ascii',0,4)==='RIFF'&&data.toString('ascii',8,12)==='WAVE'?'audio/wav':null;if(!mime)throw fail(400,'语音格式须为 WebM、Ogg、MP4 或 WAV');}
    }

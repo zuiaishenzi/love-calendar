@@ -19,7 +19,7 @@ import {createSpeechRecognizer} from './speech.mjs';
 import {memoryAttachments,sendMedia} from './media.mjs';
 const root=path.dirname(fileURLToPath(import.meta.url));
 const {version:appVersion}=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8'));
-async function body(req,max=24*1024*1024) {let size=0, chunks=[]; for await(const c of req) {size+=c.length; if(size>max) throw fail(413,'上传内容总大小过大'); chunks.push(c);} try{return JSON.parse(Buffer.concat(chunks));}catch{throw fail(400,'请求格式错误');}}
+async function body(req,max=32*1024*1024) {let size=0, chunks=[]; for await(const c of req) {size+=c.length; if(size>max) throw fail(413,'上传内容总大小过大'); chunks.push(c);} try{return JSON.parse(Buffer.concat(chunks));}catch{throw fail(400,'请求格式错误');}}
 export function createApplication({dataDir=process.env.DATA_DIR||path.join(root,'data'),mailer=createMailer(),memoOrganizer=createMemoOrganizer(),speechRecognizer=createSpeechRecognizer()}={}) {
 const db=openDatabase(dataDir),lifecycle=lifecycleService(db,mailer),accounts=accountService(db,mailer,lifecycle),worker=createReminderWorker(db,mailer);
 lifecycle.purge();
@@ -79,8 +79,8 @@ const server=http.createServer(async(req,res)=>{
         const input=await body(req);ensureWritable();
         if(input.preset){if(!/^pair-[1-5]-[12]$/.test(input.preset))throw fail(400,'请选择系统头像');db.prepare('UPDATE users SET avatar=?,avatar_data=NULL WHERE id=?').run(input.preset,user.id);}
         else{
-          if(typeof input.data!=='string'||input.data.length>7000000)throw fail(400,'头像须为5MB以内的图片');
-          let data;try{const raw=Buffer.from(input.data,'base64');if(raw.length>5*1024*1024)throw Error();const photo=sharp(raw,{limitInputPixels:20000000});const meta=await photo.metadata();if(!['jpeg','png','webp'].includes(meta.format))throw Error();data=await photo.rotate().resize(256,256,{fit:'cover'}).webp({quality:85}).toBuffer();}catch{throw fail(400,'请选择5MB以内的 JPG、PNG 或 WebP 图片');}
+          if(typeof input.data!=='string'||input.data.length>Math.ceil(20*1024*1024/3)*4)throw fail(400,'头像须为20MB以内的图片');
+          let data;try{const raw=Buffer.from(input.data,'base64');if(raw.length>20*1024*1024)throw Error();const photo=sharp(raw,{limitInputPixels:20000000});const meta=await photo.metadata();if(!['jpeg','png','webp'].includes(meta.format))throw Error();data=await photo.rotate().resize(256,256,{fit:'cover'}).webp({quality:85}).toBuffer();}catch{throw fail(400,'请选择20MB以内的 JPG、PNG 或 WebP 图片');}
           ensureWritable();db.prepare('UPDATE users SET avatar_data=? WHERE id=?').run(data,user.id);
         }
         return send(200,accounts.publicUser(db.prepare('SELECT * FROM users WHERE id=?').get(user.id)));
@@ -137,7 +137,7 @@ const server=http.createServer(async(req,res)=>{
         return send(200,rows);
       }
       if(url.pathname==='/api/memories' && req.method==='POST') {
-        const input=await body(req,96*1024*1024);ensureWritable();
+        const input=await body(req,240*1024*1024);ensureWritable();
         const attachments=memoryAttachments(input.attachments);
         if(input.keepAttachments!==undefined&&(!Array.isArray(input.keepAttachments)||input.keepAttachments.length>6||input.keepAttachments.some(id=>typeof id!=='string'||! /^[a-f0-9]{36}$/.test(id))))throw fail(400,'保留附件信息无效');
         if(!validDay(input.day) || typeof input.title!=='string' || !input.title.trim() || input.title.length>100 || typeof input.body!=='string' || input.body.length>20000) throw fail(400,'请填写有效日期、标题（100字以内）和正文（20000字以内）');
@@ -146,7 +146,7 @@ const server=http.createServer(async(req,res)=>{
           if(typeof p.data!=='string') throw fail(400,'图片格式错误');
           const data=Buffer.from(p.data,'base64');
           const mime=data.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))?'image/png':data[0]===255&&data[1]===216&&data[2]===255?'image/jpeg':data.toString('ascii',0,4)==='RIFF'&&data.toString('ascii',8,12)==='WEBP'?'image/webp':null;
-          if(!mime||data.length>5*1024*1024) throw fail(400,'仅支持不超过5MB的 JPG、PNG、WebP 图片');
+          if(!mime||data.length>20*1024*1024) throw fail(400,'仅支持不超过20MB的 JPG、PNG、WebP 图片');
           return {data,mime,id:randomBytes(18).toString('hex')};
         });
         db.exec('BEGIN IMMEDIATE');

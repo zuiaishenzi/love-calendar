@@ -72,7 +72,7 @@ $('#chat-earlier').onclick=async()=>{const owner=chatOwner;try{const data=await 
 const chatBase64=blob=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(Error('附件读取失败'));reader.readAsDataURL(blob);});
 async function sendChat(input){if(chatSending)return false;chatSending=true;renderChat();chatStatus('正在发送…');const owner=chatOwner;try{await api('/api/chat/messages','POST',input);if(owner!==chatOwner)return false;chatStatus('已发送');await syncChat();return true;}catch(e){if(owner===chatOwner)chatStatus(e.message);return false;}finally{chatSending=false;if(chatOwner)renderChat();}}
 $('#chat-form').onsubmit=async e=>{e.preventDefault();const input=e.target.elements.text;if(await sendChat({kind:'text',text:input.value}))input.value='';};
-$('#chat-image-input').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>5*1024*1024)throw Error('图片不能超过5MB');await sendChat({kind:'image',data:await chatBase64(file)});}catch(error){chatStatus(error.message);}finally{e.target.value='';}};
+$('#chat-image-input').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>20*1024*1024)throw Error('图片不能超过20MB');await sendChat({kind:'image',data:await chatBase64(file)});}catch(error){chatStatus(error.message);}finally{e.target.value='';}};
 async function microphone(){if(!navigator.mediaDevices?.getUserMedia)throw Error('语音需要 HTTPS 或 localhost，以及支持麦克风的浏览器');try{return await navigator.mediaDevices.getUserMedia({audio:true});}catch{throw Error('无法使用麦克风，请检查权限和设备。');}}
 $('#chat-record').onclick=async()=>{
  if(voiceRecorder?.state==='recording'){voiceRecorder.stop();return;}

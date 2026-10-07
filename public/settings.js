@@ -50,7 +50,7 @@ async function saveAvatar(input){
 }
 $('#avatar-upload').onchange=async event=>{
  const file=event.target.files[0];if(!file)return;
- if(file.size>5*1024*1024){$('#personal-error').textContent='请选择5MB以内的头像';return;}
+ if(file.size>20*1024*1024){$('#personal-error').textContent='请选择20MB以内的头像';return;}
  try{const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(Error('图片读取失败'));reader.readAsDataURL(file);});await saveAvatar({data});}catch(e){$('#personal-error').textContent=e.message;}finally{event.target.value='';}
 };
 $('#personal-save-mail').onclick=async()=>{try{currentUser=await api('/api/profile','POST',{email:currentUser.email,email_enabled:$('#personal-mail-enabled').checked});$('#personal-error').textContent='提醒偏好已保存';}catch(e){$('#personal-error').textContent=e.message;}};
