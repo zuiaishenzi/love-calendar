@@ -176,7 +176,7 @@ test('回忆回复双方各五条、并发限额、账本隔离、导出与删�
   const sent=await Promise.all(Array.from({length:6},(_,i)=>call(url,'POST',{body:'回应'+i},a)));assert.equal(sent.filter(r=>r.status===200).length,5);assert.equal(sent.filter(r=>r.status===400).length,1);
   for(let i=0;i<5;i++)assert.equal((await call(url,'POST',{body:'对方'+i},b)).status,200);
   assert.equal((await call(url,'POST',{body:'第六条'},b)).status,400);const rows=(await call(url,'GET',undefined,a)).data;assert.equal(rows.length,10);assert.deepEqual(rows.map(r=>r.id),[...rows.map(r=>r.id)].sort((a,b)=>a-b));assert.equal((await call('/api/timeline','GET',undefined,a)).data[0].replies.length,10);assert.equal(db.prepare('SELECT body FROM perspectives WHERE memory_id=?').get(memory).body,'原文');
-  const {memoirDocument}=await import('./memoir-export.mjs');const exported=[...memoirDocument(db,1)].join('');assert.ok(exported.includes('后来的回应'));assert.ok(exported.includes('对方4'));
+  const {memoirDocument}=await import('./memoir-export.mjs');const exported=[...memoirDocument(db,1)].join('');assert.ok(!exported.includes('后来的回应'));assert.ok(exported.includes('对方4'));
   db.prepare('UPDATE ledgers SET delete_at=? WHERE id=1').run(Date.now()+86400000);assert.equal((await call(url,'POST',{body:'只读'},a)).status,423);db.prepare('UPDATE ledgers SET delete_at=NULL WHERE id=1').run();assert.equal((await call('/api/memories/'+memory,'DELETE',undefined,a)).status,200);assert.equal(db.prepare('SELECT count(*) AS n FROM memory_replies').get().n,0);assert.equal((await call(url,'GET',undefined,b)).status,404);
  }finally{await new Promise(r=>server.close(r));db.close();rmSync(dir,{recursive:true,force:true});}
 });

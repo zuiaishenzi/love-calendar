@@ -382,3 +382,13 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
  body.android-app #app{padding-top:8px;padding-bottom:4px}
  body.android-app .bottom{margin-top:4px;margin-bottom:3px}
 }
+
+.memory-replies{border-top:0;padding-top:0;margin-top:0}
+#memo-originals-open{margin-left:auto;padding:6px 10px;font-size:12px}
+#memo-originals-dialog{width:min(720px,94vw)}
+.memo-diary-fields{display:grid;grid-template-columns:160px 1fr;gap:14px}
+.memo-diary-day>h3{color:var(--wine);font-size:17px;margin:24px 0 12px}
+.memo-diary-entry{border-left:2px solid var(--line);padding:12px 18px;margin:12px 0;background:rgba(255,255,255,.6);border-radius:0 12px 12px 0}
+.memo-diary-entry h4{margin:0 0 10px;font-size:16px;overflow-wrap:anywhere}
+.memo-diary-entry .memo-actions{margin-top:10px}
+@media(max-width:760px){.memo-diary-fields{grid-template-columns:1fr}#memo-originals-open{align-self:flex-end;margin-top:-2px}}

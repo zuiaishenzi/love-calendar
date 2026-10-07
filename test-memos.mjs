@@ -98,3 +98,21 @@ test('长段原文拆成跨分类的多个要点，保留原文，编辑使该�
   assert.deepEqual(edited.summary,[points[4]]);assert.equal(edited.notes[0].body,'新原文');
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('备忘日记日期与事情保存，旧记录不伪造日期，旧客户端编辑保留元数据',async()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-memo-diary-')),db=openDatabase(dir);
+ try{
+  db.exec("INSERT INTO ledgers(id,code) VALUES(1,'DIARY123'); INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(1,'test','x','x',1,1),(2,'other','x','x',1,2); INSERT INTO memo_notes(id,user_id,body) VALUES(1,1,'旧原文'); ALTER TABLE memo_notes DROP COLUMN day; ALTER TABLE memo_notes DROP COLUMN title;");db.close();
+  const reopened=openDatabase(dir);try{
+   const service=memoService(reopened,{ready:false}),call=(input,id=1)=>service.route({method:'POST'},{pathname:'/api/memos/notes'},{id},input,()=>{});
+   const old=await service.route({method:'GET'},{pathname:'/api/memos'},{id:1},{},()=>{});assert.equal(old.notes[0].day,null);assert.equal(old.notes[0].body,'旧原文');
+   let data=await call({body:'不加糖',title:'一起喝咖啡',day:'2026-10-07'});const note=data.notes.at(-1);assert.equal(note.day,'2026-10-07');assert.equal(note.title,'一起喝咖啡');
+   data=await call({id:note.id,body:'喜欢热咖啡'});assert.equal(data.notes.at(-1).day,note.day);assert.equal(data.notes.at(-1).title,note.title);
+   await assert.rejects(call({body:'bad',day:'2026-02-30'}),e=>e.status===400);
+   await assert.rejects(call({body:'bad',title:'a'.repeat(101)}),e=>e.status===400);
+   await assert.rejects(call({id:note.id,body:'越权',day:'2026-10-08'},2),e=>e.status===404);
+   data=await call({id:1,body:'补记原文',day:'2026-10-06',title:'那天的小事'});assert.equal(data.notes[0].day,'2026-10-06');assert.equal(data.notes[0].body,'补记原文');
+  }finally{reopened.close();}
+ }finally{try{db.close();}catch{}rmSync(dir,{recursive:true,force:true});}
+});

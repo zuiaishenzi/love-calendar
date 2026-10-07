@@ -69,6 +69,7 @@ export function openDatabase(dir) {
  CREATE INDEX IF NOT EXISTS memo_notes_user ON memo_notes(user_id);
  CREATE TABLE IF NOT EXISTS memo_summaries(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,content TEXT NOT NULL);`);
  db.exec('CREATE TABLE IF NOT EXISTS memo_ai_categories(user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(user_id,name))');
+ for(const [name,type] of [['day','TEXT'],['title',"TEXT NOT NULL DEFAULT ''"]])if(!db.prepare('PRAGMA table_info(memo_notes)').all().some(c=>c.name===name))db.exec(`ALTER TABLE memo_notes ADD COLUMN ${name} ${type}`);
  if(!db.prepare('PRAGMA table_info(memo_notes)').all().some(c=>c.name==='ai_category')){
   db.exec('ALTER TABLE memo_notes ADD COLUMN ai_category TEXT');
   db.transaction(()=>{for(const row of db.prepare('SELECT user_id,content FROM memo_summaries').all())for(const item of JSON.parse(row.content)){db.prepare('INSERT OR IGNORE INTO memo_ai_categories(user_id,name) VALUES(?,?)').run(row.user_id,item.category);db.prepare('UPDATE memo_notes SET ai_category=? WHERE id=? AND user_id=? AND category_id IS NULL').run(item.category,item.id,row.user_id);}})();

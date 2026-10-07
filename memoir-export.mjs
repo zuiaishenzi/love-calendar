@@ -15,7 +15,7 @@ export function* memoirDocument(db,ledger){
   }
   const chats=db.prepare('SELECT * FROM memory_chat_messages WHERE memory_id=? ORDER BY position').all(memory.id);
   if(chats.length){yield '<section><h3>收藏的对话</h3>';for(const c of chats){yield `<div><h4>${escape(c.sender_name)} · ${escape(new Date(c.created).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}))}</h4>`;if(c.kind==='text')yield `<p>${escape(c.text)}</p>`;else if(c.kind==='image'&&c.mime==='image/webp')yield `<img alt="收藏的聊天图片" src="data:image/webp;base64,${Buffer.from(c.data).toString('base64')}">`;else if(c.kind==='audio'&&['audio/webm','audio/ogg','audio/mp4'].includes(c.mime))yield `<audio controls src="data:${c.mime};base64,${Buffer.from(c.data).toString('base64')}"></audio>`;yield '</div>';}yield '</section>';}
-  const replies=db.prepare('SELECT r.body,r.created,u.name FROM memory_replies r JOIN users u ON u.id=r.author WHERE r.memory_id=? ORDER BY r.id').all(memory.id);if(replies.length){yield '<section><h3>后来的回应</h3>';for(const r of replies)yield `<h4>${escape(r.name)} · ${escape(new Date(r.created).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}))}</h4><p>${escape(r.body)}</p>`;yield '</section>';}
+  const replies=db.prepare('SELECT r.body,r.created,u.name FROM memory_replies r JOIN users u ON u.id=r.author WHERE r.memory_id=? ORDER BY r.id').all(memory.id);if(replies.length){yield '<section>';for(const r of replies)yield `<h4>${escape(r.name)} · ${escape(new Date(r.created).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}))}</h4><p>${escape(r.body)}</p>`;yield '</section>';}
   yield '</article>';
  }
  yield '</main><footer>两个人 · 一本日历 · 很多很多以后<br>此文件包含私密回忆与照片，请妥善保存。可通过浏览器打印另存为 PDF。</footer></html>';
