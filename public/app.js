@@ -110,3 +110,24 @@ function openMemoryReplies(memory){replyingMemory=memory;++replyGeneration;$('#m
 $('#memory-reply-close').onclick=()=>$('#memory-reply-dialog').close();
 $('#memory-reply-dialog').addEventListener('close',()=>{replyingMemory=null;++replyGeneration;});
 $('#memory-reply-form').onsubmit=async event=>{event.preventDefault();const memory=replyingMemory,generation=replyGeneration,form=event.target;if(!memory||replySending)return;replySending=true;$('#memory-reply-send').disabled=true;$('#memory-reply-error').textContent='';try{const rows=await api('/api/memories/'+memory.id+'/replies','POST',{body:form.elements.body.value});if(generation!==replyGeneration||!currentUser)return;memory.replies=rows;form.reset();renderMemoryReplies(rows);await load();}catch(error){if(generation===replyGeneration)$('#memory-reply-error').textContent=error.message;}finally{replySending=false;if(replyingMemory&&currentUser)renderMemoryReplies(replyingMemory.replies||[]);}};
+
+if(navigator.userAgent.includes('OurDaysAndroid/'))document.body.classList.add('android-app');
+function calendarSwipe(grid){
+ let gesture=null,suppressClickUntil=0;const pointers=new Set();
+ grid.addEventListener('pointerdown',event=>{
+  if(event.pointerType==='mouse'||event.button!==0||view!=='calendar')return;
+  pointers.add(event.pointerId);if(pointers.size!==1||document.querySelector('dialog[open]')){gesture=null;return;}
+  gesture={id:event.pointerId,x:event.clientX,y:event.clientY,month};
+ });
+ grid.addEventListener('pointermove',event=>{if(!gesture||gesture.id!==event.pointerId)return;const dx=Math.abs(event.clientX-gesture.x),dy=Math.abs(event.clientY-gesture.y);if(dy>12&&dy>dx)gesture=null;});
+ grid.addEventListener('pointerup',event=>{
+  pointers.delete(event.pointerId);if(!gesture||gesture.id!==event.pointerId)return;
+  const start=gesture;gesture=null;const dx=event.clientX-start.x,dy=event.clientY-start.y,threshold=Math.max(40,Math.min(80,grid.clientWidth*0.15));
+  if(start.month!==month||view!=='calendar'||Math.abs(dx)<threshold||Math.abs(dx)<Math.abs(dy)*1.5)return;
+  suppressClickUntil=Date.now()+700;move(dx<0?1:-1);
+ });
+ grid.addEventListener('pointercancel',event=>{pointers.delete(event.pointerId);gesture=null;});
+ grid.addEventListener('pointerleave',event=>{pointers.delete(event.pointerId);if(gesture?.id===event.pointerId)gesture=null;});
+ grid.addEventListener('click',event=>{if(Date.now()<suppressClickUntil){event.preventDefault();event.stopImmediatePropagation();}},true);
+}
+calendarSwipe($('#grid'));

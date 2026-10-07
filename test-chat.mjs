@@ -208,3 +208,16 @@ test('App更新接口匿名读取、下载校验、发布单调构建号及路�
   writeFileSync(path.join(folder,'latest.json'),JSON.stringify({...info,sha256:'a'.repeat(64)}));assert.notEqual(importRelease().status,0);writeFileSync(path.join(folder,'latest.json'),JSON.stringify({...info,filename:'../fixture.apk'}));assert.notEqual(importRelease().status,0);assert.equal((await fetch(origin+'/api/app/update')).status,503);
  }finally{await new Promise(r=>app.server.close(r));app.db.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('日历左右滑动切月，竖向滚动、点击、多指及取消不切换，滑动后阻止误点',()=>{
+ const source=readFileSync(new URL('./public/app.js',import.meta.url),'utf8'),handlers={},moves=[],grid={clientWidth:360,addEventListener:(type,handler)=>{handlers[type]=handler;}},context={Set,Math,Date,view:'calendar',month:'2026-10',document:{querySelector:()=>null},move:delta=>moves.push(delta)};
+ const bind=runInNewContext(source.slice(source.indexOf('function calendarSwipe(grid){'),source.indexOf("calendarSwipe($('#grid'))"))+';calendarSwipe',context);bind(grid);const event=(x,y,id=1)=>({pointerType:'touch',button:0,pointerId:id,clientX:x,clientY:y});
+ handlers.pointerdown(event(250,100));handlers.pointerup(event(120,105));assert.deepEqual(moves,[1]);let prevented=false;handlers.click({preventDefault(){prevented=true;},stopImmediatePropagation(){}});assert.equal(prevented,true);
+ handlers.pointerdown(event(100,100));handlers.pointerup(event(240,110));assert.deepEqual(moves,[1,-1]);
+ handlers.pointerdown(event(100,100));handlers.pointermove(event(105,180));handlers.pointerup(event(220,200));
+ handlers.pointerdown(event(100,100));handlers.pointerup(event(105,100));
+ handlers.pointerdown(event(250,100));handlers.pointercancel(event(250,100));handlers.pointerup(event(100,100));
+ handlers.pointerdown(event(250,100));handlers.pointerdown(event(200,100,2));handlers.pointerup(event(100,100));handlers.pointerup(event(100,100,2));assert.deepEqual(moves,[1,-1]);
+ handlers.pointerdown(event(250,100));context.month='2026-11';handlers.pointerup(event(100,100));assert.deepEqual(moves,[1,-1]);
+ const moveContext={month:'2000-01',selected:'2000-01-01',Date,String,load:()=>{}},move=runInNewContext(source.slice(source.indexOf('function move(delta){'),source.indexOf("$('#prev').onclick"))+';move',moveContext);move(-1);assert.equal(moveContext.month,'2000-01');moveContext.month='9999-12';move(1);assert.equal(moveContext.month,'9999-12');moveContext.month='2026-12';move(1);assert.equal(moveContext.month,'2027-01');
+});
