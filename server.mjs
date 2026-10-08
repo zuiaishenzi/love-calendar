@@ -1,3 +1,4 @@
+import {notificationFeed} from './notifications.mjs';
 import {appUpdates} from './app-updates.mjs';
 import {createRealtime} from './realtime.mjs';
 import sharp from 'sharp';
@@ -111,6 +112,7 @@ const server=http.createServer(async(req,res)=>{
         if(!realtime.touch(input.client,user,input.day))throw fail(403,'连接标识不属于当前用户');
         return send(200,realtime.state(user));
       }
+      if(url.pathname==='/api/notifications'&&req.method==='GET')return send(200,notificationFeed(db,user,url.searchParams));
       if(url.pathname==='/api/me' && req.method==='GET') return send(200,accounts.publicUser(user));
       if(url.pathname==='/api/calendar' && req.method==='GET'){
         const month=url.searchParams.get('month');if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month||'')||month<'2000-01')throw fail(400,'月份格式错误');
@@ -218,6 +220,7 @@ const server=http.createServer(async(req,res)=>{
     files['/settings.js']=['settings.js','text/javascript; charset=utf-8'];
     files['/memos.js']=['memos.js','text/javascript; charset=utf-8'];
     files['/chat.js']=['chat.js','text/javascript; charset=utf-8'];
+    files['/notifications.js']=['notifications.js','text/javascript; charset=utf-8'];
     files['/speech.js']=['speech.js','text/javascript; charset=utf-8'];
     const presetAsset=url.pathname.match(/^\/avatars\/pair-([1-5])\.png$/);
     if(presetAsset&&req.method==='GET'){

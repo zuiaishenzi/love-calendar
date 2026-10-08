@@ -221,3 +221,22 @@ test('日历左右滑动切月，竖向滚动、点击、多指及取消不切�
  handlers.pointerdown(event(250,100));context.month='2026-11';handlers.pointerup(event(100,100));assert.deepEqual(moves,[1,-1]);
  const moveContext={month:'2000-01',selected:'2000-01-01',Date,String,load:()=>{}},move=runInNewContext(source.slice(source.indexOf('function move(delta){'),source.indexOf("$('#prev').onclick"))+';move',moveContext);move(-1);assert.equal(moveContext.month,'2000-01');moveContext.month='9999-12';move(1);assert.equal(moveContext.month,'9999-12');moveContext.month='2026-12';move(1);assert.equal(moveContext.month,'2027-01');
 });
+
+
+test('通知首次仅建立游标，新消息与回忆分渠道，提醒按北京时间与收件人隔离',async()=>{
+ const {notificationFeed}=await import('./notifications.mjs');const dir=mkdtempSync(path.join(os.tmpdir(),'love-notification-')),db=openDatabase(dir);
+ try{
+  db.exec("INSERT INTO ledgers(id,code) VALUES(1,'NOTIFY01'),(2,'NOTIFY02'); INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(1,'我','x','x',1,1),(2,'对方','x','x',1,2),(3,'别的账本','x','x',2,1);");
+  const user={id:1,ledger_id:1},feed=(after,owner='1',date='2026-10-08T01:00:00Z')=>notificationFeed(db,user,new URLSearchParams(after==null?{}:{owner,after:String(after)}),new Date(date));
+  db.exec("INSERT INTO chat_messages(ledger_id,sender,kind,text,created) VALUES(1,2,'text','旧消息',1)");let data=feed();assert.equal(data.events.length,0);const baseline=data.cursor;
+  db.exec("INSERT INTO chat_messages(ledger_id,sender,kind,text,created) VALUES(1,2,'text','新消息',2),(1,1,'text','自己发送',3),(2,3,'text','秘密',4); INSERT INTO memories(day,title,body,author,updated,ledger_id) VALUES('2026-10-08','一起散步','',2,4,1);");data=feed(baseline);assert.deepEqual(data.events.map(e=>e.channel),['social','service']);assert.equal(data.events[0].body,'新消息');assert.equal(data.events[1].target,'2026-10-08');assert.equal(feed(data.cursor).events.length,0);assert.equal(feed(baseline,'2').events.length,0);
+  db.exec("UPDATE chat_messages SET retracted_at=9 WHERE text='新消息'; DELETE FROM memories;");assert.equal(feed(baseline).events.length,0);
+  db.exec("INSERT INTO reminders(ledger_id,creator,title,base_day,kind,month,day,recipient_id,private_owner) VALUES(1,1,'公开','2020-10-08','solar',10,8,NULL,NULL),(1,2,'私密','2020-10-08','solar',10,8,2,2),(1,2,'仅对方','2020-10-08','solar',10,8,2,NULL);");assert.deepEqual(feed(null).reminders.map(r=>r.body),['公开']);assert.equal(feed(null,'1','2026-10-08T00:59:00Z').reminders.length,0);db.exec('UPDATE ledgers SET delete_at=99999999 WHERE id=1');assert.equal(feed(null).reminders.length,0);assert.throws(()=>feed('bad'),e=>e.status===400);
+ }finally{db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('通知接口需要登录且客户端通知入口脚本可加载',async()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-notification-http-')),app=createApplication({dataDir:dir,mailer:{ready:false}});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+app.server.address().port;
+ try{assert.equal((await fetch(origin+'/api/notifications')).status,401);const script=await fetch(origin+'/notifications.js');assert.equal(script.status,200);assert.ok((await script.text()).includes('notifications-entry'));}finally{await new Promise(r=>app.server.close(r));app.db.close();rmSync(dir,{recursive:true,force:true});}
+});

@@ -1,4 +1,5 @@
 plugins { id 'com.android.application' version '8.9.2' apply false }
 // Keep all generated files outside the Git checkout.
-layout.buildDirectory = file('../../../love-app/android-build/root')
-subprojects { layout.buildDirectory = rootProject.file('../../../love-app/android-build/' + project.name) }
+def clientBuildRoot = providers.gradleProperty('clientBuildDirectory').getOrElse('../../../love-app/android-build')
+layout.buildDirectory = file(clientBuildRoot + '/root')
+subprojects { layout.buildDirectory = rootProject.file(clientBuildRoot + '/' + project.name) }

@@ -1,0 +1,3 @@
+if(/OurDaysAndroid\/|OurDaysWindows\//.test(navigator.userAgent))$('#notifications-entry').hidden=false;
+const notificationTarget=new URLSearchParams(location.search).get('notification');
+if(notificationTarget){let attempts=0;const open=setInterval(()=>{if(++attempts>120){clearInterval(open);return;}if(!currentUser)return;clearInterval(open);history.replaceState(null,'',location.pathname);if(notificationTarget==='chat')$('#chat-open').click();else if(/^\d{4}-\d{2}-\d{2}$/.test(notificationTarget)){selected=notificationTarget;month=selected.slice(0,7);view='calendar';$('#calendar-view').click();load();}},500);}
