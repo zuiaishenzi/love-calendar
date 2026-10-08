@@ -111,6 +111,7 @@ public class MainActivity extends Activity {
                 if (!trusted(Uri.parse(view.getUrl()))) { callback.onReceiveValue(null); return true; }
                 if (fileCallback != null) fileCallback.onReceiveValue(null);
                 fileCallback = callback;
+                reportFilePicker(true);
                 try { startActivityForResult(filePicker(params), PICK_FILE); }
                 catch (ActivityNotFoundException | SecurityException error) { finishFilePicker(null); toast("无法打开系统文件选择器"); }
                 return true;
@@ -181,10 +182,11 @@ public class MainActivity extends Activity {
         return intent;
     }
 
+    private void reportFilePicker(boolean active){if(web!=null&&trusted(Uri.parse(web.getUrl())))web.evaluateJavascript("window.dispatchEvent(new CustomEvent('app-file-picker-state',{detail:{active:"+active+"}}));",null);}
     private void finishFilePicker(Uri[] files) {
         ValueCallback<Uri[]> callback = fileCallback;
         fileCallback = null;
-        if (callback != null) callback.onReceiveValue(files);
+        if (callback != null) {callback.onReceiveValue(files);reportFilePicker(false);}
     }
 
     private void showError() {
@@ -250,7 +252,7 @@ public class MainActivity extends Activity {
         if(fileCallback!=null){finishFilePicker(null);filePickerReturnedAt=android.os.SystemClock.elapsedRealtime();return;}
         if(android.os.SystemClock.elapsedRealtime()-filePickerReturnedAt<700)return;
         if (fullScreen != null) { hideFullScreen(); return; }
-        web.evaluateJavascript("(()=>{const d=document.querySelector('dialog[open]');if(!d)return false;if(d.requestClose)d.requestClose();else{const e=new Event('cancel',{cancelable:true});if(d.dispatchEvent(e))d.close();}return true;})()", value -> {
+        web.evaluateJavascript("(()=>{const d=document.querySelector('dialog[open]');if(!d){if(typeof view!=='undefined'&&view!=='calendar'&&typeof switchView==='function'){switchView('calendar');return true;}return false;}if(d.requestClose)d.requestClose();else{const e=new Event('cancel',{cancelable:true});if(d.dispatchEvent(e))d.close();}return true;})()", value -> {
             if (!"true".equals(value)) { if (web.canGoBack()) web.goBack(); else super.onBackPressed(); }
         });
     }

@@ -409,3 +409,11 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
 #chat-hold-actions{display:flex;gap:12px;justify-content:center;margin:10px 0;touch-action:none}#chat-hold-actions[hidden]{display:none}#chat-hold-actions span{flex:1;text-align:center;padding:14px;border-radius:16px;background:#f6edf1;color:#986379;border:1px solid #e8d8df}#chat-hold-actions span.active{background:var(--wine);color:white}.memo-images{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.memo-images img{width:100px;height:100px;object-fit:cover;border-radius:10px;cursor:pointer}.memo-images>div{display:flex;flex-direction:column;gap:4px}.memo-images button{font-size:12px;padding:4px}
 
 #chat-hold-actions{position:absolute;left:22px;right:22px;bottom:110px;z-index:6;margin:0;padding:12px;border-radius:18px;background:#fffafbf2;box-shadow:0 6px 24px #92516b26}#chat-hold-actions span{min-height:44px;display:flex;align-items:center;justify-content:center}
+
+/* Main navigation pages share the calendar and memoir workspace. */
+#chat-dialog.main-view,#memos-dialog.main-view{position:relative;inset:auto;box-sizing:border-box;width:100%;max-width:none;max-height:none;margin:0;border:1px solid var(--line);box-shadow:none}
+#chat-dialog.main-view{display:flex;flex-direction:column;height:clamp(500px,70dvh,850px);border-radius:20px;background:#fffafb;overflow:hidden}
+#memos-dialog.main-view{display:block;padding:24px;border-radius:20px;background:#fffafb;min-height:360px}
+#chat-dialog.main-view[hidden],#memos-dialog.main-view[hidden]{display:none}
+#memos-dialog .dialog-heading{margin-bottom:12px}#chat-dialog .chat-heading{padding-top:16px}#chat-dialog #chat-context-menu{z-index:10}
+@media(max-width:760px){#chat-dialog.main-view{height:calc(100dvh - 200px);min-height:430px;border-radius:16px}#memos-dialog.main-view{padding:18px;border-radius:16px}#memos-dialog .dialog-heading h2{font-size:24px}}
