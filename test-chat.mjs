@@ -193,7 +193,7 @@ test('回忆卡片展示继续回应入口、已有回复及点击行为',()=>{
 
 test('录音错误区分权限拒绝、设备占用及启动中断',async()=>{
  const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8'),code=source.slice(source.indexOf('async function microphone(){'),source.indexOf("$('#chat-record').onclick"));
- for(const [name,text] of [['NotAllowedError','全局麦克风'],['NotReadableError','兼容环境'],['NotFoundError','未找到'],['AbortError','中断']]){const microphone=runInNewContext(code+';microphone',{setTimeout:callback=>callback(),navigator:{mediaDevices:{getUserMedia:async()=>{throw {name};}}},Error});await assert.rejects(microphone(),error=>error.message.includes(text));}
+ for(const [name,text] of [['NotAllowedError','全局麦克风'],['NotReadableError','启动失败'],['NotFoundError','未找到'],['AbortError','中断']]){const microphone=runInNewContext(code+';microphone',{setTimeout:callback=>callback(),navigator:{mediaDevices:{getUserMedia:async()=>{throw {name};}}},Error});await assert.rejects(microphone(),error=>error.message.includes(text));}
  let attempts=0;const recovered={getTracks:()=>[]};const retry=runInNewContext(code+';microphone',{setTimeout:callback=>callback(),navigator:{mediaDevices:{getUserMedia:async options=>{attempts++;if(attempts===1)throw {name:'NotReadableError'};assert.equal(options.audio.echoCancellation,false);return recovered;}}},Error});assert.equal(await retry(),recovered);assert.equal(attempts,2);
  const stream={};const microphone=runInNewContext(code+';microphone',{setTimeout:callback=>callback(),navigator:{mediaDevices:{getUserMedia:async()=>stream}},Error});assert.equal(await microphone(),stream);
 });
@@ -267,4 +267,14 @@ test('未读只统计对方未撤回消息，已读位置单调保存且不误�
 
 test('未读徽标显示数字、超过99折叠，清零后隐藏且聊天标题不变',()=>{
  const source=readFileSync('public/chat.js','utf8'),start=source.indexOf('function chatUnreadBadge('),code=source.slice(start).split('\n')[0],badge={},button={setAttribute(key,value){this[key]=value;}};const context={$:selector=>selector==='#chat-unread-badge'?badge:button};runInNewContext(code+';chatUnreadBadge(3);',context);assert.equal(badge.textContent,'3');assert.equal(badge.hidden,false);runInNewContext('chatUnreadBadge(120);',context);assert.equal(badge.textContent,'99+');runInNewContext('chatUnreadBadge(0);',context);assert.equal(badge.hidden,true);assert.equal(button['aria-label'],'聊天');
+});
+
+
+test('录音结束回调尚未执行时清理仍断开回调并释放麦克风',()=>{
+ const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8');
+ const code=source.slice(source.indexOf('function releaseRecording(){'),source.indexOf('function stopChat(){'));
+ let stopped=0,paused=0;const nodes=new Map();const recorder={state:'inactive',onstop:()=>{throw Error('旧回调不应执行');},ondataavailable:()=>{},onerror:()=>{},stop:()=>{throw Error('已结束不应重复stop');}};
+ const context={recordGeneration:3,voiceTimer:1,voiceRecorder:recorder,voiceStream:{getTracks:()=>[{stop:()=>stopped++}]},voiceBlob:{},voiceUrl:null,clearInterval:()=>{},URL:{revokeObjectURL:()=>{}},$:id=>{if(!nodes.has(id))nodes.set(id,{pause:()=>paused++,removeAttribute:()=>{}});return nodes.get(id);}};
+ runInNewContext(code+';releaseRecording()',context);
+ assert.equal(recorder.onstop,null);assert.equal(recorder.ondataavailable,null);assert.equal(recorder.onerror,null);assert.equal(stopped,1);assert.equal(paused,1);assert.equal(context.recordGeneration,4);assert.equal(context.voiceRecorder,null);
 });
