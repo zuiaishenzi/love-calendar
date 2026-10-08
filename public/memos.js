@@ -46,12 +46,12 @@ async function memoMutate(url,method,data,closeEditor=false){
  catch(e){if(currentUser?.id===owner)memoStatus(e.message);}finally{memoBusy=false;if(memoData&&currentUser?.id===owner)renderMemos();}
 }
 async function openMemoView(){
- const request=++memoLoad;memoUser=currentUser?.id;memoData=null;$('#memos-list').replaceChildren();resetMemoEditor();$('#memos-organize').disabled=true;
- $('#memo-add').disabled=true;$('#memo-originals-open').disabled=true;memoStatus('正在翻开备忘…');
- try{const user=await api('/api/me');if(request!==memoLoad||currentUser?.id!==memoUser)return;currentUser=user;const data=await api('/api/memos');if(request!==memoLoad||currentUser?.id!==memoUser)return;memoData=data;memoStatus('');renderMemos();}catch(e){if(request===memoLoad)memoStatus(e.message);}
+ const request=++memoLoad,owner=currentUser?.id,readOnly=Boolean(currentUser?.lifecycle?.readonly),cached=memoUser===owner&&memoData!==null;memoUser=owner;
+ if(!cached){memoData=null;$('#memos-list').replaceChildren();resetMemoEditor();$('#memos-organize').disabled=true;$('#memo-add').disabled=true;$('#memo-originals-open').disabled=true;memoStatus('正在翻开备忘…');}else memoStatus('');
+ try{const [user,data]=await Promise.all([api('/api/me'),api('/api/memos')]);if(request!==memoLoad||currentUser?.id!==owner||memoUser!==owner||$('#memos-dialog').hidden)return;currentUser=user;const changed=JSON.stringify(memoData)!==JSON.stringify(data);memoData=data;memoStatus('');if(changed||!cached||readOnly!==Boolean(user.lifecycle?.readonly))renderMemos();}catch(e){if(request===memoLoad)memoStatus(e.message);}
 }
 $('#memos-open').onclick=()=>switchView('memos');
-function stopMemos(){++memoLoad;memoEditMode=false;$('#memo-originals-dialog').close();$('#memo-originals-list').replaceChildren();$('#memo-editor-dialog').close();memoData=null;memoUser=null;resetMemoEditor();$('#memos-list').replaceChildren();$('#memo-category').replaceChildren();memoStatus('');}
+function stopMemos(clear=true){++memoLoad;$('#memo-originals-dialog').close();$('#memo-editor-dialog').close();resetMemoEditor();memoStatus('');if(clear){memoEditMode=false;$('#memo-originals-list').replaceChildren();memoData=null;memoUser=null;$('#memos-list').replaceChildren();$('#memo-category').replaceChildren();}}
 $('#memo-add').onclick=()=>openMemoEditor();
 $('#memo-editor-close').onclick=$('#memo-cancel').onclick=()=>$('#memo-editor-dialog').close();
 $('#memo-editor-dialog').addEventListener('close',resetMemoEditor);

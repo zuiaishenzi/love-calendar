@@ -31,18 +31,19 @@ function showLogin(){if(typeof stopMemos==='function')stopMemos();if(typeof stop
 async function enter(user){currentUser=user;if(typeof refreshSettings==='function')refreshSettings();startRealtime();if(typeof startChat==='function')startChat();$('#username').textContent=user.name;$('#login').hidden=true;$('#app').hidden=false;await load();}
 async function load(){if(view==='chat')return syncChat();if(view==='memos')return;if(view==='timeline')return loadTimeline();const version=++loadVersion;$('#status').textContent='正在翻开回忆…';try{const [rows,info,reminders]=await Promise.all([api('/api/memories?month='+month),api('/api/calendar?month='+month),api('/api/reminders?month='+month)]);if(version!==loadVersion)return;memories=rows;calendarInfo=info;annualReminders=reminders;$('#holiday-note').textContent=info.holiday_note;render();$('#status').textContent='';}catch(e){if(version===loadVersion)$('#status').textContent=e.message;}}
 function paintMainViews(){for(const [name,selector,button] of [['calendar','.workspace','#calendar-view'],['timeline','#memoir','#memoir-view'],['chat','#chat-dialog','#chat-open'],['memos','#memos-dialog','#memos-open']]){$(selector).hidden=view!==name;$(button).setAttribute('aria-pressed',String(view===name));}}
-function switchView(next){if(!['calendar','timeline','chat','memos'].includes(next))return;if(next===view)return load();const previous=view;view=next;++loadVersion;++timelineVersion;if(previous==='chat')leaveChatView();if(previous==='memos')stopMemos();paintMainViews();$('#status').textContent='';if(next==='chat')return openChatView();if(next==='memos')return openMemoView();return load();}
+function switchView(next){if(!['calendar','timeline','chat','memos'].includes(next))return;if(next===view)return load();const previous=view;view=next;++loadVersion;++timelineVersion;if(previous==='chat')leaveChatView();if(previous==='memos')stopMemos(false);paintMainViews();animateMainView(next,previous);$('#status').textContent='';if(next==='chat')return openChatView();if(next==='memos')return openMemoView();return load();}
+function animateMainView(next,previous){const host=$(({calendar:'.workspace',timeline:'#memoir',chat:'#chat-dialog',memos:'#memos-dialog'})[next]);if(!host?.animate||typeof matchMedia!=='undefined'&&matchMedia('(prefers-reduced-motion: reduce)').matches)return;const pages=['calendar','chat','memos','timeline'],offset=pages.indexOf(next)>pages.indexOf(previous)?10:-10;host.getAnimations?.().forEach(animation=>animation.cancel());host.animate([{opacity:.92,transform:'translateX('+offset+'px)'},{opacity:1,transform:'translateX(0)'}],{duration:150,easing:'cubic-bezier(.2,.8,.2,1)'});}
 let pickerMainView=null;
 function handlePickerState(event){if(event.detail?.active){pickerMainView={view,user:currentUser?.id};return;}const previous=pickerMainView;pickerMainView=null;if(previous&&currentUser?.id===previous.user&&previous.view!==view)switchView(previous.view);}
 window.addEventListener('app-file-picker-state',handlePickerState);
 
 async function loadTimeline(){
   const version=++timelineVersion, list=$('#timeline-list');
-  list.replaceChildren();$('#timeline-summary').textContent='正在整理你们的回忆…';$('#status').textContent='';$('#timeline-retry').hidden=true;$('#memoir').setAttribute('aria-busy','true');
+  if(!list.children.length)$('#timeline-summary').textContent='正在整理你们的回忆…';$('#status').textContent='';$('#timeline-retry').hidden=true;$('#memoir').setAttribute('aria-busy','true');
   try {
     const rows=await api('/api/timeline');
     if(version!==timelineVersion||view!=='timeline')return;
-    $('#timeline-summary').textContent=rows.length?`${rows.length} 段回忆 · ${new Set(rows.map(r=>r.day)).size} 个值得记住的日子 · 从最初到现在`:'这里会珍藏你们一起走过的日子。';
+    list.replaceChildren();$('#timeline-summary').textContent=rows.length?`${rows.length} 段回忆 · ${new Set(rows.map(r=>r.day)).size} 个值得记住的日子 · 从最初到现在`:'这里会珍藏你们一起走过的日子。';
     if(!rows.length){const empty=el('div',undefined,'memoir-empty');empty.append(el('h3','你们的故事，从第一条回忆开始'),el('p','在日历上选择一个特别的日子，写下文字或放上照片。'));const add=el('button','＋ 写下第一条回忆','primary');add.onclick=()=>openEditor();empty.append(add);list.append(empty);return;}
     let year='',lastDay='',dayCards;
     for(const r of rows){
@@ -120,11 +121,12 @@ if(navigator.userAgent.includes('OurDaysAndroid/'))document.body.classList.add('
 function calendarSwipe(grid){
  let gesture=null,suppressClickUntil=0;const pointers=new Set();
  grid.addEventListener('pointerdown',event=>{
-  if(event.pointerType==='mouse'||event.button!==0||view!=='calendar'||typeof navigator!=='undefined'&&/OurDays(?:Android|Windows)\//.test(navigator.userAgent))return;
-  pointers.add(event.pointerId);if(pointers.size!==1||document.querySelector('dialog[open]')){gesture=null;return;}
+  if(event.pointerType==='mouse'||event.button!==0||view!=='calendar')return;
+  if(event.target?.closest('input,textarea,select,.navigation button'))return;
+  if(event.isPrimary===true){pointers.clear();gesture=null;}pointers.add(event.pointerId);if(pointers.size!==1||document.querySelector('dialog[open]')){gesture=null;return;}
   gesture={id:event.pointerId,x:event.clientX,y:event.clientY,month};
  });
- grid.addEventListener('pointermove',event=>{if(!gesture||gesture.id!==event.pointerId)return;const dx=Math.abs(event.clientX-gesture.x),dy=Math.abs(event.clientY-gesture.y);if(dy>12&&dy>dx)gesture=null;});
+ grid.addEventListener('pointermove',event=>{if(!gesture||gesture.id!==event.pointerId)return;const dx=Math.abs(event.clientX-gesture.x),dy=Math.abs(event.clientY-gesture.y);if(dy>12&&dy>dx){gesture=null;return;}if(dx>16&&dx>dy*1.2&&!gesture.captured&&grid.setPointerCapture){grid.setPointerCapture(event.pointerId);gesture.captured=true;}});
  grid.addEventListener('pointerup',event=>{
   pointers.delete(event.pointerId);if(!gesture||gesture.id!==event.pointerId)return;
   const start=gesture;gesture=null;const dx=event.clientX-start.x,dy=event.clientY-start.y,threshold=Math.max(40,Math.min(80,grid.clientWidth*0.15));
@@ -132,27 +134,27 @@ function calendarSwipe(grid){
   suppressClickUntil=Date.now()+700;move(dx<0?1:-1);
  });
  grid.addEventListener('pointercancel',event=>{pointers.delete(event.pointerId);gesture=null;});
- grid.addEventListener('pointerleave',event=>{pointers.delete(event.pointerId);if(gesture?.id===event.pointerId)gesture=null;});
+ grid.addEventListener('pointerleave',event=>{if(gesture?.captured)return;pointers.delete(event.pointerId);if(gesture?.id===event.pointerId)gesture=null;});
  grid.addEventListener('click',event=>{if(Date.now()<suppressClickUntil){event.preventDefault();event.stopImmediatePropagation();}},true);
 }
-calendarSwipe($('#grid'));
+calendarSwipe($('.calendar'));
 
 function mainViewSwipe(host){
  const pages=['calendar','chat','memos','timeline'],pointers=new Set();let gesture=null,suppressClickUntil=0;
  const blocked=event=>host.hidden||document.querySelector('dialog[open]')||document.querySelector('#chat-context-menu:not([hidden])')||event.target.closest('input,textarea,select,audio,video,[contenteditable],.chat-tools,#chat-hold-actions,.memo-drag-handle,.memo-item-drag,.voice-play');
  host.addEventListener('pointerdown',event=>{
-  if(event.pointerType==='mouse'||event.button!==0)return;pointers.add(event.pointerId);
-  if(pointers.size!==1||blocked(event)||view==='calendar'&&event.target.closest('#grid')&&!/OurDays(?:Android|Windows)\//.test(navigator.userAgent)){gesture=null;return;}
+  if(event.pointerType==='mouse'||event.button!==0)return;if(event.isPrimary===true){pointers.clear();gesture=null;}pointers.add(event.pointerId);
+  if(pointers.size!==1||blocked(event)||view==='calendar'&&event.target.closest('.calendar')){gesture=null;return;}
   gesture={id:event.pointerId,x:event.clientX,y:event.clientY,view};
  });
- host.addEventListener('pointermove',event=>{if(!gesture||gesture.id!==event.pointerId)return;const dx=Math.abs(event.clientX-gesture.x),dy=Math.abs(event.clientY-gesture.y);if(dy>12&&dy>dx)gesture=null;});
+ host.addEventListener('pointermove',event=>{if(!gesture||gesture.id!==event.pointerId)return;if(blocked(event)){gesture=null;return;}const dx=Math.abs(event.clientX-gesture.x),dy=Math.abs(event.clientY-gesture.y);if(dy>12&&dy>dx*1.2){gesture=null;return;}if(dx>16&&dx>dy*1.2&&!gesture.captured&&host.setPointerCapture){host.setPointerCapture(event.pointerId);gesture.captured=true;}});
  host.addEventListener('pointerup',event=>{
   pointers.delete(event.pointerId);if(!gesture||gesture.id!==event.pointerId)return;const start=gesture;gesture=null;
-  if(start.view!==view||blocked(event))return;const dx=event.clientX-start.x,dy=event.clientY-start.y,threshold=Math.max(55,Math.min(90,host.clientWidth*.18));
-  if(Math.abs(dx)<threshold||Math.abs(dx)<Math.abs(dy)*1.6)return;const next=pages.indexOf(view)+(dx<0?1:-1);if(next<0||next>=pages.length)return;
+  if(start.view!==view||blocked(event))return;const dx=event.clientX-start.x,dy=event.clientY-start.y,threshold=Math.max(36,Math.min(60,host.clientWidth*.12));
+  if(Math.abs(dx)<threshold||Math.abs(dx)<Math.abs(dy)*1.25)return;const next=pages.indexOf(view)+(dx<0?1:-1);if(next<0||next>=pages.length)return;
   event.preventDefault();suppressClickUntil=Date.now()+700;switchView(pages[next]);
  });
- const cancel=event=>{pointers.delete(event.pointerId);gesture=null;};host.addEventListener('pointercancel',cancel);host.addEventListener('pointerleave',cancel);
+ const cancel=event=>{pointers.delete(event.pointerId);gesture=null;};host.addEventListener('pointercancel',cancel);host.addEventListener('pointerleave',event=>{if(!gesture?.captured)cancel(event);});
  host.addEventListener('click',event=>{if(Date.now()<suppressClickUntil){event.preventDefault();event.stopImmediatePropagation();}},true);
 }
 mainViewSwipe($('#app'));

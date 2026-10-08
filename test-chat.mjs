@@ -212,7 +212,7 @@ test('App更新接口匿名读取、下载校验、发布单调构建号及路�
 
 test('日历左右滑动切月，竖向滚动、点击、多指及取消不切换，滑动后阻止误点',()=>{
  const source=readFileSync(new URL('./public/app.js',import.meta.url),'utf8'),handlers={},moves=[],grid={clientWidth:360,addEventListener:(type,handler)=>{handlers[type]=handler;}},context={Set,Math,Date,view:'calendar',month:'2026-10',document:{querySelector:()=>null},move:delta=>moves.push(delta)};
- const bind=runInNewContext(source.slice(source.indexOf('function calendarSwipe(grid){'),source.indexOf("calendarSwipe($('#grid'))"))+';calendarSwipe',context);bind(grid);const event=(x,y,id=1)=>({pointerType:'touch',button:0,pointerId:id,clientX:x,clientY:y});
+ const bind=runInNewContext(source.slice(source.indexOf('function calendarSwipe(grid){'),source.indexOf("calendarSwipe($('.calendar'))"))+';calendarSwipe',context);bind(grid);const event=(x,y,id=1)=>({pointerType:'touch',button:0,pointerId:id,clientX:x,clientY:y});
  handlers.pointerdown(event(250,100));handlers.pointerup(event(120,105));assert.deepEqual(moves,[1]);let prevented=false;handlers.click({preventDefault(){prevented=true;},stopImmediatePropagation(){}});assert.equal(prevented,true);
  handlers.pointerdown(event(100,100));handlers.pointerup(event(240,110));assert.deepEqual(moves,[1,-1]);
  handlers.pointerdown(event(100,100));handlers.pointermove(event(105,180));handlers.pointerup(event(220,200));
@@ -286,8 +286,8 @@ test('原生录音在聊天内显示计时，结束与取消恢复按钮',()=>{
  runInNewContext(source.slice(source.indexOf('const nativeVoiceBuild=')),context);
  context.$('#chat-dialog').hidden=false;context.$('#chat-native-record').onclick({preventDefault:()=>{throw Error('unexpected');}});
  handlers['native-voice-result']({detail:{recording:true}});assert.equal(context.$('#chat-native-record').href,'/app/finish-voice');assert.equal(context.$('#chat-native-cancel').hidden,false);tick();assert.match(context.$('#chat-native-record').textContent,/1秒/);
- handlers['native-voice-result']({detail:{data:'AQID',duration:2}});assert.equal(context.$('#chat-native-record').href,'/app/record-voice');assert.equal(context.$('#chat-native-cancel').hidden,true);assert.equal(context.$('#chat-record-send').hidden,false);assert.ok(cleared>0);assert.match(status,/试听/);
- handlers['native-voice-result']({detail:{recording:true}});handlers['native-voice-result']({detail:{cancelled:true}});assert.equal(context.$('#chat-native-cancel').hidden,true);assert.equal(status,'已取消录音');
+ handlers['native-voice-result']({detail:{data:'AQID',duration:2}});assert.equal(context.$('#chat-native-record').href,'/app/record-voice');assert.equal(context.$('#chat-native-cancel').hidden,true);assert.equal(context.$('#chat-record-send').hidden,false);assert.ok(cleared>0);assert.equal(status,'');
+ handlers['native-voice-result']({detail:{recording:true}});handlers['native-voice-result']({detail:{cancelled:true}});assert.equal(context.$('#chat-native-cancel').hidden,true);assert.equal(status,'');
  runInNewContext('voiceHeld=true',context);handlers['native-voice-result']({detail:{recording:true}});assert.equal(context.$('#chat-native-cancel').hidden,true);handlers['native-voice-result']({detail:{cancelled:true}});
 });
 
@@ -344,4 +344,24 @@ test('长按主页面消息使用页面容器，按住录音不显示旧取消�
  const context={nativeVoiceBuild:10808,nativeVoiceActive:true,voiceRecorder:null,voiceStarting:false,chatSending:false,currentUser:{},chatOwner:1,recordGeneration:0,window:{location:{}},document:{querySelectorAll:()=>[],elementFromPoint:()=>({closest:()=>target})},$:node,matchMedia:()=>({matches:true}),setTimeout:fn=>{startTimer=fn;return 1;},clearTimeout:()=>{},releaseRecording:()=>{},chatStatus:()=>{}};
  runInNewContext(code,context);events.pointerdown({button:0,pointerId:1,preventDefault:()=>{}});await startTimer();target={dataset:{action:'cancel'}};
  events.pointerup({type:'pointerup',pointerId:1,clientX:20,clientY:100});assert.equal(context.window.location.href,'/app/cancel-voice');
+});
+
+
+test('日历卡片内只切月，卡片外切页签，残留触点与横滑出边界不漏切',()=>{
+ const source=readFileSync(new URL('./public/app.js',import.meta.url),'utf8'),code=source.slice(source.indexOf('function mainViewSwipe(host){'),source.indexOf("mainViewSwipe($('#app'))")),handlers={},moves=[],captures=[];
+ const context={view:'calendar',Set,Math,Date,navigator:{userAgent:'OurDaysAndroid/10808'},document:{querySelector:()=>null},switchView:next=>{moves.push(next);context.view=next;}},host={hidden:false,clientWidth:360,setPointerCapture:id=>captures.push(id),addEventListener:(name,fn)=>handlers[name]=fn};runInNewContext(code+';mainViewSwipe',context)(host);
+ const event=(x,y,id,region='',primary=true)=>({pointerType:'touch',button:0,pointerId:id,isPrimary:primary,clientX:x,clientY:y,target:{closest:selector=>selector===region?{}:null},preventDefault:()=>{},stopImmediatePropagation:()=>{}});
+ handlers.pointerdown(event(250,100,1,'.calendar'));handlers.pointerup(event(120,100,1,'.calendar'));assert.equal(moves.length,0);
+ // A control that consumes its own pointerup must not block the next primary touch.
+ handlers.pointerdown(event(250,100,2,'input,textarea,select,audio,video,[contenteditable],.chat-tools,#chat-hold-actions,.memo-drag-handle,.memo-item-drag,.voice-play'));
+ handlers.pointerdown(event(250,100,3));handlers.pointermove(event(215,108,3));handlers.pointerleave(event(215,108,3));handlers.pointerup(event(195,112,3));assert.deepEqual(moves,['chat']);assert.deepEqual(captures,[3]);
+ handlers.pointerdown(event(250,100,4));handlers.pointermove(event(210,110,4));handlers.pointerup(event(195,112,4));assert.equal(context.view,'memos');
+ handlers.pointerdown(event(195,112,5));handlers.pointermove(event(250,116,5));handlers.pointerup(event(260,118,5));assert.equal(context.view,'chat');
+});
+
+test('聊天切回立即复用消息，备忘缓存切页保留但注销清空且旧请求不回写',async()=>{
+ const chatSource=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8'),chatCode=chatSource.slice(chatSource.indexOf('function openChatView(){'),chatSource.indexOf("$('#chat-open').onclick"));const rows=[{id:1,text:'已经加载'}],chat={chatRows:rows,chatOldest:1,chatSyncSince:20,chatGeneration:1,chatBusy:true,chatTimer:1,chatSelecting:false,chatSelected:new Set(),clearTimeout:()=>{},closeChatMenu:()=>{},chatSelection:()=>{},chatHeader:()=>{},chatStatus:()=>{},renderChat:()=>assert.equal(chat.chatRows,rows),syncChat:async()=>{}};await runInNewContext(chatCode+';openChatView',chat)();assert.equal(chat.chatRows,rows);assert.equal(chat.chatOldest,1);
+ const source=readFileSync(new URL('./public/memos.js',import.meta.url),'utf8'),code=source.slice(source.indexOf('async function openMemoView(){'),source.indexOf("$('#memo-add').onclick")),nodes=new Map();let resolve,clears=0,renders=0;const cached={notes:[{body:'私密缓存'}]},pending=new Promise(r=>resolve=r);
+ const context={currentUser:{id:1},memoUser:1,memoData:cached,memoLoad:0,memoEditMode:false,JSON,Promise,Boolean,$:id=>{if(!nodes.has(id))nodes.set(id,{hidden:false,close:()=>{},replaceChildren:()=>clears++});return nodes.get(id);},resetMemoEditor:()=>{},memoStatus:()=>{},renderMemos:()=>renders++,api:async url=>{await pending;return url==='/api/me'?{id:1}:cached;}};
+ const actions=runInNewContext(code+';({openMemoView,stopMemos})',context),task=actions.openMemoView();assert.equal(clears,0);assert.equal(context.memoData,cached);actions.stopMemos(false);assert.equal(context.memoData,cached);assert.equal(clears,0);actions.stopMemos();context.currentUser={id:2};resolve();await task;assert.equal(context.memoData,null);assert.equal(context.memoUser,null);assert.equal(renders,0);assert.ok(clears>0);
 });
