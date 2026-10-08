@@ -188,7 +188,7 @@ test('回忆录同一天共享日期节点，保留独立回忆卡片',async()=>
 });
 
 test('回忆卡片展示继续回应入口、已有回复及点击行为',()=>{
- const source=readFileSync(new URL('./public/app.js',import.meta.url),'utf8');class Node{constructor(tag,text,cls){this.tag=tag;this.text=text;this.cls=cls;this.children=[];}append(...items){this.children.push(...items);}}let opened=null;const memory={id:12,perspectives:[],replies:[{body:'回应'}]};const render=runInNewContext(source.slice(source.indexOf('function conversation(r){'),source.indexOf('function previews()'))+';conversation',{el:(...args)=>new Node(...args),currentUser:{id:1},replyBubble:r=>new Node('p',r.body),openMemoryReplies:r=>{opened=r;}});const card=render(memory),button=card.children.find(n=>n.cls==='memory-reply-open');assert.ok(button);assert.equal(button.type,'button');assert.equal(button.text,'继续回应 · 1');button.onclick();assert.equal(opened,memory);assert.ok(card.children.find(n=>n.cls==='memory-replies'));
+ const source=readFileSync(new URL('./public/app.js',import.meta.url),'utf8');class Node{constructor(tag,text,cls){this.tag=tag;this.text=text;this.cls=cls;this.children=[];}append(...items){this.children.push(...items);}}let opened=null;const memory={id:12,perspectives:[],replies:[{body:'回应'}]};const render=runInNewContext(source.slice(source.indexOf('function conversation(r,'),source.indexOf('function previews()'))+';conversation',{el:(...args)=>new Node(...args),currentUser:{id:1},replyBubble:r=>new Node('p',r.body),openMemoryReplies:r=>{opened=r;}});const card=render(memory),button=card.children.find(n=>n.cls==='memory-reply-open');assert.ok(button);assert.equal(button.type,'button');assert.equal(button.text,'继续回应 · 1');button.onclick();assert.equal(opened,memory);assert.ok(card.children.find(n=>n.cls==='memory-replies'));
 });
 
 test('录音错误区分权限拒绝、设备占用及启动中断',async()=>{
@@ -351,4 +351,19 @@ test('取消滑动切页签，保留日历切月，撤回提示只显示在聊�
  assert.ok(!app.includes('mainViewSwipe'));assert.ok(app.includes("calendarSwipe($('.calendar'))"));
  assert.ok(chat.includes("mine?'你撤回了一条消息':'对方撤回了一条消息'"));
  assert.ok(!/chatStatus\(['"]已撤回/.test(chat));
+});
+
+
+test('回忆提示在对方记录视角或回应后隐藏，回忆录始终隐藏',()=>{
+ const source=readFileSync(new URL('./public/app.js',import.meta.url),'utf8');
+ class Node{constructor(tag,text,cls){this.cls=cls;this.children=[];}append(...items){this.children.push(...items);}}
+ const render=runInNewContext(source.slice(source.indexOf('function conversation(r,'),source.indexOf('function previews()'))+';conversation',{el:(...args)=>new Node(...args),currentUser:{id:1},replyBubble:()=>new Node('p'),openMemoryReplies:()=>{}});
+ const hasInvite=(memory,options)=>render(memory,options).children.some(n=>n.cls==='conversation-invite');
+ const own={author:1,body:'记录',photos:[]},peer={author:2,body:'另一种视角',photos:[]};
+ assert.equal(hasInvite({perspectives:[own]}),true);
+ assert.equal(hasInvite({perspectives:[own],replies:[{author:1}]}),true);
+ assert.equal(hasInvite({perspectives:[own,peer]}),false);
+ assert.equal(hasInvite({perspectives:[own],replies:[{author:2}]}),false);
+ assert.equal(hasInvite({perspectives:[own]},{showInvite:false}),false);
+ assert.ok(source.includes('card.append(conversation(r,{showInvite:false}))'));
 });
