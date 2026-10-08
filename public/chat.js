@@ -44,17 +44,16 @@ function renderChat(){
  const key=chatOwner+':'+chatSelecting+':'+JSON.stringify(chatMembers)+':'+(chatPending?.id||'')+':'+chatRows.map(r=>r.id+'-'+(r.retracted_at||0)+'-'+(r.transcript||'')).join(',');if(key===chatRenderKey)return;chatRenderKey=key;
  const list=$('#chat-messages'),bottom=list.scrollHeight-list.scrollTop-list.clientHeight<70;for(const audio of list.querySelectorAll('audio'))audio.pause();list.replaceChildren();
  let previous=null;
- for(const row of [...chatRows,...(chatPending?[chatPending]:[])]){appendChatTime(list,row.created,previous);previous=row.created;const mine=row.sender===chatOwner,wrap=el('div',undefined,'chat-row'+(mine?' mine':'')),avatar=el('span',undefined,'avatar chat-avatar'),member=chatMembers.find(m=>m.id===row.sender);avatar.setAttribute('aria-label',mine?'我的头像':row.name+'的头像');if(member)drawAvatar(avatar,member);
+ for(const row of [...chatRows,...(chatPending?[chatPending]:[])]){if(row.retracted_at)continue;appendChatTime(list,row.created,previous);previous=row.created;const mine=row.sender===chatOwner,wrap=el('div',undefined,'chat-row'+(mine?' mine':'')),avatar=el('span',undefined,'avatar chat-avatar'),member=chatMembers.find(m=>m.id===row.sender);avatar.setAttribute('aria-label',mine?'我的头像':row.name+'的头像');if(member)drawAvatar(avatar,member);
   if(chatSelecting&&!row.retracted_at){const check=el('input');check.type='checkbox';check.checked=chatSelected.has(row.id);check.disabled=chatSavingMemory;check.setAttribute('aria-label','选择'+row.name+'的'+({text:'文字',image:'图片',audio:'语音'}[row.kind])+'消息');check.onchange=()=>{if(check.checked&&chatSelected.size>=50){check.checked=false;chatStatus('一次最多选择50条消息');return;}if(check.checked)chatSelected.add(row.id);else chatSelected.delete(row.id);wrap.classList.toggle('selected',check.checked);chatSelection();};wrap.append(check);wrap.classList.toggle('selected',check.checked);wrap.classList.add('selectable');chatSelectableRow(wrap,check);}
   const card=el('article',undefined,'chat-message'+(mine?' mine':''));
-  if(row.retracted_at){wrap.classList.add('retracted');card.append(el('p',mine?'你撤回了一条消息':'对方撤回了一条消息','chat-retracted'));wrap.append(card);list.append(wrap);continue;}
   if(!row.pending)chatMessageMenu(card,row);
   if(row.kind==='text')card.append(el('p',row.text,'chat-text'));
   if(row.kind==='image'){const img=el('img');img.src=row.pending?row.preview:'/api/chat/media/'+row.id;img.alt='聊天图片';img.loading='lazy';const button=el('button',undefined,'chat-image');button.type='button';button.setAttribute('aria-label','放大聊天图片');button.append(img);button.onclick=()=>openPhoto(img);card.append(button);}
   if(row.pending&&row.kind==='audio')card.append(el('p','语音 · '+Math.ceil(row.duration||1)+'秒','chat-text'));
   if(!row.pending&&row.kind==='audio'){card.classList.add('voice-card');card.append(voiceMessage('/api/chat/media/'+row.id,row.duration));speechTranscript(card,row);}wrap.append(avatar,card);if(row.pending){const spinner=el('span',undefined,'chat-send-spinner');spinner.setAttribute('role','status');spinner.setAttribute('aria-label','正在发送');wrap.append(spinner);}list.append(wrap);
  }
- if(!chatRows.length&&!chatPending)list.append(el('p','想说的话，随时留给对方。','chat-empty'));
+ if(!chatRows.some(row=>!row.retracted_at)&&!chatPending)list.append(el('p','想说的话，随时留给对方。','chat-empty'));
  if(bottom)list.scrollTop=list.scrollHeight;
 }
 async function syncChat(){

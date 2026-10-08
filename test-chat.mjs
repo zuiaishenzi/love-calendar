@@ -321,18 +321,7 @@ test('四个主视图互斥切换，聊天备忘不是弹窗，取消选图恢�
 });
 
 
-test('App页面滑动顺序、边界、纵向滚动、多指、录音与菜单手势隔离',()=>{
- const source=readFileSync(new URL('./public/app.js',import.meta.url),'utf8'),code=source.slice(source.indexOf('function mainViewSwipe(host){'),source.indexOf("mainViewSwipe($('#app'))")),handlers={},moves=[];let modal=false,menu=false;
- const context={view:'calendar',Set,Math,Date,navigator:{userAgent:'OurDaysAndroid/10808'},document:{querySelector:selector=>selector==='dialog[open]'?modal:menu},switchView:next=>{moves.push(next);context.view=next;}};
- const host={hidden:false,clientWidth:360,addEventListener:(name,fn)=>handlers[name]=fn},attach=runInNewContext(code+';mainViewSwipe',context);attach(host);
- const event=(x,y,id=1,blocked=false)=>({pointerType:'touch',button:0,pointerId:id,clientX:x,clientY:y,target:{closest:selector=>blocked&&selector.includes('chat-tools')?{}:null},preventDefault(){this.prevented=true;},stopImmediatePropagation(){this.stopped=true;}});
- const swipe=(from,to)=>{handlers.pointerdown(from);handlers.pointermove(to);handlers.pointerup(to);};
- swipe(event(250,100),event(120,100));assert.equal(context.view,'chat');swipe(event(250,100),event(120,100));assert.equal(context.view,'memos');swipe(event(250,100),event(120,100));assert.equal(context.view,'timeline');swipe(event(250,100),event(120,100));assert.equal(moves.length,3);swipe(event(120,100),event(250,100));assert.equal(context.view,'memos');
- const before=moves.length;swipe(event(250,100),event(120,300));swipe(event(250,100,1,true),event(120,100,1,true));modal=true;swipe(event(250,100),event(120,100));modal=false;
- handlers.pointerdown(event(250,100));menu=true;handlers.pointerup(event(120,100));menu=false;
- handlers.pointerdown(event(250,100));handlers.pointerdown(event(260,100,2));handlers.pointerup(event(120,100,2));handlers.pointerup(event(120,100));assert.equal(moves.length,before);
- const click=event(0,0);handlers.click(click);assert.equal(click.prevented,true);assert.equal(click.stopped,true);
-});
+
 
 test('长按主页面消息使用页面容器，按住录音不显示旧取消按钮，松手落点决定取消',async()=>{
  const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8');
@@ -347,21 +336,19 @@ test('长按主页面消息使用页面容器，按住录音不显示旧取消�
 });
 
 
-test('日历卡片内只切月，卡片外切页签，残留触点与横滑出边界不漏切',()=>{
- const source=readFileSync(new URL('./public/app.js',import.meta.url),'utf8'),code=source.slice(source.indexOf('function mainViewSwipe(host){'),source.indexOf("mainViewSwipe($('#app'))")),handlers={},moves=[],captures=[];
- const context={view:'calendar',Set,Math,Date,navigator:{userAgent:'OurDaysAndroid/10808'},document:{querySelector:()=>null},switchView:next=>{moves.push(next);context.view=next;}},host={hidden:false,clientWidth:360,setPointerCapture:id=>captures.push(id),addEventListener:(name,fn)=>handlers[name]=fn};runInNewContext(code+';mainViewSwipe',context)(host);
- const event=(x,y,id,region='',primary=true)=>({pointerType:'touch',button:0,pointerId:id,isPrimary:primary,clientX:x,clientY:y,target:{closest:selector=>selector===region?{}:null},preventDefault:()=>{},stopImmediatePropagation:()=>{}});
- handlers.pointerdown(event(250,100,1,'.calendar'));handlers.pointerup(event(120,100,1,'.calendar'));assert.equal(moves.length,0);
- // A control that consumes its own pointerup must not block the next primary touch.
- handlers.pointerdown(event(250,100,2,'input,textarea,select,audio,video,[contenteditable],.chat-tools,#chat-hold-actions,.memo-drag-handle,.memo-item-drag,.voice-play'));
- handlers.pointerdown(event(250,100,3));handlers.pointermove(event(215,108,3));handlers.pointerleave(event(215,108,3));handlers.pointerup(event(195,112,3));assert.deepEqual(moves,['chat']);assert.deepEqual(captures,[3]);
- handlers.pointerdown(event(250,100,4));handlers.pointermove(event(210,110,4));handlers.pointerup(event(195,112,4));assert.equal(context.view,'memos');
- handlers.pointerdown(event(195,112,5));handlers.pointermove(event(250,116,5));handlers.pointerup(event(260,118,5));assert.equal(context.view,'chat');
-});
+
 
 test('聊天切回立即复用消息，备忘缓存切页保留但注销清空且旧请求不回写',async()=>{
  const chatSource=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8'),chatCode=chatSource.slice(chatSource.indexOf('function openChatView(){'),chatSource.indexOf("$('#chat-open').onclick"));const rows=[{id:1,text:'已经加载'}],chat={chatRows:rows,chatOldest:1,chatSyncSince:20,chatGeneration:1,chatBusy:true,chatTimer:1,chatSelecting:false,chatSelected:new Set(),clearTimeout:()=>{},closeChatMenu:()=>{},chatSelection:()=>{},chatHeader:()=>{},chatStatus:()=>{},renderChat:()=>assert.equal(chat.chatRows,rows),syncChat:async()=>{}};await runInNewContext(chatCode+';openChatView',chat)();assert.equal(chat.chatRows,rows);assert.equal(chat.chatOldest,1);
  const source=readFileSync(new URL('./public/memos.js',import.meta.url),'utf8'),code=source.slice(source.indexOf('async function openMemoView(){'),source.indexOf("$('#memo-add').onclick")),nodes=new Map();let resolve,clears=0,renders=0;const cached={notes:[{body:'私密缓存'}]},pending=new Promise(r=>resolve=r);
  const context={currentUser:{id:1},memoUser:1,memoData:cached,memoLoad:0,memoEditMode:false,JSON,Promise,Boolean,$:id=>{if(!nodes.has(id))nodes.set(id,{hidden:false,close:()=>{},replaceChildren:()=>clears++});return nodes.get(id);},resetMemoEditor:()=>{},memoStatus:()=>{},renderMemos:()=>renders++,api:async url=>{await pending;return url==='/api/me'?{id:1}:cached;}};
  const actions=runInNewContext(code+';({openMemoView,stopMemos})',context),task=actions.openMemoView();assert.equal(clears,0);assert.equal(context.memoData,cached);actions.stopMemos(false);assert.equal(context.memoData,cached);assert.equal(clears,0);actions.stopMemos();context.currentUser={id:2};resolve();await task;assert.equal(context.memoData,null);assert.equal(context.memoUser,null);assert.equal(renders,0);assert.ok(clears>0);
+});
+
+
+test('取消滑动切页签，保留日历切月，撤回消息不生成消息或时间提示',()=>{
+ const app=readFileSync(new URL('./public/app.js',import.meta.url),'utf8'),chat=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8');
+ assert.ok(!app.includes('mainViewSwipe'));assert.ok(app.includes("calendarSwipe($('.calendar'))"));
+ assert.ok(chat.includes('if(row.retracted_at)continue;appendChatTime'));assert.ok(!chat.includes('你撤回了一条消息'));assert.ok(!chat.includes('对方撤回了一条消息'));
+ assert.ok(chat.includes('if(!chatRows.some(row=>!row.retracted_at)&&!chatPending)'));
 });
