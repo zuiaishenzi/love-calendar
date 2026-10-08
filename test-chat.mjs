@@ -346,9 +346,9 @@ test('聊天切回立即复用消息，备忘缓存切页保留但注销清空�
 });
 
 
-test('取消滑动切页签，保留日历切月，撤回消息不生成消息或时间提示',()=>{
+test('取消滑动切页签，保留日历切月，撤回提示只显示在聊天记录',()=>{
  const app=readFileSync(new URL('./public/app.js',import.meta.url),'utf8'),chat=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8');
  assert.ok(!app.includes('mainViewSwipe'));assert.ok(app.includes("calendarSwipe($('.calendar'))"));
- assert.ok(chat.includes('if(row.retracted_at)continue;appendChatTime'));assert.ok(!chat.includes('你撤回了一条消息'));assert.ok(!chat.includes('对方撤回了一条消息'));
- assert.ok(chat.includes('if(!chatRows.some(row=>!row.retracted_at)&&!chatPending)'));
+ assert.ok(chat.includes("mine?'你撤回了一条消息':'对方撤回了一条消息'"));
+ assert.ok(!/chatStatus\(['"]已撤回/.test(chat));
 });
