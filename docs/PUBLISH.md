@@ -117,3 +117,10 @@ bash /opt/love-calendar/bin/sync-app-updates.sh
 ```
 
 后续继续执行 update.sh。Token 过期后用同样方式替换文件，无需重新创建应用容器。脚本只在拉取私库时读取 Token，不挂载进网站容器。
+
+
+Windows 应用内更新已接入。双击上传 BAT，选项1会同时校验并发布 APK 和 Windows EXE，选项2仍仅上传源码。默认 Windows 包为 `../love-app/OurDays-版本-Windows-build构建号-x64.exe`，构建号来自 `apps/windows/client-build.json`，EXE FileVersion 必须与源码一致。可用 `-WindowsPath` 指定同级 love-app 中的安装包。
+
+Windows 清单为私有仓库中的 windows.json，超过90MiB的安装包自动拆为分片，服务器 importer 验证每片及整包 SHA256 后合并，最终 EXE 从自有服务器下载。服务器仍只需执行 `sudo bash /opt/love-calendar/bin/update.sh`，同时更新网站和双端安装包。
+
+现有Windows客户端需要先安装一次包含检查更新功能的构建10803，之后通过右上角“版本更新”或桌面菜单“检查更新”下载并启动覆盖安装。安装前会提示保存编辑内容。

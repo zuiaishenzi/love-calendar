@@ -22,6 +22,9 @@ export function chatService(db,notify,{now=()=>Date.now(),speechRecognizer=creat
     rows.forEach((r,position)=>db.prepare('INSERT INTO memory_chat_messages(id,memory_id,position,sender,sender_name,kind,text,data,mime,created,duration) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(randomBytes(18).toString('hex'),id,position,r.sender,r.name,r.kind,r.text,r.data,r.mime,r.created,r.duration));return id;
    })();notify(user,'memory');return {id:memoryId,day,count:rows.length};
   }
+  const unread=()=>{const readThrough=db.prepare('SELECT through_id FROM chat_reads WHERE user_id=?').get(user.id)?.through_id||0;return {readThrough,count:db.prepare('SELECT COUNT(*) AS n FROM chat_messages WHERE ledger_id=? AND sender!=? AND id>? AND retracted_at IS NULL').get(ledger,user.id,readThrough).n,latest:db.prepare('SELECT COALESCE(MAX(id),0) AS n FROM chat_messages WHERE ledger_id=?').get(ledger).n};};
+  if(p==='/api/chat/unread'&&req.method==='GET')return unread();
+  if(p==='/api/chat/read'&&req.method==='POST'){if(!Number.isSafeInteger(input.through)||input.through<0||input.through>unread().latest)throw fail(400,'已读位置无效');db.prepare('INSERT INTO chat_reads(user_id,through_id) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET through_id=MAX(through_id,excluded.through_id)').run(user.id,input.through);return unread();}
   if(p==='/api/chat/history'&&req.method==='GET'){
    const kind=url.searchParams.get('kind')||'',q=(url.searchParams.get('q')||'').trim(),before=Number(url.searchParams.get('before')||0);
    if(kind&&!['text','image','audio'].includes(kind)||q.length>200||!Number.isSafeInteger(before)||before<0)throw fail(400,'检索条件无效');
@@ -36,7 +39,7 @@ export function chatService(db,notify,{now=()=>Date.now(),speechRecognizer=creat
    const since=Number(url.searchParams.get('since')||0);if(!Number.isSafeInteger(since)||since<0)throw fail(400,'同步信息无效');const revision=now();
    const cursor=Number(url.searchParams.get('before')||0);if(!Number.isSafeInteger(cursor)||cursor<0)throw fail(400,'分页信息无效');
    const rows=db.prepare('SELECT m.id,m.sender,m.kind,m.text,m.mime,m.duration,m.created,m.retracted_at,u.name,(SELECT text FROM chat_transcriptions t WHERE t.message_id=m.id AND t.user_id=?) AS transcript FROM chat_messages m JOIN users u ON u.id=m.sender WHERE m.ledger_id=? AND (?=0 OR m.id<?) ORDER BY m.id DESC LIMIT 51').all(user.id,ledger,cursor,cursor);
-   const more=rows.length>50;return {messages:rows.slice(0,50).reverse(),more,revision,retractions:db.prepare('SELECT id,retracted_at FROM chat_messages WHERE ledger_id=? AND retracted_at>=?').all(ledger,since),members:db.prepare('SELECT id,name,avatar,avatar_data IS NOT NULL AS avatar_uploaded,ledger_id,seat FROM users WHERE ledger_id=? ORDER BY seat').all(ledger).map(u=>({id:u.id,name:u.name,avatar:u.avatar||`pair-${(u.ledger_id-1)%5+1}-${u.seat}`,avatar_uploaded:Boolean(u.avatar_uploaded)}))};
+   const more=rows.length>50;return {messages:rows.slice(0,50).reverse(),more,revision,unread:unread(),retractions:db.prepare('SELECT id,retracted_at FROM chat_messages WHERE ledger_id=? AND retracted_at>=?').all(ledger,since),members:db.prepare('SELECT id,name,avatar,avatar_data IS NOT NULL AS avatar_uploaded,ledger_id,seat FROM users WHERE ledger_id=? ORDER BY seat').all(ledger).map(u=>({id:u.id,name:u.name,avatar:u.avatar||`pair-${(u.ledger_id-1)%5+1}-${u.seat}`,avatar_uploaded:Boolean(u.avatar_uploaded)}))};
   }
   if(p==='/api/chat/messages'&&req.method==='POST'){
    check();const count=db.prepare('SELECT COUNT(*) AS n FROM chat_messages WHERE ledger_id=?').get(ledger).n;if(count>=10000)throw fail(400,'聊天记录已达10000条上限');

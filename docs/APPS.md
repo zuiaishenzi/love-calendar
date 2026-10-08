@@ -58,3 +58,6 @@ Android 通知构建号为 10802，安装包 `../love-app/OurDays-1.8.0-Android-
 先发布服务器源码，再安装新版客户端，登录后从右上角菜单选择“通知设置”并开启。Android 13 及以后会申请系统通知权限；系统通知设置内可分别控制“社交通讯”和“服务通知”。Windows 可在系统通知设置中控制朝夕通知。点击通知可打开聊天或对应日期。
 
 安装包不提交公开源码仓库，APK 后续仍通过独立私有 love-app 仓库和服务器更新脚本发布。后台定时检查不等同于厂商推送；需要退出进程后及时送达时，还需接入系统推送。
+
+
+Windows 应用内更新构建10803：`../love-app/OurDays-1.8.0-Windows-build10803-x64.exe`。先安装此包，再使用主界面右上角“版本更新”或桌面菜单“检查更新”。服务器接口 `/api/app/update?platform=windows` 与 Android 清单独立，SHA256校验通过后由用户选择启动安装。后续发布新Windows原生包需递增 client-build.json 并同步 package.json 中 buildVersion 和 artifactName；显示版本仍按正式发布节奏。

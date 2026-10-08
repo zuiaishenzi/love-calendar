@@ -240,3 +240,30 @@ test('通知接口需要登录且客户端通知入口脚本可加载',async()=>
  const dir=mkdtempSync(path.join(os.tmpdir(),'love-notification-http-')),app=createApplication({dataDir:dir,mailer:{ready:false}});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+app.server.address().port;
  try{assert.equal((await fetch(origin+'/api/notifications')).status,401);const script=await fetch(origin+'/notifications.js');assert.equal(script.status,200);assert.ok((await script.text()).includes('notifications-entry'));}finally{await new Promise(r=>app.server.close(r));app.db.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('Windows私库安装包分片、服务器合并和独立更新接口',async()=>{
+ const fs=await import('node:fs'),{spawnSync}=await import('node:child_process'),dir=mkdtempSync(path.join(os.tmpdir(),'love-windows-publish-')),source=path.join(dir,'source'),target=path.join(dir,'target'),installer=path.join(dir,'setup.exe');let app;
+ try{
+  fs.mkdirSync(source);const apk=Buffer.from([0x50,0x4b,3,4,1]);fs.writeFileSync(path.join(dir,'app.apk'),apk);
+  let result=spawnSync(process.execPath,['scripts/publish-app.mjs',path.join(dir,'app.apk'),source,'10802','1.8.0','说明'],{encoding:'utf8'});assert.equal(result.status,0,result.stderr);
+  const bytes=Buffer.alloc(90*1024*1024+100);bytes.write('MZ');fs.writeFileSync(installer,bytes);result=spawnSync(process.execPath,['scripts/publish-app.mjs',installer,source,'10803','1.8.0','桌面更新','windows','private'],{encoding:'utf8'});assert.equal(result.status,0,result.stderr);const info=JSON.parse(fs.readFileSync(path.join(source,'windows.json'),'utf8'));assert.equal(info.parts.length,2);assert.equal(fs.existsSync(path.join(source,info.filename)),false);
+  result=spawnSync(process.execPath,['scripts/import-app-release.mjs',source,target],{encoding:'utf8'});assert.equal(result.status,0,result.stderr);assert.equal(createHash('sha256').update(fs.readFileSync(path.join(target,info.filename))).digest('hex'),info.sha256);assert.ok(fs.existsSync(path.join(target,'latest.json')));
+  app=createApplication({dataDir:path.join(dir,'db'),appUpdateDir:target,mailer:{ready:false}});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+app.server.address().port;
+  // appUpdateDir is resolved from the environment in production; exercise the route directly.
+  const {appUpdates}=await import('./app-updates.mjs');let output='',headers;const response={writeHead(_status,value){headers=value;},end(value){if(value)output=String(value);}};appUpdates(target)({method:'GET'},response,new URL(origin+'/api/app/update?platform=windows'));assert.equal(JSON.parse(output).packageId,'xyz.ourdays.desktop');appUpdates(target)({method:'HEAD'},response,new URL(origin+'/api/app/download/'+info.filename));assert.equal(headers['Content-Length'],bytes.length);
+  fs.writeFileSync(path.join(source,info.parts[1].filename),Buffer.from('broken'));result=spawnSync(process.execPath,['scripts/import-app-release.mjs',source,target],{encoding:'utf8'});assert.notEqual(result.status,0);
+ }finally{if(app){await new Promise(r=>app.server.close(r));app.db.close();}rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('未读只统计对方未撤回消息，已读位置单调保存且不误清并发新消息',async()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-unread-')),db=openDatabase(dir);
+ try{db.exec("INSERT INTO ledgers(id,code) VALUES(1,'UNREAD01'),(2,'UNREAD02'); INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(1,'me','x','x',1,1),(2,'peer','x','x',1,2),(3,'other','x','x',2,1);");const service=chatService(db,()=>{}),call=(pathname,method='GET',input={},user={id:1,ledger_id:1})=>service.route({method},null,new URL('http://localhost/api/chat/'+pathname),user,input,()=>{}),add=(sender,ledger=1)=>db.prepare("INSERT INTO chat_messages(ledger_id,sender,kind,text,created) VALUES(?,?,'text','hi',1)").run(ledger,sender);
+ for(let i=0;i<61;i++)add(2);add(1);add(3,2);let data=await call('unread');assert.equal(data.count,61);const through=data.latest;assert.equal((await call('messages')).messages.length,50);add(2);data=await call('read','POST',{through});assert.equal(data.count,1);assert.equal((await call('read','POST',{through:0})).count,1);assert.equal((await call('unread','GET',{}, {id:3,ledger_id:2})).count,0);db.exec('UPDATE chat_messages SET retracted_at=2 WHERE id=(SELECT MAX(id) FROM chat_messages WHERE ledger_id=1)');assert.equal((await call('unread')).count,0);await assert.rejects(call('read','POST',{through:99999}),e=>e.status===400);
+ }finally{db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('未读徽标显示数字、超过99折叠，清零后隐藏且聊天标题不变',()=>{
+ const source=readFileSync('public/chat.js','utf8'),start=source.indexOf('function chatUnreadBadge('),code=source.slice(start).split('\n')[0],badge={},button={setAttribute(key,value){this[key]=value;}};const context={$:selector=>selector==='#chat-unread-badge'?badge:button};runInNewContext(code+';chatUnreadBadge(3);',context);assert.equal(badge.textContent,'3');assert.equal(badge.hidden,false);runInNewContext('chatUnreadBadge(120);',context);assert.equal(badge.textContent,'99+');runInNewContext('chatUnreadBadge(0);',context);assert.equal(badge.hidden,true);assert.equal(button['aria-label'],'聊天');
+});

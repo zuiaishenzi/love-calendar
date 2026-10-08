@@ -25,9 +25,11 @@
       "notifications.cjs",
       "config.json",
       "offline.html",
-      "icon.png"
+      "icon.png",
+      "updater.cjs",
+      "client-build.json"
     ],
-    "artifactName": "OurDays-${version}-Windows-${arch}.${ext}",
+    "artifactName": "OurDays-${version}-Windows-build10803-${arch}.${ext}",
     "win": {
       "target": "nsis",
       "icon": "icon.ico"
@@ -37,6 +39,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "朝夕"
-    }
+    },
+    "buildVersion": "1.8.0.10803"
   }
 }

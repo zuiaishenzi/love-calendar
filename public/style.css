@@ -402,3 +402,5 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
 
 .memo-ai-bar{display:flex;flex-direction:row;align-items:center;flex-wrap:wrap;gap:8px}.memo-ai-bar>button,#memo-originals-open{margin:0;padding:9px 12px;font-size:13px;align-self:auto;flex:1;white-space:nowrap}
 #memo-edit-mode{font-size:12px;padding:6px 10px}.memo-group li:has(.memo-item-drag){display:flex;flex-wrap:wrap;align-items:flex-start;gap:5px}.memo-group li>.memo-text{flex:1;min-width:0}.memo-item-drag{touch-action:none;cursor:grab;border:0;background:transparent;color:#a58290;padding:2px 5px;font-size:18px}.memo-group li>select{width:100%;font-size:12px;padding:5px;margin-bottom:5px}.memo-item-moving{opacity:.55}.memo-drop-target{border-color:var(--wine);background:#faf0f5}
+
+#chat-open{display:inline-flex;align-items:center;justify-content:center;gap:6px}.chat-unread-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;box-sizing:border-box;border-radius:10px;background:#a94a6a;color:white;font-size:10px;line-height:1;font-weight:600;letter-spacing:0}.chat-unread-badge[hidden]{display:none}

@@ -2,6 +2,7 @@
 param(
     [string]$Message = 'Update website and app release',
     [string]$ApkPath,
+    [string]$WindowsPath,
     [string]$Notes = '客户端修复与体验优化',
     [switch]$CodeOnly,
     [switch]$CheckOnly
@@ -54,7 +55,7 @@ function CommitAndPush([string]$Root, [string]$CommitMessage) {
     elseif ($LASTEXITCODE -ne 0) { throw '无法检查暂存区。' }
     Invoke-RepoGit $Root @('push', 'origin', 'main') | Out-Host
 }
-if ($CodeOnly -and $ApkPath) { throw 'CodeOnly 与 ApkPath 不可同时使用。' }
+if ($CodeOnly -and ($ApkPath -or $WindowsPath)) { throw 'CodeOnly 与 ApkPath 不可同时使用。' }
 if ((Invoke-RepoGit $sourceRoot @('remote', 'get-url', 'origin')) -ne 'https://github.com/zuiaishenzi/love-calendar.git') { throw '源码 origin 地址不符合约定。' }
 if ((Invoke-RepoGit $sourceRoot @('branch', '--show-current')) -ne 'main') { throw '请先切换到源码仓库的 main 分支；脚本不会自动切换或合并。' }
 if (-not $CodeOnly) {
@@ -80,6 +81,14 @@ if (-not $CodeOnly) {
     $badging = & $aapt dump badging $ApkPath
     if ($LASTEXITCODE -ne 0 -or -not ($badging -match "package: name='xyz.ourdays.mobile' versionCode='$build' versionName='$([regex]::Escape($version))'")) { throw 'APK 应用 ID、构建号或显示版本与源码不一致，请先重新构建。' }
 }
+$windowsBuild = (Get-Content (Join-Path $sourceRoot 'apps/windows/client-build.json') -Raw -Encoding UTF8 | ConvertFrom-Json).build
+if (-not $CodeOnly) {
+    if (-not $WindowsPath) { $WindowsPath = Join-Path $sourceRoot "../love-app/OurDays-$version-Windows-build$windowsBuild-x64.exe" }
+    $WindowsPath = (Resolve-Path -LiteralPath $WindowsPath).Path
+    if (-not $WindowsPath.StartsWith($allowedRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Windows 安装包必须位于同级 love-app 目录。' }
+    $windowsVersion = (Get-Item -LiteralPath $WindowsPath).VersionInfo.FileVersion
+    if ($windowsVersion -ne "$version.$windowsBuild") { throw "Windows 安装包构建版本不符，预期 $version.$windowsBuild，实际 $windowsVersion，请重新构建。" }
+}
 if ($CheckOnly) { Write-Host '检查通过：源码目标公开、安装包目标私有；未提交、未推送。'; return }
 if (-not $CodeOnly) {
     Invoke-RepoGit $packageRoot @('pull', '--ff-only', 'origin', 'main') | Out-Host
@@ -93,15 +102,27 @@ if (-not $CodeOnly) {
         if ($LASTEXITCODE -ne 0) { throw '安装包清单生成失败，未推送。' }
     }
 }
+if (-not $CodeOnly) {
+    $windowsManifest = Join-Path $packageRoot 'windows.json'
+    $windowsLatest = if (Test-Path $windowsManifest) { Get-Content $windowsManifest -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
+    if ($windowsLatest -and $windowsLatest.versionCode -eq $windowsBuild) {
+        if ($windowsLatest.sha256 -ne (Get-FileHash -LiteralPath $WindowsPath -Algorithm SHA256).Hash.ToLowerInvariant()) { throw '同一 Windows 构建号的安装包内容不同，请递增 client-build.json。' }
+    } else {
+        & node (Join-Path $PSScriptRoot 'publish-app.mjs') $WindowsPath $packageRoot $windowsBuild $version $Notes windows private
+        if ($LASTEXITCODE -ne 0) { throw 'Windows 发布清单生成失败，未推送。' }
+    }
+}
+if (-not $CodeOnly) {
+    Invoke-RepoGit $packageRoot @('add', '-A') | Out-Null
+    $privateFiles = @(Invoke-RepoGit $packageRoot @('ls-files'))
+    if ($privateFiles | Where-Object { $_ -notmatch '^(latest\.json|windows\.json|README\.md|\.gitignore|OurDays-[A-Za-z0-9._-]+\.(apk|exe)(\.part\d{3})?)$' }) { throw '私有包仓库含非发布文件，停止推送。未执行推送。' }
+}
 Invoke-RepoGit $sourceRoot @('add', '-A') | Out-Null
 $tracked = @(Invoke-RepoGit $sourceRoot @('ls-files'))
 $unsafe = $tracked | Where-Object { $_ -match '(?i)(\.(apk|aab|exe|jks|keystore|sqlite|sqlite-wal|sqlite-shm|pem|key)$|(^|/)\.env($|\.)|(^|/)(data|local-preview-data|node_modules)/|(^|/)\.database-key$)' -and $_ -ne '.env.example' }
 if ($unsafe) { throw ('公开仓库检测到禁止上传的文件，未提交或推送：' + ($unsafe -join ', ')) }
 CommitAndPush $sourceRoot $Message
 if (-not $CodeOnly) {
-    Invoke-RepoGit $packageRoot @('add', '--', 'latest.json', '*.apk', 'README.md', '.gitignore') | Out-Null
-    $privateFiles = @(Invoke-RepoGit $packageRoot @('ls-files'))
-    if ($privateFiles | Where-Object { $_ -notmatch '^(latest\.json|README\.md|\.gitignore|OurDays-[A-Za-z0-9._-]+\.apk)$' }) { throw '私有包仓库含非发布文件，停止推送。源码可能已推送成功。' }
-    CommitAndPush $packageRoot "Publish Android build $build"
+    CommitAndPush $packageRoot "Publish Android $build and Windows $windowsBuild"
 }
 Write-Host '上传完成：源码在公开 love-calendar，安装包在私有 love-app。服务器执行 update.sh 获取更新。'
