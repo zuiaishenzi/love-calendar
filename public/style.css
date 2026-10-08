@@ -418,8 +418,52 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
 #memos-dialog .dialog-heading{margin-bottom:12px}#chat-dialog .chat-heading{padding-top:16px}#chat-dialog #chat-context-menu{z-index:10}
 @media(max-width:760px){#chat-dialog.main-view{height:calc(100dvh - 200px);min-height:430px;border-radius:16px}#memos-dialog.main-view{padding:18px;border-radius:16px}#memos-dialog .dialog-heading h2{font-size:24px}}
 
-/* Give conversations the space normally used by the home introduction. */
-#app:has(#chat-dialog:not([hidden]))>.intro{display:none}
+/* A complete conversation layout with a quiet header and a fixed composer. */
+#app:has(#chat-dialog:not([hidden])){height:100dvh;display:flex;flex-direction:column;padding-top:0;padding-bottom:16px;gap:0}
+#app:has(#chat-dialog:not([hidden]))>.intro,#app:has(#chat-dialog:not([hidden]))>.bottom{display:none}
+#app:has(#chat-dialog:not([hidden]))>header{height:64px;min-height:64px;border-bottom:0;flex-shrink:0}
+#app:has(#chat-dialog:not([hidden])) .brand{font-size:25px;letter-spacing:3px}
+#app:has(#chat-dialog:not([hidden])) .brand span{font-size:10px;letter-spacing:2px;margin-left:8px;opacity:.7}
+#app:has(#chat-dialog:not([hidden]))>.view-switch{align-self:flex-start;gap:4px;padding:4px;margin:0 0 14px;border:1px solid #eae0e4;background:#f1e9ed;border-radius:13px;flex-shrink:0}
+#app:has(#chat-dialog:not([hidden]))>.view-switch button{min-width:100px;min-height:36px;padding:7px 18px;border:0;background:transparent;color:#8f7b84;border-radius:9px;font-size:13px}
+#app:has(#chat-dialog:not([hidden]))>.view-switch button[aria-pressed="true"]{background:white;color:var(--wine);box-shadow:0 2px 8px #72425612;font-weight:600}
+#app:has(#chat-dialog:not([hidden])) #chat-dialog.main-view{flex:1;height:auto;min-height:0;border:1px solid #eadfe5;border-radius:20px;background:#fbf7f9;box-shadow:0 8px 30px #79476106}
+#chat-dialog.main-view .chat-heading{padding:15px 20px;background:#ffffffd9;border-bottom:1px solid #eee4e9;gap:12px}
+#chat-dialog.main-view .chat-peer{gap:10px;flex:1}
+#chat-dialog.main-view .chat-peer .avatar{width:36px;height:36px}
+#chat-dialog.main-view .chat-peer h2{font-size:17px;margin:0 0 3px;letter-spacing:.02em}
+#chat-dialog.main-view .chat-peer-status{font-size:11px;letter-spacing:0}
+#chat-dialog.main-view .chat-history-trigger{width:auto;height:auto;min-height:32px;margin:0;padding:6px 12px;border:1px solid #ecdee5;border-radius:10px;background:#fbf6f8;color:#9c7486;font-size:12px}
+#chat-dialog.main-view #chat-messages{min-height:0;margin:0;padding:20px 18px;border-radius:0;background:transparent;gap:14px}
+#chat-dialog.main-view .chat-message{box-shadow:0 2px 6px #8e5a6f04;border-color:#eee1e7}
+#chat-dialog.main-view .chat-message.mine{background:#efdee6;border-color:#e9d1dd}
+#chat-dialog.main-view #chat-form{margin:0;padding:12px 16px 8px;background:#fff;border-top:1px solid #eee4e9;align-items:flex-end}
+#chat-dialog.main-view #chat-form textarea{min-height:44px;max-height:88px;border-radius:13px;border-color:#e7dbe1;background:#fcfafb;line-height:1.5;padding:11px 12px}
+#chat-dialog.main-view #chat-form>.primary{min-height:44px;padding:10px 15px;border-radius:12px;font-size:12px}
+#chat-dialog.main-view .chat-tools{background:white;padding:0 16px 12px;gap:8px}
+#chat-dialog.main-view .chat-tools button,#chat-dialog.main-view .chat-upload{min-height:34px;display:inline-flex;align-items:center;justify-content:center;margin:0;padding:7px 12px;border:1px solid #eadfe5;border-radius:10px;background:#fcf9fb;color:#96687c;font-size:12px;line-height:1.4;text-decoration:none}
+#chat-dialog.main-view #chat-record-preview{background:white;margin:0;padding:0 16px 8px;width:100%;flex-shrink:0}
+#chat-dialog.main-view #chat-status{background:white;min-height:0;margin:0;padding:0 16px 10px;font-size:12px;flex-shrink:0}
+#chat-dialog.main-view #chat-status:empty,#app:has(#chat-dialog:not([hidden]))>#status:empty{display:none}
 #chat-native-record,#chat-native-cancel{text-decoration:none}
-#app:has(#chat-dialog:not([hidden])) #chat-dialog.main-view{height:clamp(500px,calc(100dvh - 180px),1000px)}
-@media(max-width:760px){#app:has(#chat-dialog:not([hidden])) #chat-dialog.main-view{height:calc(100dvh - 155px);min-height:430px}}
+@media(max-width:760px){
+ #app:has(#chat-dialog:not([hidden])){padding:0 12px 10px}
+ #app:has(#chat-dialog:not([hidden]))>header{height:54px;min-height:54px}
+ #app:has(#chat-dialog:not([hidden])) .brand{font-size:22px;letter-spacing:3px}
+ #app:has(#chat-dialog:not([hidden])) .brand span{font-size:8px;letter-spacing:1.6px;margin-left:5px}
+ #app:has(#chat-dialog:not([hidden])) .account-trigger{padding:5px 6px;font-size:12px;gap:6px}
+ #app:has(#chat-dialog:not([hidden])) .account-trigger .avatar{width:27px;height:27px}
+ #app:has(#chat-dialog:not([hidden])) #logout{padding:5px 4px;font-size:12px}
+ #app:has(#chat-dialog:not([hidden]))>.view-switch{align-self:stretch;margin-bottom:10px;padding:3px;border-radius:12px}
+ #app:has(#chat-dialog:not([hidden]))>.view-switch button{min-width:0;flex:1;min-height:34px;padding:7px 4px;font-size:12px}
+ #app:has(#chat-dialog:not([hidden])) #chat-dialog.main-view{border-radius:17px;min-height:0}
+ #chat-dialog.main-view .chat-heading{padding:12px 14px;gap:8px}
+ #chat-dialog.main-view .chat-peer h2{font-size:16px}
+ #chat-dialog.main-view .chat-peer .avatar{width:34px;height:34px}
+ #chat-dialog.main-view #chat-messages{padding:15px 10px;gap:12px}
+ #chat-dialog.main-view #chat-form{padding:10px 12px 7px;gap:8px}
+ #chat-dialog.main-view #chat-form textarea{font-size:13px}
+ #chat-dialog.main-view .chat-tools{padding:0 12px 10px}
+ #chat-dialog.main-view #chat-native-record,#chat-dialog.main-view #chat-record{flex:1;min-height:36px;font-weight:500}
+ #chat-dialog.main-view #chat-status{padding:0 12px 8px;font-size:11px}
+}
