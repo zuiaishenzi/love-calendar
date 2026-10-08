@@ -417,3 +417,9 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
 #chat-dialog.main-view[hidden],#memos-dialog.main-view[hidden]{display:none}
 #memos-dialog .dialog-heading{margin-bottom:12px}#chat-dialog .chat-heading{padding-top:16px}#chat-dialog #chat-context-menu{z-index:10}
 @media(max-width:760px){#chat-dialog.main-view{height:calc(100dvh - 200px);min-height:430px;border-radius:16px}#memos-dialog.main-view{padding:18px;border-radius:16px}#memos-dialog .dialog-heading h2{font-size:24px}}
+
+/* Give conversations the space normally used by the home introduction. */
+#app:has(#chat-dialog:not([hidden]))>.intro{display:none}
+#chat-native-record,#chat-native-cancel{text-decoration:none}
+#app:has(#chat-dialog:not([hidden])) #chat-dialog.main-view{height:clamp(500px,calc(100dvh - 180px),1000px)}
+@media(max-width:760px){#app:has(#chat-dialog:not([hidden])) #chat-dialog.main-view{height:calc(100dvh - 155px);min-height:430px}}
