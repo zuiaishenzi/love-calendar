@@ -120,7 +120,7 @@ if(navigator.userAgent.includes('OurDaysAndroid/'))document.body.classList.add('
 function calendarSwipe(grid){
  let gesture=null,suppressClickUntil=0;const pointers=new Set();
  grid.addEventListener('pointerdown',event=>{
-  if(event.pointerType==='mouse'||event.button!==0||view!=='calendar')return;
+  if(event.pointerType==='mouse'||event.button!==0||view!=='calendar'||typeof navigator!=='undefined'&&/OurDays(?:Android|Windows)\//.test(navigator.userAgent))return;
   pointers.add(event.pointerId);if(pointers.size!==1||document.querySelector('dialog[open]')){gesture=null;return;}
   gesture={id:event.pointerId,x:event.clientX,y:event.clientY,month};
  });
@@ -136,3 +136,23 @@ function calendarSwipe(grid){
  grid.addEventListener('click',event=>{if(Date.now()<suppressClickUntil){event.preventDefault();event.stopImmediatePropagation();}},true);
 }
 calendarSwipe($('#grid'));
+
+function mainViewSwipe(host){
+ const pages=['calendar','chat','memos','timeline'],pointers=new Set();let gesture=null,suppressClickUntil=0;
+ const blocked=event=>host.hidden||document.querySelector('dialog[open]')||document.querySelector('#chat-context-menu:not([hidden])')||event.target.closest('input,textarea,select,audio,video,[contenteditable],.chat-tools,#chat-hold-actions,.memo-drag-handle,.memo-item-drag,.voice-play');
+ host.addEventListener('pointerdown',event=>{
+  if(event.pointerType==='mouse'||event.button!==0)return;pointers.add(event.pointerId);
+  if(pointers.size!==1||blocked(event)||view==='calendar'&&event.target.closest('#grid')&&!/OurDays(?:Android|Windows)\//.test(navigator.userAgent)){gesture=null;return;}
+  gesture={id:event.pointerId,x:event.clientX,y:event.clientY,view};
+ });
+ host.addEventListener('pointermove',event=>{if(!gesture||gesture.id!==event.pointerId)return;const dx=Math.abs(event.clientX-gesture.x),dy=Math.abs(event.clientY-gesture.y);if(dy>12&&dy>dx)gesture=null;});
+ host.addEventListener('pointerup',event=>{
+  pointers.delete(event.pointerId);if(!gesture||gesture.id!==event.pointerId)return;const start=gesture;gesture=null;
+  if(start.view!==view||blocked(event))return;const dx=event.clientX-start.x,dy=event.clientY-start.y,threshold=Math.max(55,Math.min(90,host.clientWidth*.18));
+  if(Math.abs(dx)<threshold||Math.abs(dx)<Math.abs(dy)*1.6)return;const next=pages.indexOf(view)+(dx<0?1:-1);if(next<0||next>=pages.length)return;
+  event.preventDefault();suppressClickUntil=Date.now()+700;switchView(pages[next]);
+ });
+ const cancel=event=>{pointers.delete(event.pointerId);gesture=null;};host.addEventListener('pointercancel',cancel);host.addEventListener('pointerleave',cancel);
+ host.addEventListener('click',event=>{if(Date.now()<suppressClickUntil){event.preventDefault();event.stopImmediatePropagation();}},true);
+}
+mainViewSwipe($('#app'));

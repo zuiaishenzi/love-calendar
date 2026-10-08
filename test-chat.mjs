@@ -102,7 +102,7 @@ test('历史检索组合筛选、北京时间边界、字面关键词、分页�
 });
 test('聊天右键、触屏长按、移动取消及长按后不误触图片',()=>{
  const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8'),start=source.indexOf('function chatMessageMenu('),end=source.indexOf('function chatHeader',start),handlers={},opened=[],timers=new Map();let next=0;
- const context={chatPressTimer:null,chatPressStart:null,chatLongPressed:false,Math,openChatMenu:(...args)=>opened.push(args),setTimeout(fn){timers.set(++next,fn);return next;},clearTimeout(id){timers.delete(id);}};
+ const context={$:()=>({id:'chat-dialog'}),chatPressTimer:null,chatPressStart:null,chatLongPressed:false,Math,openChatMenu:(...args)=>opened.push(args),setTimeout(fn){timers.set(++next,fn);return next;},clearTimeout(id){timers.delete(id);}};
  const attach=runInNewContext(source.slice(start,end)+';chatMessageMenu',context),card={addEventListener(type,fn){handlers[type]=fn;},getBoundingClientRect(){return {left:10,top:10};}},row={id:1};attach(card,row);
  const event={pointerType:'touch',clientX:20,clientY:30,target:{closest:()=>null},preventDefault(){this.prevented=true;},stopPropagation(){this.stopped=true;}};
  handlers.contextmenu(event);assert.equal(opened.length,1);assert.equal(event.prevented,true);
@@ -288,6 +288,7 @@ test('原生录音在聊天内显示计时，结束与取消恢复按钮',()=>{
  handlers['native-voice-result']({detail:{recording:true}});assert.equal(context.$('#chat-native-record').href,'/app/finish-voice');assert.equal(context.$('#chat-native-cancel').hidden,false);tick();assert.match(context.$('#chat-native-record').textContent,/1秒/);
  handlers['native-voice-result']({detail:{data:'AQID',duration:2}});assert.equal(context.$('#chat-native-record').href,'/app/record-voice');assert.equal(context.$('#chat-native-cancel').hidden,true);assert.equal(context.$('#chat-record-send').hidden,false);assert.ok(cleared>0);assert.match(status,/试听/);
  handlers['native-voice-result']({detail:{recording:true}});handlers['native-voice-result']({detail:{cancelled:true}});assert.equal(context.$('#chat-native-cancel').hidden,true);assert.equal(status,'已取消录音');
+ runInNewContext('voiceHeld=true',context);handlers['native-voice-result']({detail:{recording:true}});assert.equal(context.$('#chat-native-cancel').hidden,true);handlers['native-voice-result']({detail:{cancelled:true}});
 });
 
 
@@ -317,4 +318,30 @@ test('四个主视图互斥切换，聊天备忘不是弹窗，取消选图恢�
  actions.handlePickerState({detail:{active:true}});actions.switchView('calendar');actions.handlePickerState({detail:{active:false}});assert.equal(context.view,'chat');assert.equal(nodes.get('#chat-dialog').hidden,false);
  actions.switchView('memos');assert.equal(nodes.get('#chat-dialog').hidden,true);assert.equal(nodes.get('#memos-dialog').hidden,false);actions.switchView('timeline');assert.equal(nodes.get('#memoir').hidden,false);assert.equal(nodes.get('#memos-dialog').hidden,true);assert.ok(calls.includes('leave-memos'));
  actions.handlePickerState({detail:{active:true}});context.currentUser={id:2};actions.switchView('calendar');actions.handlePickerState({detail:{active:false}});assert.equal(context.view,'calendar');
+});
+
+
+test('App页面滑动顺序、边界、纵向滚动、多指、录音与菜单手势隔离',()=>{
+ const source=readFileSync(new URL('./public/app.js',import.meta.url),'utf8'),code=source.slice(source.indexOf('function mainViewSwipe(host){'),source.indexOf("mainViewSwipe($('#app'))")),handlers={},moves=[];let modal=false,menu=false;
+ const context={view:'calendar',Set,Math,Date,navigator:{userAgent:'OurDaysAndroid/10808'},document:{querySelector:selector=>selector==='dialog[open]'?modal:menu},switchView:next=>{moves.push(next);context.view=next;}};
+ const host={hidden:false,clientWidth:360,addEventListener:(name,fn)=>handlers[name]=fn},attach=runInNewContext(code+';mainViewSwipe',context);attach(host);
+ const event=(x,y,id=1,blocked=false)=>({pointerType:'touch',button:0,pointerId:id,clientX:x,clientY:y,target:{closest:selector=>blocked&&selector.includes('chat-tools')?{}:null},preventDefault(){this.prevented=true;},stopImmediatePropagation(){this.stopped=true;}});
+ const swipe=(from,to)=>{handlers.pointerdown(from);handlers.pointermove(to);handlers.pointerup(to);};
+ swipe(event(250,100),event(120,100));assert.equal(context.view,'chat');swipe(event(250,100),event(120,100));assert.equal(context.view,'memos');swipe(event(250,100),event(120,100));assert.equal(context.view,'timeline');swipe(event(250,100),event(120,100));assert.equal(moves.length,3);swipe(event(120,100),event(250,100));assert.equal(context.view,'memos');
+ const before=moves.length;swipe(event(250,100),event(120,300));swipe(event(250,100,1,true),event(120,100,1,true));modal=true;swipe(event(250,100),event(120,100));modal=false;
+ handlers.pointerdown(event(250,100));menu=true;handlers.pointerup(event(120,100));menu=false;
+ handlers.pointerdown(event(250,100));handlers.pointerdown(event(260,100,2));handlers.pointerup(event(120,100,2));handlers.pointerup(event(120,100));assert.equal(moves.length,before);
+ const click=event(0,0);handlers.click(click);assert.equal(click.prevented,true);assert.equal(click.stopped,true);
+});
+
+test('长按主页面消息使用页面容器，按住录音不显示旧取消按钮，松手落点决定取消',async()=>{
+ const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8');
+ const handlers={},opened=[],host={id:'chat-dialog'};let timer;
+ const attach=runInNewContext(source.slice(source.indexOf('function chatMessageMenu('),source.indexOf('function chatHeader'))+';chatMessageMenu',{$:()=>host,chatPressTimer:null,chatPressStart:null,chatLongPressed:false,setTimeout:fn=>{timer=fn;return 1;},clearTimeout:()=>{},Math,openChatMenu:(...args)=>opened.push(args)});
+ const card={closest:()=>null,addEventListener:(name,fn)=>handlers[name]=fn};attach(card,{id:10});handlers.pointerdown({pointerType:'touch',clientX:20,clientY:30,target:{closest:()=>null}});timer();assert.equal(opened[0][3],host);
+ const code=source.slice(source.indexOf('let voiceHold=null')),events={},nodes=new Map();let startTimer,target=null;
+ const node=id=>{if(!nodes.has(id))nodes.set(id,{hidden:false,style:{},children:[],classList:{toggle:()=>{}},addEventListener:(name,fn)=>events[name]=fn,setPointerCapture:()=>{}});return nodes.get(id);};
+ const context={nativeVoiceBuild:10808,nativeVoiceActive:true,voiceRecorder:null,voiceStarting:false,chatSending:false,currentUser:{},chatOwner:1,recordGeneration:0,window:{location:{}},document:{querySelectorAll:()=>[],elementFromPoint:()=>({closest:()=>target})},$:node,matchMedia:()=>({matches:true}),setTimeout:fn=>{startTimer=fn;return 1;},clearTimeout:()=>{},releaseRecording:()=>{},chatStatus:()=>{}};
+ runInNewContext(code,context);events.pointerdown({button:0,pointerId:1,preventDefault:()=>{}});await startTimer();target={dataset:{action:'cancel'}};
+ events.pointerup({type:'pointerup',pointerId:1,clientX:20,clientY:100});assert.equal(context.window.location.href,'/app/cancel-voice');
 });

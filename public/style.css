@@ -467,3 +467,5 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
  #chat-dialog.main-view #chat-native-record,#chat-dialog.main-view #chat-record{flex:1;min-height:36px;font-weight:500}
  #chat-dialog.main-view #chat-status{padding:0 12px 8px;font-size:11px}
 }
+
+.android-app #app{touch-action:pan-y pinch-zoom}#chat-hold-actions span{user-select:none;-webkit-user-select:none}#chat-native-record{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
