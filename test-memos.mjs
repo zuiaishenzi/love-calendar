@@ -136,3 +136,25 @@ test('单个AI要点跨分类移动保留原文，增量整理仅发送待整理
   await call('move',{id:2,extracted:true,index:2,text:'饮食要点2',target:'ai:习惯'});assert.equal(db.prepare('SELECT body FROM memo_notes WHERE id=2').get().body,'新的待整理');
  }finally{Date.now=originalNow;db.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('备忘图片账号隔离、保留和删除，AI只接收文字并跳过纯图片',async()=>{
+ const sharp=(await import('sharp')).default,dir=mkdtempSync(path.join(os.tmpdir(),'love-memo-images-'));let received=null;
+ const app=createApplication({dataDir:dir,mailer:{ready:false},memoOrganizer:{ready:true,async organize(notes){received=notes;return {items:notes.map(n=>({id:n.id,category:'喜好',text:'喜欢花'}))};}}});
+ app.db.exec("INSERT INTO ledgers(id,code) VALUES(1,'PIC12345'); INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(1,'alice','x','x',1,1),(2,'bob','x','x',1,2);");
+ const service=memoService(app.db,{ready:true,async organize(notes){received=notes;return {items:notes.map(n=>({id:n.id,category:'喜好',text:'喜欢花'}))};}}),call=(route,input={},id=1)=>service.route({method:'POST'},{pathname:'/api/memos/'+route},{id},input,()=>{});
+ const png=await sharp({create:{width:2,height:2,channels:3,background:'#eeccdd'}}).png().toBuffer();
+ try{
+  let data=await call('notes',{body:'喜欢花',images:[{data:png.toString('base64')}]});const note=data.notes[0],photo=note.images[0].id;
+  const imageOnly=await call('notes',{body:'',images:[{data:png.toString('base64')}]});assert.equal(imageOnly.notes.length,2);
+  await call('organize');assert.deepEqual(received,[{id:note.id,body:'喜欢花'}]);
+  await assert.rejects(call('notes',{body:'偷用图片',images:[{id:photo}]},2));
+  data=await call('notes',{id:note.id,body:'喜欢花'});assert.equal(data.notes[0].images[0].id,photo);
+  await new Promise(r=>app.server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+app.server.address().port;
+  for(const [token,id] of [['a'.repeat(64),1],['b'.repeat(64),2]])app.db.prepare('INSERT INTO sessions(token,user_id,expires) VALUES(?,?,?)').run((await import('./accounts.mjs')).hash(token),id,Date.now()+60000);
+  const authorized=await fetch(origin+'/api/memos/images/'+photo,{headers:{Cookie:'session='+'a'.repeat(64)}});assert.equal(authorized.status,200);assert.equal(authorized.headers.get('content-type'),'image/webp');
+  assert.equal((await fetch(origin+'/api/memos/images/'+photo,{headers:{Cookie:'session='+'b'.repeat(64)}})).status,404);
+  await call('notes',{id:note.id,body:'喜欢花',images:[]});assert.equal(app.db.prepare('SELECT id FROM memo_images WHERE id=?').get(photo),undefined);
+  await service.route({method:'DELETE'},{pathname:'/api/memos/notes/'+imageOnly.notes[1].id},{id:1},{},()=>{});assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM memo_images').get().n,0);
+ }finally{if(app.server.listening)await new Promise(r=>app.server.close(r));app.db.close();rmSync(dir,{recursive:true,force:true});}
+});

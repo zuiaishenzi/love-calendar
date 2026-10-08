@@ -1,18 +1,19 @@
+let memoImages=[],memoEditorGeneration=0,memoImagesLoading=0;
 let memoData=null,memoEditing=null,memoBusy=false,memoUser=null,memoLoad=0,memoEditMode=false;
 const memoStatus=message=>{ $('#memos-status').textContent=message;$('#memo-editor-status').textContent=message; };
-function resetMemoEditor(){memoEditing=null;$('#memo-form').reset();$('#memo-save').textContent='保存备忘';$('#memo-cancel').hidden=true;}
+function resetMemoEditor(){memoEditorGeneration++;memoEditing=null;memoImages=[];$('#memo-image-previews').replaceChildren();$('#memo-form').reset();$('#memo-save').textContent='保存备忘';$('#memo-cancel').hidden=true;}
 function openMemoEditor(note=null){
  if(!memoData||memoBusy)return;resetMemoEditor();$('#memo-editor-status').textContent='';
  $('#memo-form').elements.day.value=localDay();
  $('#memo-editor-title').textContent=note?'编辑备忘录':'新增备忘录';
- if(note){memoEditing=note.id;const f=$('#memo-form');f.elements.day.value=note.day||'';f.elements.title.value=note.title||'';f.elements.body.value=note.body;f.elements.category_id.value=note.category_id??(note.ai_category?'ai:'+note.ai_category:'');$('#memo-save').textContent='保存修改';}
+ if(note){memoImages=(note.images||[]).map(image=>({id:image.id}));paintMemoImages();memoEditing=note.id;const f=$('#memo-form');f.elements.day.value=note.day||'';f.elements.title.value=note.title||'';f.elements.body.value=note.body;f.elements.category_id.value=note.category_id??(note.ai_category?'ai:'+note.ai_category:'');$('#memo-save').textContent='保存修改';}
  $('#memo-cancel').hidden=false;$('#memo-editor-dialog').showModal();$('#memo-form').elements.body.focus();
 }
 function renderMemos(){
  const readOnly=Boolean(currentUser?.lifecycle?.readonly),select=$('#memo-category'),value=select.value;
  select.replaceChildren(new Option('待整理',''),...(memoData.ai_categories||[]).map(name=>new Option(name,'ai:'+name)),...memoData.categories.map(c=>new Option(c.name+' · 自定义',String(c.id))));select.value=value;
  if(select.selectedIndex<0)select.value='';
- $('#memos-organize').disabled=memoBusy||readOnly||!memoData.ai_ready||!memoData.notes.some(n=>n.category_id===null&&!n.ai_category);
+ $('#memos-organize').disabled=memoBusy||readOnly||!memoData.ai_ready||!memoData.notes.some(n=>n.category_id===null&&!n.ai_category&&n.body.trim());
  $('#memos-organize').textContent=memoBusy?'正在整理…':'一键 AI 整理';
  $('#memos-organize').title=memoData.ai_ready?'只整理待整理中的记录':'AI 尚未配置，可以先手动记录';
  $('#memo-add').disabled=memoBusy||readOnly;$('#memo-originals-open').disabled=false;
@@ -26,7 +27,7 @@ function renderMemos(){
   card.dataset.key=category?'custom:'+category.id:name==='待整理'?'pending':'ai:'+name;
   const handle=el('button','⠿','memo-drag-handle');handle.type='button';handle.setAttribute('aria-label','拖动排序 '+name);handle.title='拖动调整分类顺序，也可使用方向键';handle.disabled=readOnly||memoBusy;heading.prepend(handle);bindMemoDrag(handle,card,list);card.append(heading);
   if(!notes.length)card.append(el('p','还没有记录。','hint'));
-  const ul=el('ul');for(const entry of notes){const {note,text,extracted}=entry,li=el('li');li.append(el('p',text,'memo-text'));if(memoEditMode){const handle=el('button','⠿','memo-item-drag');handle.type='button';handle.title='拖动到其他分类';handle.disabled=memoBusy||readOnly;li.prepend(handle);bindMemoItemDrag(handle,li,entry);const select=el('select');select.setAttribute('aria-label','移动条目到分类');select.append(new Option('移动到…',''));if(!extracted)select.append(new Option('待整理','pending'));for(const name of memoData.ai_categories||[])select.append(new Option(name,'ai:'+name));for(const c of memoData.categories)select.append(new Option(c.name,'custom:'+c.id));select.disabled=memoBusy||readOnly;select.onchange=()=>{if(select.value)moveMemoEntry(entry,select.value);};li.append(select);}
+  const ul=el('ul');for(const entry of notes){const {note,text,extracted}=entry,li=el('li');li.append(el('p',text,'memo-text'));if(!extracted){const pictures=el('div',undefined,'memo-images');for(const image of note.images||[]){const img=el('img');img.src='/api/memos/images/'+image.id;img.alt='备忘图片';img.onclick=()=>openPhoto(img);pictures.append(img);}li.append(pictures);}if(memoEditMode){const handle=el('button','⠿','memo-item-drag');handle.type='button';handle.title='拖动到其他分类';handle.disabled=memoBusy||readOnly;li.prepend(handle);bindMemoItemDrag(handle,li,entry);const select=el('select');select.setAttribute('aria-label','移动条目到分类');select.append(new Option('移动到…',''));if(!extracted)select.append(new Option('待整理','pending'));for(const name of memoData.ai_categories||[])select.append(new Option(name,'ai:'+name));for(const c of memoData.categories)select.append(new Option(c.name,'custom:'+c.id));select.disabled=memoBusy||readOnly;select.onchange=()=>{if(select.value)moveMemoEntry(entry,select.value);};li.append(select);}
    ul.append(li);
   }card.append(ul);list.append(card);
  }
@@ -54,7 +55,7 @@ $('#memos-dialog').addEventListener('close',()=>{++memoLoad;memoEditMode=false;$
 $('#memo-add').onclick=()=>openMemoEditor();
 $('#memo-editor-close').onclick=$('#memo-cancel').onclick=()=>$('#memo-editor-dialog').close();
 $('#memo-editor-dialog').addEventListener('close',resetMemoEditor);
-$('#memo-form').onsubmit=e=>{e.preventDefault();if(!memoData)return;const f=e.target,value=f.elements.category_id.value;memoMutate('/api/memos/notes','POST',{id:memoEditing,day:f.elements.day.value,title:f.elements.title.value,body:f.elements.body.value,category_id:value&&!value.startsWith('ai:')?Number(value):null,ai_category:value.startsWith('ai:')?value.slice(3):null},true);};
+$('#memo-form').onsubmit=async e=>{e.preventDefault();if(!memoData)return;if(memoImagesLoading){memoStatus('图片正在读取，请稍候再保存');return;}const f=e.target,value=f.elements.category_id.value;memoMutate('/api/memos/notes','POST',{id:memoEditing,day:f.elements.day.value,title:f.elements.title.value,body:f.elements.body.value,images:memoImages.map(({id,data})=>id?{id}:{data}),category_id:value&&!value.startsWith('ai:')?Number(value):null,ai_category:value.startsWith('ai:')?value.slice(3):null},true);};
 $('#memo-category-form').onsubmit=async e=>{e.preventDefault();if(!memoData)return;if(await memoMutate('/api/memos/categories','POST',{name:e.target.elements.name.value}))e.target.reset();};
 $('#memos-organize').onclick=async()=>{
  if(memoBusy||!memoData)return;memoBusy=true;renderMemos();memoStatus('正在整理，原始记录会保留…');const owner=memoUser;
@@ -69,7 +70,7 @@ function renderMemoOriginals(){
  for(const note of [...memoData.notes].sort((a,b)=>(b.day||today).localeCompare(a.day||today)||b.id-a.id)){const day=note.day||today;if(!days.has(day))days.set(day,[]);days.get(day).push(note);}
  if(memoData.categories.length){const categories=el('details',undefined,'memo-category-management');categories.append(el('summary','管理自定义分类'));for(const category of memoData.categories){const row=el('div',undefined,'memo-actions'),remove=el('button','删除分类');remove.disabled=readOnly||memoBusy;remove.onclick=()=>memoMutate('/api/memos/categories/'+category.id,'DELETE',{});row.append(el('span',category.name),remove);categories.append(row);}list.append(categories);}
  if(!days.size)list.append(el('p','还没有记录，先新增一件小事吧。','memo-empty'));
- for(const [day,notes] of days){const section=el('section',undefined,'memo-diary-day');for(const note of notes){const article=el('article',undefined,'memo-diary-entry');article.append(el('h4',dateTitle(day)),el('p',note.body,'memo-text'));const actions=el('div',undefined,'memo-actions'),edit=el('button','编辑'),remove=el('button','删除');edit.disabled=remove.disabled=readOnly||memoBusy;edit.onclick=()=>openMemoEditor(note);remove.onclick=()=>{if(confirm('删除这条原文及从中提取的全部要点？'))memoMutate('/api/memos/notes/'+note.id,'DELETE',{});};actions.append(edit,remove);article.append(actions);section.append(article);}list.append(section);}
+ for(const [day,notes] of days){const section=el('section',undefined,'memo-diary-day');for(const note of notes){const article=el('article',undefined,'memo-diary-entry');article.append(el('h4',dateTitle(day)),el('p',note.body,'memo-text'));const pictures=el('div',undefined,'memo-images');for(const photo of note.images||[]){const img=el('img');img.src='/api/memos/images/'+photo.id;img.alt='备忘图片';img.loading='lazy';img.onclick=()=>openPhoto(img);pictures.append(img);}article.append(pictures);const actions=el('div',undefined,'memo-actions'),edit=el('button','编辑'),remove=el('button','删除');edit.disabled=remove.disabled=readOnly||memoBusy;edit.onclick=()=>openMemoEditor(note);remove.onclick=()=>{if(confirm('删除这条原文及从中提取的全部要点？'))memoMutate('/api/memos/notes/'+note.id,'DELETE',{});};actions.append(edit,remove);article.append(actions);section.append(article);}list.append(section);}
 }
 $('#memo-originals-open').onclick=()=>{if(!memoData)return;renderMemoOriginals();$('#memo-originals-dialog').showModal();};
 $('#memo-originals-close').onclick=()=>$('#memo-originals-dialog').close();
@@ -94,3 +95,6 @@ function bindMemoItemDrag(handle,li,entry){
  const finish=event=>{if(pointer!==event.pointerId)return;pointer=null;li.classList.remove('memo-item-moving');target?.classList.remove('memo-drop-target');if(event.type==='pointerup'&&target&&target!==li.closest('.memo-group'))moveMemoEntry(entry,target.dataset.key);target=null;};
  handle.addEventListener('pointerup',finish);handle.addEventListener('pointercancel',finish);
 }
+
+function paintMemoImages(){const list=$('#memo-image-previews');list.replaceChildren();for(const [index,image] of memoImages.entries()){const wrap=el('div'),img=el('img'),remove=el('button','移除');img.src=image.id?'/api/memos/images/'+image.id:image.preview;img.alt='备忘图片';remove.type='button';remove.onclick=()=>{memoImages.splice(index,1);paintMemoImages();};wrap.append(img,remove);list.append(wrap);}}
+$('#memo-image-input').onchange=async event=>{const files=[...event.target.files];if(memoImages.length+files.length>4){memoStatus('最多添加4张图片');event.target.value='';return;}const owner=memoUser,editing=memoEditing,generation=memoEditorGeneration;memoImagesLoading++;try{if(files.reduce((n,f)=>n+f.size,0)+memoImages.reduce((n,i)=>n+(i.size||0),0)>20*1024*1024)throw Error('新增图片总大小不能超过20MB');const added=[];for(const file of files){if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('请选择JPG、PNG或WebP图片');const data=await chatBase64(file);added.push({data,preview:'data:'+file.type+';base64,'+data,size:file.size});}if(owner!==memoUser||editing!==memoEditing||generation!==memoEditorGeneration||!$('#memo-editor-dialog').open)return;memoImages.push(...added);paintMemoImages();}catch(error){memoStatus(error.message);}finally{memoImagesLoading--;event.target.value='';}};

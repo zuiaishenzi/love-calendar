@@ -43,8 +43,9 @@ public class MainActivity extends Activity {
     private WebView web;
     private AppUpdater appUpdater;
     private NativeVoiceRecorder nativeVoice;
-    private boolean nativeVoicePending=false;
-    private void startNativeVoice(){if(!activityResumed||!hasWindowFocus()){nativeVoicePending=true;return;}nativeVoicePending=false;if(!trusted(Uri.parse(web.getUrl())))return;if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){if(nativeVoicePending)return;nativeVoicePending=true;requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},13);return;}if(nativeVoice==null)nativeVoice=new NativeVoiceRecorder(this,payload->{if(!isFinishing()&&trusted(Uri.parse(web.getUrl())))web.evaluateJavascript("window.dispatchEvent(new CustomEvent('native-voice-result',{detail:"+payload.toString()+"}));",null);});nativeVoice.open();}
+    private boolean nativeVoicePending=false,voiceRequested=false;
+    private long filePickerReturnedAt=0;
+    private void startNativeVoice(){if(!voiceRequested)return;if(!activityResumed||!hasWindowFocus()){nativeVoicePending=true;return;}nativeVoicePending=false;if(!trusted(Uri.parse(web.getUrl())))return;if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){if(nativeVoicePending)return;nativeVoicePending=true;requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},13);return;}if(nativeVoice==null)nativeVoice=new NativeVoiceRecorder(this,payload->{if(!isFinishing()&&trusted(Uri.parse(web.getUrl())))web.evaluateJavascript("window.dispatchEvent(new CustomEvent('native-voice-result',{detail:"+payload.toString()+"}));",null);});nativeVoice.open();}
     private FrameLayout root;
     private LinearLayout errorPanel;
     private ValueCallback<Uri[]> fileCallback;
@@ -89,7 +90,12 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                if(trusted(request.getUrl())&&"/app/record-voice".equals(request.getUrl().getPath())&&request.isForMainFrame()&&request.hasGesture()&&trusted(Uri.parse(view.getUrl()))){startNativeVoice();return true;}
+                if(trusted(request.getUrl())&&trusted(Uri.parse(view.getUrl()))&&request.isForMainFrame()){
+                    String path=request.getUrl().getPath();
+                    if("/app/finish-voice".equals(path)){if(nativeVoice!=null)nativeVoice.finish();return true;}
+                    if("/app/cancel-voice".equals(path)){nativeVoicePending=false;voiceRequested=false;if(nativeVoice!=null)nativeVoice.cancel();return true;}
+                }
+                if(trusted(request.getUrl())&&"/app/record-voice".equals(request.getUrl().getPath())&&request.isForMainFrame()&&trusted(Uri.parse(view.getUrl()))){voiceRequested=true;startNativeVoice();return true;}
                 if(trusted(request.getUrl())&&"/app/enable-notifications".equals(request.getUrl().getPath())&&request.isForMainFrame()&&request.hasGesture()&&trusted(Uri.parse(view.getUrl()))){notificationSettings();return true;}
                 if(trusted(request.getUrl())&&"/app/check-update".equals(request.getUrl().getPath())&&request.isForMainFrame()&&request.hasGesture()&&trusted(Uri.parse(view.getUrl()))){appUpdater.check(true);return true;}
                 if (trusted(request.getUrl())) return false;
@@ -209,6 +215,7 @@ public class MainActivity extends Activity {
         super.onActivityResult(request, result, data);
         if(request==30){appUpdater.installationPermissionResult();return;}
         if (request == PICK_FILE && fileCallback != null) {
+            filePickerReturnedAt=android.os.SystemClock.elapsedRealtime();
             if (result != RESULT_OK || data == null || !trusted(Uri.parse(web.getUrl()))) { finishFilePicker(null); return; }
             LinkedHashSet<Uri> files = new LinkedHashSet<>();
             ClipData clips = data.getClipData();
@@ -227,7 +234,7 @@ public class MainActivity extends Activity {
     }
     @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(request, permissions, results);
-        if(request==13){nativeVoicePending=false;if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED){nativeVoicePending=true;root.postDelayed(this::startNativeVoice,350);}else toast("请允许朝夕使用麦克风；卓易通本身也需要麦克风权限。");return;}
+        if(request==13){nativeVoicePending=false;if(!voiceRequested)return;if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED){nativeVoicePending=true;root.postDelayed(this::startNativeVoice,350);}else toast("请允许朝夕使用麦克风；卓易通本身也需要麦克风权限。");return;}
         if(request==12){AppNotifications.schedule(this);AppNotifications.poll(this,()->{});return;}
         if (request == RECORD_AUDIO && audioRequest != null) {
             audioPermissionReady=checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED;
@@ -245,6 +252,8 @@ public class MainActivity extends Activity {
     @Override protected void onResume(){super.onResume();activityResumed=true;if(root!=null)root.post(this::completeAudioPermission);}
 
     @Override public void onBackPressed() {
+        if(fileCallback!=null){finishFilePicker(null);filePickerReturnedAt=android.os.SystemClock.elapsedRealtime();return;}
+        if(android.os.SystemClock.elapsedRealtime()-filePickerReturnedAt<700)return;
         if (fullScreen != null) { hideFullScreen(); return; }
         web.evaluateJavascript("(()=>{const d=document.querySelector('dialog[open]');if(!d)return false;if(d.requestClose)d.requestClose();else{const e=new Event('cancel',{cancelable:true});if(d.dispatchEvent(e))d.close();}return true;})()", value -> {
             if (!"true".equals(value)) { if (web.canGoBack()) web.goBack(); else super.onBackPressed(); }

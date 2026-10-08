@@ -66,3 +66,7 @@ Windows 应用内更新构建10803：`../love-app/OurDays-1.8.0-Windows-build108
 Android 原生录音兼容构建10803：`../love-app/OurDays-1.8.0-Android-build10803.apk`。WebView麦克风启动失败时可点击聊天工具栏“App 原生录音”，通过Android MediaRecorder录制，再回到聊天试听和发送。卓易通仍需要宿主和朝夕的麦克风权限；此入口绕过WebView转接，但不保证能绕过卓易通本身的硬件访问限制。录音最长2分钟，切到后台或取消会丢弃临时录音，不自动发送。
 
 Android录音修复构建10804：`../love-app/OurDays-1.8.0-Android-build10804.apk`。安装此包并更新服务器源码后，聊天中的“录制语音”直接调用Android原生MediaRecorder；保留试听、取消及手动发送。首次授权等待应用恢复焦点再启动，录音切到后台会取消。手机浏览器仍使用网页录音。尚需手机实测确认。
+
+Android构建10805：`../love-app/OurDays-1.8.0-Android-build10805.apk`，原生录音不再显示弹窗，聊天工具栏显示结束录音、计时和取消。需同步更新服务器网页代码。
+
+Android构建10806：`../love-app/OurDays-1.8.0-Android-build10806.apk`。手机按住说话，松开发送；上滑到左侧取消，右侧转文字填入草稿供编辑，不自动发送文字。首次授权可能中断手势，授权后重新按住即可。系统图片选择取消保留当前聊天。需同步部署网页源码。备忘录支持最多4张图片，新上传图片总量20MB，仅本人可见，AI仅整理文字。

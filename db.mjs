@@ -67,6 +67,7 @@ export function openDatabase(dir) {
  db.exec(`CREATE TABLE IF NOT EXISTS memo_categories(id INTEGER PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,UNIQUE(user_id,name));
  CREATE TABLE IF NOT EXISTS memo_notes(id INTEGER PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,body TEXT NOT NULL,category_id INTEGER REFERENCES memo_categories(id));
  CREATE INDEX IF NOT EXISTS memo_notes_user ON memo_notes(user_id);
+ CREATE TABLE IF NOT EXISTS memo_images(id INTEGER PRIMARY KEY,note_id INTEGER NOT NULL REFERENCES memo_notes(id) ON DELETE CASCADE,data BLOB NOT NULL);
  CREATE TABLE IF NOT EXISTS memo_summaries(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,content TEXT NOT NULL);`);
  db.exec('CREATE TABLE IF NOT EXISTS memo_ai_categories(user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(user_id,name))');
  db.exec('CREATE TABLE IF NOT EXISTS memo_display_order(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,content TEXT NOT NULL)');

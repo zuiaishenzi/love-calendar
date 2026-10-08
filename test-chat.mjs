@@ -278,3 +278,32 @@ test('录音结束回调尚未执行时清理仍断开回调并释放麦克风',
  runInNewContext(code+';releaseRecording()',context);
  assert.equal(recorder.onstop,null);assert.equal(recorder.ondataavailable,null);assert.equal(recorder.onerror,null);assert.equal(stopped,1);assert.equal(paused,1);assert.equal(context.recordGeneration,4);assert.equal(context.voiceRecorder,null);
 });
+
+
+test('原生录音在聊天内显示计时，结束与取消恢复按钮',()=>{
+ const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8');const handlers={},nodes=new Map();let tick,cleared=0,status='';
+ const context={matchMedia:()=>({matches:false}),navigator:{userAgent:'OurDaysAndroid/10805'},$:id=>{if(!nodes.has(id))nodes.set(id,{hidden:true,pause:()=>{}});return nodes.get(id);},window:{addEventListener:(name,fn)=>handlers[name]=fn},document:{querySelectorAll:()=>[]},chatOwner:1,recordGeneration:0,voiceStarting:false,voiceRecorder:null,currentUser:{},chatSending:false,voiceSeconds:0,releaseRecording:()=>{context.recordGeneration++;},chatStatus:text=>status=text,setInterval:fn=>{tick=fn;return 1;},clearInterval:()=>cleared++,Uint8Array,Blob,atob,URL:{createObjectURL:()=> 'blob:voice'}};
+ runInNewContext(source.slice(source.indexOf('const nativeVoiceBuild=')),context);
+ context.$('#chat-dialog').open=true;context.$('#chat-native-record').onclick({preventDefault:()=>{throw Error('unexpected');}});
+ handlers['native-voice-result']({detail:{recording:true}});assert.equal(context.$('#chat-native-record').href,'/app/finish-voice');assert.equal(context.$('#chat-native-cancel').hidden,false);tick();assert.match(context.$('#chat-native-record').textContent,/1秒/);
+ handlers['native-voice-result']({detail:{data:'AQID',duration:2}});assert.equal(context.$('#chat-native-record').href,'/app/record-voice');assert.equal(context.$('#chat-native-cancel').hidden,true);assert.equal(context.$('#chat-record-send').hidden,false);assert.ok(cleared>0);assert.match(status,/试听/);
+ handlers['native-voice-result']({detail:{recording:true}});handlers['native-voice-result']({detail:{cancelled:true}});assert.equal(context.$('#chat-native-cancel').hidden,true);assert.equal(status,'已取消录音');
+});
+
+
+test('发送期间显示临时消息，成功移除加载状态，预览不重复上传',async()=>{
+ const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8'),code=source.slice(source.indexOf('async function sendChat(input){'),source.indexOf("$('#chat-form').onsubmit"));let resolve,sent;const pending=new Promise(r=>resolve=r),renders=[],statuses=[];
+ const context={chatSending:false,chatOwner:1,chatPending:null,chatRows:[],chatRenderKey:'',Date,renderChat:()=>renders.push(context.chatPending),chatStatus:text=>statuses.push(text),api:async(url,method,input)=>{sent=input;await pending;return {id:123};},syncChat:async()=>{}};
+ const send=runInNewContext(code+';sendChat',context),task=send({kind:'image',data:'bytes',preview:'data:image/png;base64,bytes'});assert.equal(context.chatPending.pending,true);assert.equal(sent.preview,undefined);assert.equal(sent.data,'bytes');resolve();assert.equal(await task,true);assert.equal(context.chatPending,null);assert.equal(context.chatRows[0].id,123);assert.deepEqual(statuses,['']);
+});
+
+test('按住录音松开发送、滑动取消或转文字填入草稿，短按不录音',async()=>{
+ const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8'),code=source.slice(source.indexOf('let voiceHold=null'));const events={},nodes=new Map();let timer,target=null,sent=0,release=0;
+ const node=id=>{if(!nodes.has(id))nodes.set(id,{textContent:'',style:{},children:[],classList:{toggle:()=>{}},addEventListener:(name,fn)=>events[name]=fn,setPointerCapture:()=>{},elements:{text:{value:'',focus:()=>{}}}});return nodes.get(id);};
+ const context={nativeVoiceBuild:10806,nativeVoiceActive:true,voiceRecorder:null,voiceStarting:false,chatSending:false,currentUser:{},chatOwner:1,recordGeneration:0,voiceBlob:{},voiceSeconds:2,window:{location:{}},document:{querySelectorAll:()=>[],elementFromPoint:()=>({closest:()=>target})},$:node,matchMedia:()=>({matches:true}),setTimeout:fn=>{timer=fn;return 1;},clearTimeout:()=>{},releaseRecording:()=>release++,chatStatus:()=>{},transcribeVoiceDraft:async()=> '识别文字',chatBase64:async()=> 'audio-data',sendChat:async()=>{sent++;return true;}};
+ const controls=runInNewContext(code+';({completeHeldVoice})',context);node('#chat-dialog').open=true;const event=id=>({pointerId:id,button:0,preventDefault:()=>{},type:'pointerup'});
+ events.pointerdown(event(1));events.pointerup(event(1));assert.equal(context.window.location.href,undefined);
+ events.pointerdown(event(2));await timer();events.pointerup(event(2));assert.equal(context.window.location.href,'/app/finish-voice');await controls.completeHeldVoice();assert.equal(sent,1);
+ events.pointerdown(event(3));await timer();target={dataset:{action:'cancel'}};events.pointermove(event(3));events.pointerup(event(3));assert.equal(context.window.location.href,'/app/cancel-voice');await controls.completeHeldVoice();assert.equal(sent,1);
+ events.pointerdown(event(4));await timer();target={dataset:{action:'text'}};events.pointermove(event(4));events.pointerup(event(4));await controls.completeHeldVoice();assert.equal(node('#chat-form').elements.text.value,'识别文字');assert.equal(sent,1);assert.ok(release>0);
+});

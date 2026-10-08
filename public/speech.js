@@ -43,3 +43,5 @@ $('#chat-context-transcribe').onclick=async()=>{
   if(active())throw Error('识别等待时间较长，请再次选择转文字重试');
  }catch(error){if(active())paintSpeech(row.id,{status:'error',text:error.message+'（右键或长按可重试）'});}
 };
+
+async function transcribeVoiceDraft(blob){const data=await chatBase64(await speechAudio(blob));const job=await api('/api/chat/transcriptions','POST',{data});if(job.status==='done')return job.text;const deadline=Date.now()+5*60000;while(Date.now()<deadline){await new Promise(resolve=>setTimeout(resolve,2000));const result=await api('/api/chat/transcriptions/'+job.id);if(result.status==='done')return result.text;}throw Error('识别超时，请重试');}

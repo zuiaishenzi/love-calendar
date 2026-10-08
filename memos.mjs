@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import {fail} from './accounts.mjs';
 import {validDay} from './calendar.mjs';
 
@@ -18,7 +19,7 @@ export function memoService(db,organizer){
  const snapshot=id=>db.prepare('SELECT id,body,category_id,ai_category,day,title FROM memo_notes WHERE user_id=? ORDER BY id').all(id);
  const invalidate=(id,note)=>{const row=db.prepare('SELECT content FROM memo_summaries WHERE user_id=?').get(id);if(!row)return;const items=JSON.parse(row.content).filter(item=>item.id!==note);if(items.length)db.prepare('UPDATE memo_summaries SET content=? WHERE user_id=?').run(JSON.stringify(items),id);else db.prepare('DELETE FROM memo_summaries WHERE user_id=?').run(id);};
  const required=(value,max,label)=>{if(typeof value!=='string'||!value.trim()||value.length>max)throw fail(400,label);return value.trim();};
- function list(id){return {order:JSON.parse(db.prepare('SELECT content FROM memo_display_order WHERE user_id=?').get(id)?.content||'[]'),categories:db.prepare('SELECT id,name FROM memo_categories WHERE user_id=? ORDER BY id').all(id),ai_categories:db.prepare('SELECT name FROM memo_ai_categories WHERE user_id=? ORDER BY rowid').all(id).map(c=>c.name),notes:snapshot(id),summary:JSON.parse(db.prepare('SELECT content FROM memo_summaries WHERE user_id=?').get(id)?.content||'null'),ai_ready:organizer.ready};}
+ function list(id){return {order:JSON.parse(db.prepare('SELECT content FROM memo_display_order WHERE user_id=?').get(id)?.content||'[]'),categories:db.prepare('SELECT id,name FROM memo_categories WHERE user_id=? ORDER BY id').all(id),ai_categories:db.prepare('SELECT name FROM memo_ai_categories WHERE user_id=? ORDER BY rowid').all(id).map(c=>c.name),notes:snapshot(id).map(n=>({...n,images:db.prepare('SELECT id FROM memo_images WHERE note_id=? ORDER BY id').all(n.id)})),summary:JSON.parse(db.prepare('SELECT content FROM memo_summaries WHERE user_id=?').get(id)?.content||'null'),ai_ready:organizer.ready};}
  async function route(req,url,user,input,check){
   const id=user.id,p=url.pathname;
   if(p==='/api/memos/order'&&req.method==='POST'){
@@ -37,7 +38,7 @@ export function memoService(db,organizer){
    })();return list(id);
   }
   if(p==='/api/memos/notes'&&req.method==='POST'){
-   check();const body=required(input.body,20000,'请填写20000字以内的备忘'),category=input.category_id??null;
+   check();const body=typeof input.body==='string'?input.body.trim():null,category=input.category_id??null;if(body===null||body.length>20000)throw fail(400,'备忘须为20000字以内');
    if(input.id!=null&&(!Number.isSafeInteger(input.id)||input.id<1))throw fail(400,'记录编号无效');
    const previous=input.id?db.prepare('SELECT day,title FROM memo_notes WHERE id=? AND user_id=?').get(input.id,id):null;
    if(input.id&&!previous)throw fail(404,'记录不存在');
@@ -46,7 +47,18 @@ export function memoService(db,organizer){
    if(typeof title!=='string'||title.length>100)throw fail(400,'事情标题须为100字以内');
    if(category!==null&&(!Number.isSafeInteger(category)||!db.prepare('SELECT id FROM memo_categories WHERE id=? AND user_id=?').get(category,id)))throw fail(400,'分类不存在');
    const ai=input.ai_category??null;if(ai!==null&&(category!==null||typeof ai!=='string'||!db.prepare('SELECT name FROM memo_ai_categories WHERE user_id=? AND name=?').get(id,ai)))throw fail(400,'AI 分类不存在');
-   db.transaction(()=>{if(input.id){if(!db.prepare('UPDATE memo_notes SET body=?,category_id=?,ai_category=?,day=?,title=? WHERE id=? AND user_id=?').run(body,category,ai,day,title.trim(),input.id,id).changes)throw fail(404,'记录不存在');invalidate(id,input.id);}else{if(snapshot(id).length>=200)throw fail(400,'最多记录200条备忘');db.prepare('INSERT INTO memo_notes(user_id,body,category_id,ai_category,day,title) VALUES(?,?,?,?,?,?)').run(id,body,category,ai,day,title.trim());}})();return list(id);
+   const attachments=input.images===undefined?null:input.images;
+   if(attachments!==null&&(!Array.isArray(attachments)||attachments.length>4))throw fail(400,'最多添加4张图片');
+   const photos=[];let bytes=0;
+   for(const image of attachments||[]){if(!image||typeof image!=='object')throw fail(400,'图片格式无效');
+    if(Number.isSafeInteger(image.id)){if(!input.id||!db.prepare('SELECT id FROM memo_images WHERE id=? AND note_id=?').get(image.id,input.id))throw fail(400,'图片不属于此备忘');photos.push({id:image.id});continue;}
+    if(typeof image.data!=='string'||image.data.length>27962028||!/^[A-Za-z0-9+/]+={0,2}$/.test(image.data))throw fail(400,'图片格式无效');
+    const raw=Buffer.from(image.data,'base64');bytes+=raw.length;if(bytes>20*1024*1024)throw fail(400,'新增图片总大小不能超过20MB');
+    try{const task=sharp(raw,{limitInputPixels:20000000}),meta=await task.metadata();if(!['jpeg','png','webp'].includes(meta.format))throw Error();photos.push({data:await task.rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).webp({quality:85}).toBuffer()});}catch{throw fail(400,'请选择有效的JPG、PNG或WebP图片');}
+   }
+   const hasImages=attachments===null&&input.id?db.prepare('SELECT id FROM memo_images WHERE note_id=?').get(input.id):photos.length;
+   if(!body&&!hasImages)throw fail(400,'请填写文字或添加图片');
+   check();db.transaction(()=>{let noteId=input.id;if(input.id){if(!db.prepare('UPDATE memo_notes SET body=?,category_id=?,ai_category=?,day=?,title=? WHERE id=? AND user_id=?').run(body,category,ai,day,title.trim(),input.id,id).changes)throw fail(404,'记录不存在');invalidate(id,input.id);}else{if(snapshot(id).length>=200)throw fail(400,'最多记录200条备忘');noteId=Number(db.prepare('INSERT INTO memo_notes(user_id,body,category_id,ai_category,day,title) VALUES(?,?,?,?,?,?)').run(id,body,category,ai,day,title.trim()).lastInsertRowid);}if(attachments!==null){const keep=new Set(photos.filter(p=>p.id).map(p=>p.id));for(const row of db.prepare('SELECT id FROM memo_images WHERE note_id=?').all(noteId))if(!keep.has(row.id))db.prepare('DELETE FROM memo_images WHERE id=?').run(row.id);for(const photo of photos)if(photo.data)db.prepare('INSERT INTO memo_images(note_id,data) VALUES(?,?)').run(noteId,photo.data);}})();return list(id);
   }
   if(p==='/api/memos/categories'&&req.method==='POST'){
    check();const name=required(input.name,20,'分类名称须为20字以内');
@@ -64,7 +76,7 @@ export function memoService(db,organizer){
   if(p==='/api/memos/organize'&&req.method==='POST'){
    check();if(!organizer.ready)throw fail(503,'服务器尚未配置 AI 整理，请先手动记录。');
    if(busy.has(id))throw fail(429,'正在整理，请稍候。');
-   const before=JSON.stringify(list(id)),notes=snapshot(id).filter(n=>n.category_id===null&&!n.ai_category).map(({id,body})=>({id,body}));
+   const before=JSON.stringify(list(id)),notes=snapshot(id).filter(n=>n.category_id===null&&!n.ai_category&&n.body.trim()).map(({id,body})=>({id,body}));
    if(!notes.length)return list(id);
    if(Date.now()-(last.get(id)||0)<30000)throw fail(429,'请30秒后再整理。');
    if(notes.reduce((sum,n)=>sum+n.body.length,0)>20000)throw fail(400,'待整理内容超过20000字，请减少后重试。');

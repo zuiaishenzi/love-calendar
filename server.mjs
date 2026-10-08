@@ -79,6 +79,8 @@ const server=http.createServer(async(req,res)=>{
         throw fail(405,'请求方法不支持');
       }
       if(url.pathname.startsWith('/api/chat/')){const result=await chat.route(req,res,url,user,req.method==='POST'?await body(req):{},ensureWritable);if(result!==null)send(200,result);return;}
+      const memoImage=url.pathname.match(/^\/api\/memos\/images\/(\d+)$/);
+      if(memoImage&&req.method==='GET'){const row=db.prepare('SELECT i.data FROM memo_images i JOIN memo_notes n ON n.id=i.note_id WHERE i.id=? AND n.user_id=?').get(Number(memoImage[1]),user.id);if(!row)throw fail(404,'图片不存在');res.writeHead(200,{'Content-Type':'image/webp','Cache-Control':'private, no-store'});return res.end(row.data);}
       if(url.pathname==='/api/memos'||url.pathname.startsWith('/api/memos/'))return send(200,await memos.route(req,url,user,req.method==='POST'?await body(req):{},ensureWritable));
       if(url.pathname==='/api/lifecycle'&&req.method==='GET')return send(200,lifecycle.status(user.ledger_id));
       if(['/api/lifecycle/code','/api/lifecycle/confirm'].includes(url.pathname)&&req.method==='POST'){
