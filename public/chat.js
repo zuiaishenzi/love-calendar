@@ -124,7 +124,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden&&(voiceStar
 function chatUnreadBadge(count){const badge=$('#chat-unread-badge');badge.hidden=count===0;badge.textContent=count>99?'99+':String(count);$('#chat-open').setAttribute('aria-label',count?'聊天，'+count+'条未读消息':'聊天');}
 
 const nativeVoiceBuild=Number(/OurDaysAndroid\/(\d+)/.exec(navigator.userAgent)?.[1]||0);
-if(nativeVoiceBuild>=10803)$('#chat-native-record').hidden=false;
+if(nativeVoiceBuild>=10804){$('#chat-native-record').hidden=false;$('#chat-native-record').textContent='录制语音';$('#chat-record').hidden=true;}
 let nativeVoiceOwner=null,nativeVoiceGeneration=null;
-$('#chat-native-record').onclick=event=>{if(!chatOwner||voiceStarting||voiceRecorder?.state==='recording'||currentUser?.lifecycle?.readonly){event.preventDefault();return;}releaseRecording();nativeVoiceOwner=chatOwner;nativeVoiceGeneration=recordGeneration;};
+$('#chat-native-record').onclick=event=>{if(!chatOwner||voiceStarting||voiceRecorder?.state==='recording'||currentUser?.lifecycle?.readonly||chatSending){event.preventDefault();return;}releaseRecording();for(const audio of document.querySelectorAll('audio'))audio.pause();nativeVoiceOwner=chatOwner;nativeVoiceGeneration=recordGeneration;};
 window.addEventListener('native-voice-result',event=>{const input=event.detail;if(!input||chatOwner!==nativeVoiceOwner||nativeVoiceGeneration!==recordGeneration||!$('#chat-dialog').open)return;if(input.error){chatStatus(input.error);return;}try{const bytes=Uint8Array.from(atob(input.data),char=>char.charCodeAt(0));if(bytes.length>5*1024*1024)throw Error('录音超过5MB');voiceBlob=new Blob([bytes],{type:'audio/mp4'});voiceSeconds=input.duration;voiceUrl=URL.createObjectURL(voiceBlob);$('#chat-record-preview').src=voiceUrl;$('#chat-record-preview').hidden=false;$('#chat-record-send').hidden=$('#chat-record-cancel').hidden=false;chatStatus('App 录音已完成，可试听后发送');}catch{chatStatus('无法读取 App 录音，请重试');}});

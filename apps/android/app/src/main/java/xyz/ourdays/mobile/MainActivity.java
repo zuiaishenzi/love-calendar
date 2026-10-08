@@ -44,7 +44,7 @@ public class MainActivity extends Activity {
     private AppUpdater appUpdater;
     private NativeVoiceRecorder nativeVoice;
     private boolean nativeVoicePending=false;
-    private void startNativeVoice(){if(!trusted(Uri.parse(web.getUrl())))return;if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){if(nativeVoicePending)return;nativeVoicePending=true;requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},13);return;}if(nativeVoice==null)nativeVoice=new NativeVoiceRecorder(this,payload->{if(!isFinishing()&&trusted(Uri.parse(web.getUrl())))web.evaluateJavascript("window.dispatchEvent(new CustomEvent('native-voice-result',{detail:"+payload.toString()+"}));",null);});nativeVoice.open();}
+    private void startNativeVoice(){if(!activityResumed||!hasWindowFocus()){nativeVoicePending=true;return;}nativeVoicePending=false;if(!trusted(Uri.parse(web.getUrl())))return;if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){if(nativeVoicePending)return;nativeVoicePending=true;requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},13);return;}if(nativeVoice==null)nativeVoice=new NativeVoiceRecorder(this,payload->{if(!isFinishing()&&trusted(Uri.parse(web.getUrl())))web.evaluateJavascript("window.dispatchEvent(new CustomEvent('native-voice-result',{detail:"+payload.toString()+"}));",null);});nativeVoice.open();}
     private FrameLayout root;
     private LinearLayout errorPanel;
     private ValueCallback<Uri[]> fileCallback;
@@ -227,7 +227,7 @@ public class MainActivity extends Activity {
     }
     @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(request, permissions, results);
-        if(request==13){nativeVoicePending=false;if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED)root.postDelayed(this::startNativeVoice,350);else toast("请允许朝夕使用麦克风；卓易通本身也需要麦克风权限。");return;}
+        if(request==13){nativeVoicePending=false;if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED){nativeVoicePending=true;root.postDelayed(this::startNativeVoice,350);}else toast("请允许朝夕使用麦克风；卓易通本身也需要麦克风权限。");return;}
         if(request==12){AppNotifications.schedule(this);AppNotifications.poll(this,()->{});return;}
         if (request == RECORD_AUDIO && audioRequest != null) {
             audioPermissionReady=checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED;
@@ -241,6 +241,7 @@ public class MainActivity extends Activity {
         if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED&&trusted(pending.getOrigin())&&trusted(Uri.parse(web.getUrl())))pending.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
         else pending.deny();
     }
+    @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(focused&&nativeVoicePending&&checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED)root.postDelayed(this::startNativeVoice,350);}
     @Override protected void onResume(){super.onResume();activityResumed=true;if(root!=null)root.post(this::completeAudioPermission);}
 
     @Override public void onBackPressed() {
