@@ -193,8 +193,9 @@ test('回忆卡片展示继续回应入口、已有回复及点击行为',()=>{
 
 test('录音错误区分权限拒绝、设备占用及启动中断',async()=>{
  const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8'),code=source.slice(source.indexOf('async function microphone(){'),source.indexOf("$('#chat-record').onclick"));
- for(const [name,text] of [['NotAllowedError','全局麦克风'],['NotReadableError','其他应用'],['NotFoundError','未找到'],['AbortError','中断']]){const microphone=runInNewContext(code+';microphone',{navigator:{mediaDevices:{getUserMedia:async()=>{throw {name};}}},Error});await assert.rejects(microphone(),error=>error.message.includes(text));}
- const stream={};const microphone=runInNewContext(code+';microphone',{navigator:{mediaDevices:{getUserMedia:async()=>stream}},Error});assert.equal(await microphone(),stream);
+ for(const [name,text] of [['NotAllowedError','全局麦克风'],['NotReadableError','兼容环境'],['NotFoundError','未找到'],['AbortError','中断']]){const microphone=runInNewContext(code+';microphone',{setTimeout:callback=>callback(),navigator:{mediaDevices:{getUserMedia:async()=>{throw {name};}}},Error});await assert.rejects(microphone(),error=>error.message.includes(text));}
+ let attempts=0;const recovered={getTracks:()=>[]};const retry=runInNewContext(code+';microphone',{setTimeout:callback=>callback(),navigator:{mediaDevices:{getUserMedia:async options=>{attempts++;if(attempts===1)throw {name:'NotReadableError'};assert.equal(options.audio.echoCancellation,false);return recovered;}}},Error});assert.equal(await retry(),recovered);assert.equal(attempts,2);
+ const stream={};const microphone=runInNewContext(code+';microphone',{setTimeout:callback=>callback(),navigator:{mediaDevices:{getUserMedia:async()=>stream}},Error});assert.equal(await microphone(),stream);
 });
 
 test('App更新接口匿名读取、下载校验、发布单调构建号及路径隔离',async()=>{

@@ -42,6 +42,9 @@ public class MainActivity extends Activity {
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);web.loadUrl(notificationUrl(intent));}
     private WebView web;
     private AppUpdater appUpdater;
+    private NativeVoiceRecorder nativeVoice;
+    private boolean nativeVoicePending=false;
+    private void startNativeVoice(){if(!trusted(Uri.parse(web.getUrl())))return;if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){if(nativeVoicePending)return;nativeVoicePending=true;requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},13);return;}if(nativeVoice==null)nativeVoice=new NativeVoiceRecorder(this,payload->{if(!isFinishing()&&trusted(Uri.parse(web.getUrl())))web.evaluateJavascript("window.dispatchEvent(new CustomEvent('native-voice-result',{detail:"+payload.toString()+"}));",null);});nativeVoice.open();}
     private FrameLayout root;
     private LinearLayout errorPanel;
     private ValueCallback<Uri[]> fileCallback;
@@ -86,6 +89,7 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if(trusted(request.getUrl())&&"/app/record-voice".equals(request.getUrl().getPath())&&request.isForMainFrame()&&request.hasGesture()&&trusted(Uri.parse(view.getUrl()))){startNativeVoice();return true;}
                 if(trusted(request.getUrl())&&"/app/enable-notifications".equals(request.getUrl().getPath())&&request.isForMainFrame()&&request.hasGesture()&&trusted(Uri.parse(view.getUrl()))){notificationSettings();return true;}
                 if(trusted(request.getUrl())&&"/app/check-update".equals(request.getUrl().getPath())&&request.isForMainFrame()&&request.hasGesture()&&trusted(Uri.parse(view.getUrl()))){appUpdater.check(true);return true;}
                 if (trusted(request.getUrl())) return false;
@@ -223,6 +227,7 @@ public class MainActivity extends Activity {
     }
     @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(request, permissions, results);
+        if(request==13){nativeVoicePending=false;if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED)root.postDelayed(this::startNativeVoice,350);else toast("请允许朝夕使用麦克风；卓易通本身也需要麦克风权限。");return;}
         if(request==12){AppNotifications.schedule(this);AppNotifications.poll(this,()->{});return;}
         if (request == RECORD_AUDIO && audioRequest != null) {
             audioPermissionReady=checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED;
@@ -244,8 +249,9 @@ public class MainActivity extends Activity {
             if (!"true".equals(value)) { if (web.canGoBack()) web.goBack(); else super.onBackPressed(); }
         });
     }
-    @Override protected void onPause() { activityResumed=false;CookieManager.getInstance().flush(); super.onPause(); }
+    @Override protected void onPause() { activityResumed=false;if(nativeVoice!=null)nativeVoice.cancel();CookieManager.getInstance().flush(); super.onPause(); }
     @Override protected void onDestroy() {
+        if(nativeVoice!=null)nativeVoice.cancel();
         notificationHandler.removeCallbacksAndMessages(null);
         if (audioRequest != null) { audioRequest.deny(); audioRequest = null; }
         if (fileCallback != null) { fileCallback.onReceiveValue(null); fileCallback = null; }

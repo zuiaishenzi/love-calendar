@@ -61,3 +61,6 @@ Android 通知构建号为 10802，安装包 `../love-app/OurDays-1.8.0-Android-
 
 
 Windows 应用内更新构建10803：`../love-app/OurDays-1.8.0-Windows-build10803-x64.exe`。先安装此包，再使用主界面右上角“版本更新”或桌面菜单“检查更新”。服务器接口 `/api/app/update?platform=windows` 与 Android 清单独立，SHA256校验通过后由用户选择启动安装。后续发布新Windows原生包需递增 client-build.json 并同步 package.json 中 buildVersion 和 artifactName；显示版本仍按正式发布节奏。
+
+
+Android 原生录音兼容构建10803：`../love-app/OurDays-1.8.0-Android-build10803.apk`。WebView麦克风启动失败时可点击聊天工具栏“App 原生录音”，通过Android MediaRecorder录制，再回到聊天试听和发送。卓易通仍需要宿主和朝夕的麦克风权限；此入口绕过WebView转接，但不保证能绕过卓易通本身的硬件访问限制。录音最长2分钟，切到后台或取消会丢弃临时录音，不自动发送。

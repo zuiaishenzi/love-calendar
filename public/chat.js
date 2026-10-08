@@ -1,5 +1,5 @@
 let chatOwner=null,chatTimer=null,chatBusy=false,chatMore=false,chatOldest=null,chatRows=[],chatSending=false,chatGeneration=0,chatRenderKey='';
-let voiceStream=null,voiceRecorder=null,voiceBlob=null,voiceUrl=null,voiceTimer=null,voiceSeconds=0,recordGeneration=0;
+let voiceStream=null,voiceRecorder=null,voiceBlob=null,voiceUrl=null,voiceTimer=null,voiceSeconds=0,recordGeneration=0,voiceStarting=false;
 let chatMembers=[],chatSelecting=false,chatSelected=new Set(),chatSavingMemory=false;
 let chatSyncSince=0;
 let chatPeerOnline=false;
@@ -38,7 +38,7 @@ function renderChat(){
  chatHeader();chatSelection();
  $('#chat-earlier').hidden=!chatMore;
  const readonly=Boolean(currentUser?.lifecycle?.readonly);for(const field of $('#chat-form').elements)field.disabled=readonly||chatSending;
- $('#chat-record').disabled=readonly||chatSending;$('#chat-image-input').disabled=readonly||chatSending;
+ $('#chat-record').disabled=readonly||chatSending||voiceStarting;$('#chat-image-input').disabled=readonly||chatSending;
  for(const row of chatRows)if(row.retracted_at)chatSelected.delete(row.id);chatSelection();
  const key=chatOwner+':'+chatSelecting+':'+JSON.stringify(chatMembers)+':'+chatRows.map(r=>r.id+'-'+(r.retracted_at||0)+'-'+(r.transcript||'')).join(',');if(key===chatRenderKey)return;chatRenderKey=key;
  const list=$('#chat-messages'),bottom=list.scrollHeight-list.scrollTop-list.clientHeight<70;for(const audio of list.querySelectorAll('audio'))audio.pause();list.replaceChildren();
@@ -78,10 +78,11 @@ const chatBase64=blob=>new Promise((resolve,reject)=>{const reader=new FileReade
 async function sendChat(input){if(chatSending)return false;chatSending=true;renderChat();chatStatus('正在发送…');const owner=chatOwner;try{await api('/api/chat/messages','POST',input);if(owner!==chatOwner)return false;chatStatus('已发送');await syncChat();return true;}catch(e){if(owner===chatOwner)chatStatus(e.message);return false;}finally{chatSending=false;if(chatOwner)renderChat();}}
 $('#chat-form').onsubmit=async e=>{e.preventDefault();const input=e.target.elements.text;if(await sendChat({kind:'text',text:input.value}))input.value='';};
 $('#chat-image-input').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>20*1024*1024)throw Error('图片不能超过20MB');await sendChat({kind:'image',data:await chatBase64(file)});}catch(error){chatStatus(error.message);}finally{e.target.value='';}};
-async function microphone(){if(!navigator.mediaDevices?.getUserMedia)throw Error('语音需要 HTTPS 或 localhost，以及支持麦克风的浏览器');try{return await navigator.mediaDevices.getUserMedia({audio:true});}catch(error){const messages={NotAllowedError:'麦克风访问被拒绝；若已授权，请检查手机的全局麦克风开关，并重新打开 App 后重试。',NotReadableError:'麦克风暂时无法启动，请结束其他应用的录音或通话后重试。',NotFoundError:'未找到可用的麦克风，请检查设备。',SecurityError:'当前页面无法访问麦克风，请检查 HTTPS 和系统 WebView。',AbortError:'录音启动被中断，请重新点击录制。'};throw Error(messages[error.name]||'麦克风启动失败（'+(error.name||'未知错误')+'），请重试。');}}
+async function microphone(){if(!navigator.mediaDevices?.getUserMedia)throw Error('语音需要 HTTPS 或 localhost，以及支持麦克风的浏览器');try{try{return await navigator.mediaDevices.getUserMedia({audio:true});}catch(error){if(error.name!=='NotReadableError'&&error.name!=='AbortError')throw error;await new Promise(resolve=>setTimeout(resolve,350));return await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});}}catch(error){const messages={NotAllowedError:'麦克风访问被拒绝；若已授权，请检查手机的全局麦克风开关，并重新打开 App 后重试。',NotReadableError:'麦克风暂时无法启动，可能是设备占用或兼容环境限制。卓易通用户请尝试 App 原生录音，并检查卓易通与朝夕的麦克风权限。',NotFoundError:'未找到可用的麦克风，请检查设备。',SecurityError:'当前页面无法访问麦克风，请检查 HTTPS 和系统 WebView。',AbortError:'录音启动被中断，请重新点击录制。'};throw Error(messages[error.name]||'麦克风启动失败（'+(error.name||'未知错误')+'），请重试。');}}
 $('#chat-record').onclick=async()=>{
+ if(voiceStarting)return;
  if(voiceRecorder?.state==='recording'){voiceRecorder.stop();return;}
- const owner=chatOwner;releaseRecording();const generation=recordGeneration;
+ const owner=chatOwner;releaseRecording();const generation=recordGeneration;voiceStarting=true;$('#chat-record').disabled=true;$('#chat-record').textContent='正在启动录音…';
  try{
   if(!window.MediaRecorder)throw Error('当前浏览器不支持录音');const stream=await microphone();if(owner!==chatOwner||generation!==recordGeneration||!$('#chat-dialog').open){stream.getTracks().forEach(t=>t.stop());return;}voiceStream=stream;
   const mime=['audio/webm;codecs=opus','audio/ogg;codecs=opus','audio/mp4'].find(t=>MediaRecorder.isTypeSupported(t));voiceRecorder=new MediaRecorder(stream,mime?{mimeType:mime}:{});const parts=[];let size=0;
@@ -89,6 +90,7 @@ $('#chat-record').onclick=async()=>{
   voiceRecorder.onstop=()=>{clearInterval(voiceTimer);voiceStream?.getTracks().forEach(t=>t.stop());voiceStream=null;if(owner!==chatOwner)return;voiceBlob=new Blob(parts,{type:voiceRecorder.mimeType});voiceRecorder=null;$('#chat-record').textContent='重新录制';if(voiceBlob.size>5*1024*1024){releaseRecording();chatStatus('录音超过5MB，请重新录制');return;}voiceUrl=URL.createObjectURL(voiceBlob);$('#chat-record-preview').src=voiceUrl;$('#chat-record-preview').hidden=false;$('#chat-record-send').hidden=$('#chat-record-cancel').hidden=false;chatStatus('录音已完成，可试听后发送');};
   voiceRecorder.start(1000);voiceSeconds=0;$('#chat-record').textContent='结束录音 · 0秒';voiceTimer=setInterval(()=>{voiceSeconds++;$('#chat-record').textContent='结束录音 · '+voiceSeconds+'秒';if(voiceSeconds>=120&&voiceRecorder?.state==='recording')voiceRecorder.stop();},1000);chatStatus('正在录音，最长2分钟');
  }catch(e){releaseRecording();chatStatus(e.message);}
+ finally{voiceStarting=false;$('#chat-record').disabled=Boolean(currentUser?.lifecycle?.readonly)||chatSending;}
 };
 $('#chat-record-cancel').onclick=releaseRecording;
 $('#chat-record-send').onclick=async()=>{if(voiceBlob&&await sendChat({kind:'audio',data:await chatBase64(voiceBlob),duration:Math.max(1,voiceSeconds)}))releaseRecording();};
@@ -118,3 +120,9 @@ $('#chat-history-dialog').addEventListener('close',()=>{closeChatMenu();$('#chat
 window.addEventListener('pagehide',releaseRecording);
 
 function chatUnreadBadge(count){const badge=$('#chat-unread-badge');badge.hidden=count===0;badge.textContent=count>99?'99+':String(count);$('#chat-open').setAttribute('aria-label',count?'聊天，'+count+'条未读消息':'聊天');}
+
+const nativeVoiceBuild=Number(/OurDaysAndroid\/(\d+)/.exec(navigator.userAgent)?.[1]||0);
+if(nativeVoiceBuild>=10803)$('#chat-native-record').hidden=false;
+let nativeVoiceOwner=null,nativeVoiceGeneration=null;
+$('#chat-native-record').onclick=event=>{if(!chatOwner||voiceStarting||voiceRecorder?.state==='recording'||currentUser?.lifecycle?.readonly){event.preventDefault();return;}releaseRecording();nativeVoiceOwner=chatOwner;nativeVoiceGeneration=recordGeneration;};
+window.addEventListener('native-voice-result',event=>{const input=event.detail;if(!input||chatOwner!==nativeVoiceOwner||nativeVoiceGeneration!==recordGeneration||!$('#chat-dialog').open)return;if(input.error){chatStatus(input.error);return;}try{const bytes=Uint8Array.from(atob(input.data),char=>char.charCodeAt(0));if(bytes.length>5*1024*1024)throw Error('录音超过5MB');voiceBlob=new Blob([bytes],{type:'audio/mp4'});voiceSeconds=input.duration;voiceUrl=URL.createObjectURL(voiceBlob);$('#chat-record-preview').src=voiceUrl;$('#chat-record-preview').hidden=false;$('#chat-record-send').hidden=$('#chat-record-cancel').hidden=false;chatStatus('App 录音已完成，可试听后发送');}catch{chatStatus('无法读取 App 录音，请重试');}});
