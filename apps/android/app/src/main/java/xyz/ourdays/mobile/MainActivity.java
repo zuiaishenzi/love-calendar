@@ -35,11 +35,6 @@ import android.widget.Toast;
 
 public class MainActivity extends Activity {
     private static final int PICK_FILE = 10, RECORD_AUDIO = 11;
-    private final android.os.Handler notificationHandler=new android.os.Handler(android.os.Looper.getMainLooper());
-    private final Runnable notificationPoll=new Runnable(){public void run(){AppNotifications.poll(MainActivity.this,()->{});notificationHandler.postDelayed(this,15000);}};
-    private void notificationSettings(){AppNotifications.channels(this);new android.app.AlertDialog.Builder(this).setTitle("通知设置").setMessage("新消息使用社交通讯，新增回忆和特殊日期使用服务通知。后台系统定时检查可能延迟，关闭或强行停止应用后不能保证实时提醒。").setPositiveButton("开启通知",(dialog,which)->{AppNotifications.preferences(this).edit().putBoolean("enabled",true).apply();if(android.os.Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},12);else{AppNotifications.schedule(this);if(!getSystemService(android.app.NotificationManager.class).areNotificationsEnabled()){startActivity(new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,getPackageName()));}AppNotifications.poll(this,()->{});}}).setNeutralButton("关闭通知",(dialog,which)->AppNotifications.disable(this)).setNegativeButton("取消",null).show();}
-    private String notificationUrl(Intent intent){String target=intent.getStringExtra("notificationTarget");return target!=null&&(target.equals("chat")||target.matches("\\d{4}-\\d{2}-\\d{2}"))?BuildConfig.SERVER_URL+"?notification="+Uri.encode(target):BuildConfig.SERVER_URL;}
-    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);web.loadUrl(notificationUrl(intent));}
     private WebView web;
     private AppUpdater appUpdater;
     private NativeVoiceRecorder nativeVoice;
@@ -73,8 +68,10 @@ public class MainActivity extends Activity {
                 return insets;
             });
         }
-        AppNotifications.channels(this);AppNotifications.schedule(this);notificationHandler.postDelayed(notificationPoll,3000);
         appUpdater=new AppUpdater(this);
+        // Retire tasks/channels created by older notification-enabled builds.
+        android.app.job.JobScheduler jobs=getSystemService(android.app.job.JobScheduler.class);if(jobs!=null)jobs.cancelAll();
+        android.app.NotificationManager notices=getSystemService(android.app.NotificationManager.class);if(notices!=null){notices.cancelAll();for(android.app.NotificationChannel channel:notices.getNotificationChannels())notices.deleteNotificationChannel(channel.getId());}
         web = new WebView(this);
         web.setBackgroundColor(Color.rgb(250, 246, 248));
         root.addView(web, new FrameLayout.LayoutParams(-1, -1));
@@ -96,7 +93,6 @@ public class MainActivity extends Activity {
                     if("/app/cancel-voice".equals(path)){nativeVoicePending=false;voiceRequested=false;if(nativeVoice!=null)nativeVoice.cancel();return true;}
                 }
                 if(trusted(request.getUrl())&&"/app/record-voice".equals(request.getUrl().getPath())&&request.isForMainFrame()&&trusted(Uri.parse(view.getUrl()))){voiceRequested=true;startNativeVoice();return true;}
-                if(trusted(request.getUrl())&&"/app/enable-notifications".equals(request.getUrl().getPath())&&request.isForMainFrame()&&request.hasGesture()&&trusted(Uri.parse(view.getUrl()))){notificationSettings();return true;}
                 if(trusted(request.getUrl())&&"/app/check-update".equals(request.getUrl().getPath())&&request.isForMainFrame()&&request.hasGesture()&&trusted(Uri.parse(view.getUrl()))){appUpdater.check(true);return true;}
                 if (trusted(request.getUrl())) return false;
                 if (request.isForMainFrame() && request.hasGesture()) openExternal(request.getUrl());
@@ -154,7 +150,7 @@ public class MainActivity extends Activity {
                 toast("已开始下载，可在下载目录中查看");
             } catch (RuntimeException error) { toast("下载失败，请检查网络和可用存储空间"); }
         });
-        web.loadUrl(notificationUrl(getIntent()));
+        web.loadUrl(BuildConfig.SERVER_URL);
         root.postDelayed(()->{if(!isFinishing())appUpdater.check(false);},2000);
     }
 
@@ -235,7 +231,6 @@ public class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(request, permissions, results);
         if(request==13){nativeVoicePending=false;if(!voiceRequested)return;if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED){nativeVoicePending=true;root.postDelayed(this::startNativeVoice,350);}else toast("请允许朝夕使用麦克风；卓易通本身也需要麦克风权限。");return;}
-        if(request==12){AppNotifications.schedule(this);AppNotifications.poll(this,()->{});return;}
         if (request == RECORD_AUDIO && audioRequest != null) {
             audioPermissionReady=checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED;
             if(audioPermissionReady)root.post(this::completeAudioPermission);
@@ -262,7 +257,6 @@ public class MainActivity extends Activity {
     @Override protected void onPause() { activityResumed=false;if(nativeVoice!=null)nativeVoice.cancel();CookieManager.getInstance().flush(); super.onPause(); }
     @Override protected void onDestroy() {
         if(nativeVoice!=null)nativeVoice.cancel();
-        notificationHandler.removeCallbacksAndMessages(null);
         if (audioRequest != null) { audioRequest.deny(); audioRequest = null; }
         if (fileCallback != null) { fileCallback.onReceiveValue(null); fileCallback = null; }
         web.destroy(); super.onDestroy();

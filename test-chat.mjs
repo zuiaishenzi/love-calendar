@@ -237,9 +237,9 @@ test('通知首次仅建立游标，新消息与回忆分渠道，提醒按北�
 });
 
 
-test('通知接口需要登录且客户端通知入口脚本可加载',async()=>{
+test('旧通知接口需要登录且客户端版本更新入口保留',async()=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),'love-notification-http-')),app=createApplication({dataDir:dir,mailer:{ready:false}});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+app.server.address().port;
- try{assert.equal((await fetch(origin+'/api/notifications')).status,401);const script=await fetch(origin+'/notifications.js');assert.equal(script.status,200);assert.ok((await script.text()).includes('notifications-entry'));}finally{await new Promise(r=>app.server.close(r));app.db.close();rmSync(dir,{recursive:true,force:true});}
+ try{assert.equal((await fetch(origin+'/api/notifications')).status,401);const script=await fetch(origin+'/notifications.js');assert.equal(script.status,200);const content=await script.text();assert.ok(content.includes('android-update-entry'));assert.ok(!content.includes('notifications-entry'));}finally{await new Promise(r=>app.server.close(r));app.db.close();rmSync(dir,{recursive:true,force:true});}
 });
 
 

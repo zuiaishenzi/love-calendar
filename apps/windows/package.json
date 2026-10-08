@@ -22,14 +22,13 @@
     },
     "files": [
       "main.cjs",
-      "notifications.cjs",
       "config.json",
       "offline.html",
       "icon.png",
       "updater.cjs",
       "client-build.json"
     ],
-    "artifactName": "OurDays-${version}-Windows-build10803-${arch}.${ext}",
+    "artifactName": "OurDays-${version}-Windows-build10804-${arch}.${ext}",
     "win": {
       "target": "nsis",
       "icon": "icon.ico"
@@ -40,6 +39,6 @@
       "createDesktopShortcut": true,
       "shortcutName": "朝夕"
     },
-    "buildVersion": "1.8.0.10803"
+    "buildVersion": "1.8.0.10804"
   }
 }
