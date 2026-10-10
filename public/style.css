@@ -421,12 +421,12 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
 /* A complete conversation layout with a quiet header and a fixed composer. */
 #app:has(#chat-dialog:not([hidden])){height:100dvh;display:flex;flex-direction:column;padding-top:0;padding-bottom:16px;gap:0}
 #app:has(#chat-dialog:not([hidden]))>.intro,#app:has(#chat-dialog:not([hidden]))>.bottom{display:none}
-#app:has(#chat-dialog:not([hidden]))>header{height:64px;min-height:64px;border-bottom:0;flex-shrink:0}
+#app .app-topbar>header{height:64px;min-height:64px;border-bottom:0;flex-shrink:0}
 #app:has(#chat-dialog:not([hidden])) .brand{font-size:25px;letter-spacing:3px}
 #app:has(#chat-dialog:not([hidden])) .brand span{font-size:10px;letter-spacing:2px;margin-left:8px;opacity:.7}
-#app:has(#chat-dialog:not([hidden]))>.view-switch{align-self:flex-start;gap:4px;padding:4px;margin:0 0 14px;border:1px solid #eae0e4;background:#f1e9ed;border-radius:13px;flex-shrink:0}
-#app:has(#chat-dialog:not([hidden]))>.view-switch button{min-width:100px;min-height:36px;padding:7px 18px;border:0;background:transparent;color:#8f7b84;border-radius:9px;font-size:13px}
-#app:has(#chat-dialog:not([hidden]))>.view-switch button[aria-pressed="true"]{background:white;color:var(--wine);box-shadow:0 2px 8px #72425612;font-weight:600}
+#app .app-topbar>.view-switch{align-self:flex-start;gap:4px;padding:4px;margin:0 0 14px;border:1px solid #eae0e4;background:#f1e9ed;border-radius:13px;flex-shrink:0}
+#app .app-topbar>.view-switch button{min-width:100px;min-height:36px;padding:7px 18px;border:0;background:transparent;color:#8f7b84;border-radius:9px;font-size:13px}
+#app .app-topbar>.view-switch button[aria-pressed="true"]{background:white;color:var(--wine);box-shadow:0 2px 8px #72425612;font-weight:600}
 #app:has(#chat-dialog:not([hidden])) #chat-dialog.main-view{flex:1;height:auto;min-height:0;border:1px solid #eadfe5;border-radius:20px;background:#fbf7f9;box-shadow:0 8px 30px #79476106}
 #chat-dialog.main-view .chat-heading{padding:15px 20px;background:#ffffffd9;border-bottom:1px solid #eee4e9;gap:12px}
 #chat-dialog.main-view .chat-peer{gap:10px;flex:1}
@@ -448,14 +448,14 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
 #chat-native-record,#chat-native-cancel{text-decoration:none}
 @media(max-width:760px){
  #app:has(#chat-dialog:not([hidden])){padding:0 12px 10px}
- #app:has(#chat-dialog:not([hidden]))>header{height:54px;min-height:54px}
+ #app .app-topbar>header{height:54px;min-height:54px}
  #app:has(#chat-dialog:not([hidden])) .brand{font-size:22px;letter-spacing:3px}
  #app:has(#chat-dialog:not([hidden])) .brand span{font-size:8px;letter-spacing:1.6px;margin-left:5px}
  #app:has(#chat-dialog:not([hidden])) .account-trigger{padding:5px 6px;font-size:12px;gap:6px}
  #app:has(#chat-dialog:not([hidden])) .account-trigger .avatar{width:27px;height:27px}
  #app:has(#chat-dialog:not([hidden])) #logout{padding:5px 4px;font-size:12px}
- #app:has(#chat-dialog:not([hidden]))>.view-switch{align-self:stretch;margin-bottom:10px;padding:3px;border-radius:12px}
- #app:has(#chat-dialog:not([hidden]))>.view-switch button{min-width:0;flex:1;min-height:34px;padding:7px 4px;font-size:12px}
+ #app .app-topbar>.view-switch{align-self:stretch;margin-bottom:10px;padding:3px;border-radius:12px}
+ #app .app-topbar>.view-switch button{min-width:0;flex:1;min-height:34px;padding:7px 4px;font-size:12px}
  #app:has(#chat-dialog:not([hidden])) #chat-dialog.main-view{border-radius:17px;min-height:0}
  #chat-dialog.main-view .chat-heading{padding:12px 14px;gap:8px}
  #chat-dialog.main-view .chat-peer h2{font-size:16px}
@@ -474,3 +474,29 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
 #chat-dialog.main-view #chat-status{position:absolute;top:72px;left:50%;bottom:auto;transform:translateX(-50%);width:max-content;max-width:calc(100% - 32px);padding:9px 14px;margin:0;border:1px solid #ead7df;border-radius:12px;background:#fffafbf5;box-shadow:0 4px 16px #75465a18;z-index:12;line-height:1.6;text-align:center;pointer-events:none}
 
 .calendar{touch-action:pan-y pinch-zoom}
+
+/* Test layout: persistent compact navigation; calendar-only introduction. */
+#app>.app-topbar{position:sticky;top:0;z-index:30;background:#faf8f7;padding-top:env(safe-area-inset-top,0px);padding-bottom:10px;flex-shrink:0}
+#app .app-topbar>header{height:64px;min-height:64px;border:0}
+#app .app-topbar .brand{font-size:25px;letter-spacing:3px}
+#app .app-topbar .brand span{font-size:10px;letter-spacing:2px;margin-left:8px;opacity:.7}
+#app .app-topbar .account-trigger{padding:5px 6px;font-size:13px;gap:6px}
+#app .app-topbar .account-trigger .avatar{width:30px;height:30px}
+#app .app-topbar #logout{padding:5px 4px;font-size:13px}
+#app .app-topbar>.view-switch{display:flex;width:100%;margin:0;padding:4px;gap:4px;border:1px solid #eae0e4;border-radius:13px;background:#f1e9ed}
+#app .app-topbar>.view-switch button{flex:1;min-width:0}
+#app>.intro{display:none}
+#app:has(#calendar-view[aria-pressed="true"])>.intro{display:flex;padding:20px 0 24px}
+#app:has(#chat-dialog:not([hidden]))>.app-topbar{padding-bottom:10px}
+#app:not(:has(#calendar-view[aria-pressed="true"]))>.bottom{display:none}
+@media(max-width:760px){
+ #app{padding-left:12px;padding-right:12px}
+ #app .app-topbar>header{height:54px;min-height:54px}
+ #app .app-topbar .brand{font-size:22px}
+ #app .app-topbar .brand span{font-size:8px;letter-spacing:1.6px;margin-left:5px}
+ #app .app-topbar .account-trigger,#app .app-topbar #logout{font-size:12px}
+ #app .app-topbar .account-trigger .avatar{width:27px;height:27px}
+ #app .app-topbar>.view-switch{padding:3px;border-radius:12px}
+ #app .app-topbar>.view-switch button{min-height:34px;padding:7px 4px;font-size:12px}
+ #app:has(#calendar-view[aria-pressed="true"])>.intro{padding:16px 2px 20px}
+}
