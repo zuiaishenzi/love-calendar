@@ -141,6 +141,6 @@ calendarSwipe($('.calendar'));
 
 // Suppress WebView text-selection menus; chat keeps its own pointer-based menu.
 if(navigator.userAgent.includes('OurDaysAndroid/')){
- document.addEventListener('selectstart',event=>{if(!event.target.closest('.chat-text,input,textarea'))event.preventDefault();});
+ document.addEventListener('selectstart',event=>{if(!event.target.closest('input,textarea'))event.preventDefault();});
  document.addEventListener('contextmenu',event=>event.preventDefault());
 }
