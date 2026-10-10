@@ -10,7 +10,7 @@ function closeChatMenu(){clearTimeout(chatPressTimer);$('#chat-context-menu').hi
 function openChatMenu(row,x,y,host=$('#chat-dialog')){if(row.retracted_at)return;chatContextRow=row;$('#chat-context-transcribe').hidden=row.kind!=='audio';$('#chat-context-transcribe').disabled=Boolean(currentUser?.lifecycle?.readonly);const menu=$('#chat-context-menu');host.append(menu);const bounds=host.getBoundingClientRect();menu.hidden=false;$('#chat-context-copy').hidden=row.kind!=='text';const download=$('#chat-context-download');download.hidden=row.kind!=='audio';download.href='/api/chat/media/'+row.id+'?download=1';$('#chat-context-select').hidden=host.id==='chat-history-dialog';$('#chat-context-retract').hidden=row.sender!==chatOwner;$('#chat-context-retract').disabled=Boolean(currentUser?.lifecycle?.readonly);$('#chat-context-select').disabled=Boolean(currentUser?.lifecycle?.readonly);menu.style.left=Math.max(8,Math.min(x-bounds.left,bounds.width-menu.offsetWidth-8))+'px';menu.style.top=(host.scrollTop+Math.max(8,Math.min(y-bounds.top,bounds.height-menu.offsetHeight-8)))+'px';(row.kind==='text'?$('#chat-context-copy'):row.kind==='audio'?download:$('#chat-context-select')).focus();}
 $('#chat-context-download').onclick=()=>closeChatMenu();
 $('#chat-context-select').onclick=()=>{const row=chatContextRow;if(!row)return;closeChatMenu();chatSelecting=true;chatSelected.add(row.id);renderChat();};
-$('#chat-context-copy').onclick=async()=>{const text=chatContextRow?.text;if(text===undefined)return;closeChatMenu();try{await navigator.clipboard.writeText(text);}catch{chatStatus('复制失败，请检查浏览器剪贴板权限');}};
+$('#chat-context-copy').onclick=async()=>{const text=chatContextRow?.text;if(text===undefined)return;closeChatMenu();try{await copyChatText(text);}catch{chatStatus('复制失败，请重试');}};
 $('#chat-context-retract').onclick=async()=>{const row=chatContextRow;if(!row||row.sender!==chatOwner)return;closeChatMenu();const owner=chatOwner;try{await api('/api/chat/messages/'+row.id+'/retract','POST',{});if(owner===chatOwner){chatSelected.delete(row.id);await syncChat();if($('#chat-history-dialog').open)await searchChatHistory();}}catch(e){if(owner===chatOwner)chatStatus(e.message);}};
 $('#chat-dialog').addEventListener('click',e=>{if(!e.target.closest('#chat-context-menu'))closeChatMenu();});
 $('#chat-dialog').addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#chat-context-menu').hidden){e.preventDefault();e.stopPropagation();closeChatMenu();}});
@@ -145,3 +145,15 @@ function setupHoldVoice(button,native){button.textContent='按住说话';button.
  const end=event=>{if(voiceHold!==event.pointerId)return;if(event.type==='pointerup'&&Number.isFinite(event.clientX)&&Number.isFinite(event.clientY)){const target=document.elementFromPoint(event.clientX,event.clientY)?.closest('[data-action]');voiceHoldAction=target?.dataset.action||'send';}clearTimeout(voiceHoldTimer);voiceHold=null;voiceHoldReleased=true;$('#chat-hold-actions').hidden=true;if(event.type==='pointercancel')voiceHoldAction='cancel';if(voiceHeld&&(nativeVoiceActive||voiceRecorder?.state==='recording'||voiceHoldAction==='cancel'))finishHeldVoice();};button.addEventListener('pointerup',end);button.addEventListener('pointercancel',end);
 }
 if(matchMedia('(pointer: coarse)').matches){if(nativeVoiceBuild>=10806)setupHoldVoice($('#chat-native-record'),true);else if(!nativeVoiceBuild)setupHoldVoice($('#chat-record'),false);}
+
+async function copyChatText(text){
+ // Legacy WebView copy runs synchronously within the user's click gesture.
+ const legacy=()=>{
+  const field=document.createElement('textarea'),active=document.activeElement;
+  field.value=text;field.setAttribute('readonly','');field.style.cssText='position:fixed;left:0;top:0;opacity:0;font-size:16px';document.body.append(field);
+  try{field.focus();field.select();field.setSelectionRange(0,text.length);return document.execCommand('copy');}
+  finally{field.remove();active?.focus?.({preventScroll:true});}
+ };
+ if(navigator.userAgent.includes('OurDaysAndroid/')&&legacy())return;
+ try{await navigator.clipboard.writeText(text);}catch(error){if(!legacy())throw error;}
+}

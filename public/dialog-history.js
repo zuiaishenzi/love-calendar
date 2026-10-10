@@ -34,3 +34,25 @@
   history.replaceState(state(stack.map(entry=>entry.token)),'');
  });
 })();
+
+// Freeze the document behind any modal, including nested settings dialogs.
+(()=>{
+ if(typeof MutationObserver==='undefined')return;
+ let saved=null;
+ const body=document.body;
+ function syncScrollLock(){
+  const open=document.querySelector('dialog[open]');
+  if(open&&!saved){
+   saved={y:window.scrollY,x:window.scrollX,position:body.style.position,top:body.style.top,left:body.style.left,width:body.style.width,overflow:body.style.overflow};
+   body.style.position='fixed';body.style.top=-saved.y+'px';body.style.left=-saved.x+'px';body.style.width='100%';body.style.overflow='hidden';
+  }else if(!open&&saved){
+   const previous=saved;saved=null;
+   for(const key of ['position','top','left','width','overflow'])body.style[key]=previous[key];
+   window.scrollTo({left:previous.x,top:previous.y,behavior:'instant'});
+  }
+ }
+ const observer=new MutationObserver(syncScrollLock);
+ for(const dialog of document.querySelectorAll('dialog'))observer.observe(dialog,{attributes:true,attributeFilter:['open']});
+ document.addEventListener('touchmove',event=>{if(document.querySelector('dialog[open]')&&!event.target.closest('dialog[open]'))event.preventDefault();},{passive:false});
+ syncScrollLock();
+})();

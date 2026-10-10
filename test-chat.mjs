@@ -383,3 +383,21 @@ test('系统设置中的导航偏好只在移动App生效，保存并恢复且�
  const denied=boot('OurDaysAndroid/10808',null,true);denied.radios[1].checked=true;denied.radios[1].onchange();assert.equal(denied.bottom(),true);
  const html=readFileSync(new URL('./public/index.html',import.meta.url),'utf8');assert.equal((html.match(/id="android-update-entry"/g)||[]).length,1);assert.ok(html.indexOf('id="android-update-entry"')>html.indexOf('id="system-dialog"'));
 });
+
+
+test('App复制使用同步兼容路径，网页权限失败后回退且清理临时字段',async()=>{
+ const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8'),code=source.slice(source.indexOf('async function copyChatText('));
+ for(const agent of ['OurDaysAndroid/10808','browser']){
+  let removed=0,restored=0,copied=0,attempts=0;const field={style:{},setAttribute:()=>{},focus:()=>{},select:()=>{},setSelectionRange:()=>{},remove:()=>removed++};
+  const copy=runInNewContext(code+';copyChatText',{navigator:{userAgent:agent,clipboard:{writeText:async()=>{attempts++;throw Error('denied');}}},document:{createElement:()=>field,activeElement:{focus:()=>restored++},body:{append:()=>{}},execCommand:command=>{assert.equal(command,'copy');copied++;return true;}}});
+  await copy('测试文字');assert.equal(field.value,'测试文字');assert.equal(copied,1);assert.equal(removed,1);assert.equal(restored,1);assert.equal(attempts,agent==='browser'?1:0);
+ }
+});
+
+test('设置弹窗与嵌套弹窗锁定背景，全部关闭后恢复原滚动位置',()=>{
+ const source=readFileSync(new URL('./public/dialog-history.js',import.meta.url),'utf8'),code=source.slice(source.indexOf('// Freeze the document'));
+ let observe,open=false,moves=[],touch;const style={position:'',top:'',left:'',width:'',overflow:''};
+ runInNewContext(code,{MutationObserver:class{constructor(fn){observe=fn;}observe(){}},document:{body:{style},querySelector:()=>open?{}:null,querySelectorAll:()=>[{}],addEventListener:(name,fn)=>touch=fn},window:{scrollY:900,scrollX:0,scrollTo:value=>moves.push(value)}});
+ open=true;observe();assert.equal(style.position,'fixed');assert.equal(style.top,'-900px');let prevented=false;touch({target:{closest:()=>null},preventDefault:()=>prevented=true});assert.equal(prevented,true);
+ observe();assert.equal(moves.length,0);open=false;observe();assert.equal(style.position,'');assert.equal(moves.length,1);assert.equal(moves[0].top,900);
+});

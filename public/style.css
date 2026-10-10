@@ -589,3 +589,7 @@ body.android-app,body.android-app *{-webkit-user-select:none;user-select:none;-w
  #memos-dialog.main-view{padding:14px}
  #memos-dialog.main-view>.memo-ai-bar>button{padding:8px 9px;font-size:12px}
 }
+
+/* Chat text and editors remain selectable inside the mobile client. */
+body.android-app .chat-text,body.android-app input,body.android-app textarea{-webkit-user-select:text;user-select:text}
+dialog{overscroll-behavior:contain;touch-action:pan-y}
