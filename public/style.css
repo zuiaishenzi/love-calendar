@@ -536,3 +536,28 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
 }
 
 body.android-app #app{padding-top:0}
+
+/* Light icon-and-label bottom navigation, with one small active accent. */
+.tab-icon{display:none}
+#memoir .memoir-heading{margin:12px 0 16px}
+#memoir .memoir-heading>.eyebrow{margin-bottom:4px;font-size:10px;letter-spacing:1.6px}
+#memoir .memoir-heading h2{font-size:27px;line-height:1.35;margin-bottom:6px}
+#memoir .memoir-heading #timeline-summary{margin:0;font-size:12px;line-height:1.6}
+#memoir #timeline-list>.timeline-year:first-child{margin-top:12px}
+.preview-nav-bottom{display:flex;justify-content:space-around;background:white;border-radius:0;padding:5px 0 2px;border-top:1px solid #eee3e8}
+.preview-tab{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:7px;color:#a08a95}
+.preview-tab svg{width:14px;height:14px}
+.preview-tab:first-child{color:var(--wine)}
+@media(max-width:760px){
+ #memoir .memoir-heading{margin:8px 2px 12px}
+ #memoir .memoir-heading h2{font-size:24px;margin-bottom:5px}
+ #memoir #timeline-list>.timeline-year:first-child{margin-top:10px;margin-bottom:14px}
+ body.android-app #app.nav-bottom{padding-bottom:calc(68px + env(safe-area-inset-bottom,0px))}
+ body.android-app #app.nav-bottom .app-topbar>.view-switch{gap:0;padding:5px 10px calc(5px + env(safe-area-inset-bottom,0px));border-radius:0;border-color:#eee6ea;background:#fffcfd;box-shadow:0 -2px 12px #75465a06}
+ body.android-app #app.nav-bottom .app-topbar>.view-switch button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:54px;padding:3px 0;border:0;border-radius:0;background:transparent;box-shadow:none;color:#a08a95;font-size:11px;font-weight:400;line-height:1.2}
+ body.android-app #app.nav-bottom .app-topbar>.view-switch button[aria-pressed="true"]{color:var(--wine);background:transparent;box-shadow:none;font-weight:600}
+ body.android-app #app.nav-bottom .tab-icon{display:flex;align-items:center;justify-content:center;width:42px;height:27px;border-radius:14px}
+ body.android-app #app.nav-bottom .tab-icon svg{width:22px;height:22px}
+ body.android-app #app.nav-bottom button[aria-pressed="true"] .tab-icon{background:#f4e5ec}
+ body.android-app #app.nav-bottom #chat-unread-badge{position:absolute;top:1px;left:calc(50% + 8px);margin:0;border:2px solid #fffcfd;font-size:10px;min-width:18px;height:18px;line-height:14px;padding:0 3px}
+}
