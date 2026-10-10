@@ -90,3 +90,22 @@ $('#lifecycle-form').onsubmit=async event=>{event.preventDefault();const b=$('#l
 setInterval(()=>{if(currentUser&&$('#lifecycle-dialog').open)renderLifecycleProgress();},1000);
 
 if(navigator.userAgent.includes('OurDaysAndroid/')){const update=$('#android-update-entry');update.hidden=false;update.onclick=()=>menuOpen(false);}
+
+// Navigation personalization is available only inside the Android client.
+const mobilePersonalization=navigator.userAgent.includes('OurDaysAndroid/');
+const navigationPreferenceKey='ourdays.navigation-position';
+function applyNavigationPosition(position){
+ const bottom=mobilePersonalization&&position==='bottom';
+ $('#app').classList.toggle('nav-bottom',bottom);
+ for(const radio of document.querySelectorAll('input[name="nav-position"]'))radio.checked=radio.value===(bottom?'bottom':'top');
+}
+let savedNavigationPosition='top';
+if(mobilePersonalization){try{savedNavigationPosition=localStorage.getItem(navigationPreferenceKey)||'top';}catch{}}
+applyNavigationPosition(savedNavigationPosition);
+$('#system-personalization').hidden=!mobilePersonalization;
+$('#system-open').onclick=()=>{menuOpen(false);$('#system-dialog').showModal();};
+for(const radio of document.querySelectorAll('input[name="nav-position"]'))radio.onchange=()=>{
+ if(!mobilePersonalization||!radio.checked)return;
+ applyNavigationPosition(radio.value);
+ try{localStorage.setItem(navigationPreferenceKey,radio.value);}catch{}
+};

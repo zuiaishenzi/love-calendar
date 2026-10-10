@@ -367,3 +367,19 @@ test('回忆提示在对方记录视角或回应后隐藏，回忆录始终隐�
  assert.equal(hasInvite({perspectives:[own]},{showInvite:false}),false);
  assert.ok(source.includes('card.append(conversation(r,{showInvite:false}))'));
 });
+
+
+test('系统设置中的导航偏好只在移动App生效，保存并恢复且存储禁用时可切换',()=>{
+ const source=readFileSync(new URL('./public/settings.js',import.meta.url),'utf8'),code=source.slice(source.indexOf('const mobilePersonalization='));
+ function boot(agent,saved,storageFails=false){
+  const radios=[{value:'top'},{value:'bottom'}],nodes=new Map(),writes=[];let bottom=false,opened=0,closed=0;
+  const get=id=>{if(!nodes.has(id))nodes.set(id,{classList:{toggle:(name,value)=>bottom=value},showModal:()=>opened++});return nodes.get(id);};
+  runInNewContext(code,{navigator:{userAgent:agent},$:get,document:{querySelectorAll:()=>radios},localStorage:{getItem:()=>{if(storageFails)throw Error();return saved;},setItem:(key,value)=>{if(storageFails)throw Error();writes.push(value);}},menuOpen:()=>closed++});
+  return {radios,nodes,writes,get,bottom:()=>bottom,opened:()=>opened,closed:()=>closed};
+ }
+ const mobile=boot('OurDaysAndroid/10808','bottom');assert.equal(mobile.bottom(),true);assert.equal(mobile.get('#system-personalization').hidden,false);mobile.get('#system-open').onclick();assert.equal(mobile.opened(),1);assert.equal(mobile.closed(),1);
+ mobile.radios[0].checked=true;mobile.radios[0].onchange();assert.equal(mobile.bottom(),false);assert.deepEqual(mobile.writes,['top']);
+ for(const agent of ['browser','OurDaysWindows/1.8.0']){const client=boot(agent,'bottom');assert.equal(client.bottom(),false);assert.equal(client.get('#system-personalization').hidden,true);client.radios[1].checked=true;client.radios[1].onchange();assert.equal(client.bottom(),false);assert.equal(client.writes.length,0);}
+ const denied=boot('OurDaysAndroid/10808',null,true);denied.radios[1].checked=true;denied.radios[1].onchange();assert.equal(denied.bottom(),true);
+ const html=readFileSync(new URL('./public/index.html',import.meta.url),'utf8');assert.equal((html.match(/id="android-update-entry"/g)||[]).length,1);assert.ok(html.indexOf('id="android-update-entry"')>html.indexOf('id="system-dialog"'));
+});

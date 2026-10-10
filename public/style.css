@@ -422,8 +422,8 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
 #app:has(#chat-dialog:not([hidden])){height:100dvh;display:flex;flex-direction:column;padding-top:0;padding-bottom:16px;gap:0}
 #app:has(#chat-dialog:not([hidden]))>.intro,#app:has(#chat-dialog:not([hidden]))>.bottom{display:none}
 #app .app-topbar>header{height:64px;min-height:64px;border-bottom:0;flex-shrink:0}
-#app:has(#chat-dialog:not([hidden])) .brand{font-size:25px;letter-spacing:3px}
-#app:has(#chat-dialog:not([hidden])) .brand span{font-size:10px;letter-spacing:2px;margin-left:8px;opacity:.7}
+
+
 #app .app-topbar>.view-switch{align-self:flex-start;gap:4px;padding:4px;margin:0 0 14px;border:1px solid #eae0e4;background:#f1e9ed;border-radius:13px;flex-shrink:0}
 #app .app-topbar>.view-switch button{min-width:100px;min-height:36px;padding:7px 18px;border:0;background:transparent;color:#8f7b84;border-radius:9px;font-size:13px}
 #app .app-topbar>.view-switch button[aria-pressed="true"]{background:white;color:var(--wine);box-shadow:0 2px 8px #72425612;font-weight:600}
@@ -449,11 +449,11 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
 @media(max-width:760px){
  #app:has(#chat-dialog:not([hidden])){padding:0 12px 10px}
  #app .app-topbar>header{height:54px;min-height:54px}
- #app:has(#chat-dialog:not([hidden])) .brand{font-size:22px;letter-spacing:3px}
- #app:has(#chat-dialog:not([hidden])) .brand span{font-size:8px;letter-spacing:1.6px;margin-left:5px}
- #app:has(#chat-dialog:not([hidden])) .account-trigger{padding:5px 6px;font-size:12px;gap:6px}
- #app:has(#chat-dialog:not([hidden])) .account-trigger .avatar{width:27px;height:27px}
- #app:has(#chat-dialog:not([hidden])) #logout{padding:5px 4px;font-size:12px}
+
+
+
+
+
  #app .app-topbar>.view-switch{align-self:stretch;margin-bottom:10px;padding:3px;border-radius:12px}
  #app .app-topbar>.view-switch button{min-width:0;flex:1;min-height:34px;padding:7px 4px;font-size:12px}
  #app:has(#chat-dialog:not([hidden])) #chat-dialog.main-view{border-radius:17px;min-height:0}
@@ -500,3 +500,39 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
  #app .app-topbar>.view-switch button{min-height:34px;padding:7px 4px;font-size:12px}
  #app:has(#calendar-view[aria-pressed="true"])>.intro{padding:16px 2px 20px}
 }
+
+/* All pages share the same compact account header. */
+#app .app-topbar>header .brand{font-size:25px;letter-spacing:3px}
+#app .app-topbar>header .brand span{font-size:10px;letter-spacing:2px;margin-left:8px;opacity:.7}
+#app .app-topbar>header .account{gap:8px}
+#app .app-topbar>header .account-trigger{padding:5px 6px;font-size:13px;gap:6px}
+#app .app-topbar>header .account-trigger .avatar{width:30px;height:30px}
+#app .app-topbar>header #logout{padding:5px 4px;font-size:13px}
+#system-dialog{width:min(540px,94vw)}#system-web-version{margin:12px 0}
+#system-personalization{border-top:1px solid var(--line);padding-top:18px;margin-top:18px}
+#system-personalization h3{font-size:17px;margin-bottom:8px}
+.nav-position-options{display:grid;grid-template-columns:1fr 1fr;gap:14px;border:0;padding:0;margin:0}
+.nav-position-options legend{font-size:14px;margin-bottom:12px}
+.nav-position-choice{position:relative;display:grid;gap:10px;text-align:center;margin:0;padding:12px;border:1px solid var(--line);border-radius:14px;cursor:pointer;font-size:13px}
+.nav-position-choice:has(input:checked){border-color:var(--wine);background:#faf0f4;box-shadow:0 0 0 1px var(--wine)}
+.nav-position-choice input{width:16px;height:16px;margin:0;accent-color:var(--wine);justify-self:center}
+.nav-preview{height:170px;display:flex;flex-direction:column;padding:7px;border:1px solid #e2d5da;border-radius:12px;background:#faf8f7;overflow:hidden;pointer-events:none}
+.preview-header{display:flex;justify-content:space-between;align-items:center;color:var(--wine);font-size:10px;padding:6px 2px;white-space:nowrap}
+.preview-header>span{font-size:7px;color:#8b7780}
+.preview-nav{display:block;background:#f0e4eb;border-radius:5px;padding:6px 1px;font-size:8px;white-space:nowrap;color:var(--wine)}
+.preview-content{display:grid;gap:6px;flex:1;padding:9px 2px}
+.preview-content>span{display:block;background:white;border:1px solid #eee3e8;border-radius:5px}
+#system-dialog #android-update-entry{display:block}
+#system-dialog #android-update-entry[hidden]{display:none}
+@media(max-width:760px){
+ #app .app-topbar>header .brand{font-size:22px}
+ #app .app-topbar>header .brand span{font-size:8px;letter-spacing:1.6px;margin-left:5px}
+ #app .app-topbar>header .account-trigger,#app .app-topbar>header #logout{font-size:12px}
+ #app .app-topbar>header .account-trigger .avatar{width:27px;height:27px}
+ body.android-app #app.nav-bottom{padding-bottom:calc(74px + env(safe-area-inset-bottom,0px))}
+ body.android-app #app.nav-bottom>.app-topbar{padding-bottom:0}
+ body.android-app #app.nav-bottom .app-topbar>.view-switch{position:fixed;bottom:0;left:0;right:0;width:100%;z-index:35;margin:0;padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));border-radius:16px 16px 0 0;border-width:1px 0 0;background:#faf8f7;box-shadow:0 -3px 16px #75465a0a}
+ body.android-app #app.nav-bottom .app-topbar>.view-switch button{min-height:40px}
+}
+
+body.android-app #app{padding-top:0}
