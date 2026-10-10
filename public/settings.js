@@ -103,6 +103,8 @@ let savedNavigationPosition='top';
 if(mobilePersonalization){try{savedNavigationPosition=localStorage.getItem(navigationPreferenceKey)||'top';}catch{}}
 applyNavigationPosition(savedNavigationPosition);
 $('#system-personalization').hidden=!mobilePersonalization;
+if(mobilePersonalization)$('#system-menu-description').textContent='版本更新 · 个性设置';
+else $('#system-personalization').remove?.();
 $('#system-open').onclick=()=>{menuOpen(false);$('#system-dialog').showModal();};
 for(const radio of document.querySelectorAll('input[name="nav-position"]'))radio.onchange=()=>{
  if(!mobilePersonalization||!radio.checked)return;

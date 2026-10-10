@@ -577,3 +577,15 @@ body.android-app #app{padding-top:0}
 .preview-nav-top{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;padding:3px;background:#f1e9ed;border:1px solid #eae0e4;border-radius:7px;font-size:7px;line-height:1.4;white-space:normal}
 .preview-nav-top>span{min-width:0;display:flex;align-items:center;justify-content:center;padding:5px 0;white-space:nowrap;border-radius:4px;color:#927c87}
 .preview-nav-top>.preview-top-active{background:white;color:var(--wine);box-shadow:0 1px 3px #72425612;font-weight:600}
+
+body.android-app,body.android-app *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#memos-dialog.main-view>.dialog-heading{margin-bottom:8px}
+#memos-dialog.main-view>.hint{margin-bottom:8px;line-height:1.6}
+#memos-dialog.main-view>.memo-ai-bar{margin:8px 0 6px;gap:6px}
+#memos-dialog.main-view>#memo-edit-mode{margin:0 0 8px;padding:4px 8px}
+#memos-dialog.main-view>#memos-status{min-height:0;margin:0 0 8px;line-height:1.5}
+#memos-dialog.main-view>#memos-status:empty{display:none}
+@media(max-width:760px){
+ #memos-dialog.main-view{padding:14px}
+ #memos-dialog.main-view>.memo-ai-bar>button{padding:8px 9px;font-size:12px}
+}

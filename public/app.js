@@ -138,3 +138,9 @@ function calendarSwipe(grid){
  grid.addEventListener('click',event=>{if(Date.now()<suppressClickUntil){event.preventDefault();event.stopImmediatePropagation();}},true);
 }
 calendarSwipe($('.calendar'));
+
+// Suppress WebView text-selection menus; chat keeps its own pointer-based menu.
+if(navigator.userAgent.includes('OurDaysAndroid/')){
+ document.addEventListener('selectstart',event=>event.preventDefault());
+ document.addEventListener('contextmenu',event=>event.preventDefault());
+}
