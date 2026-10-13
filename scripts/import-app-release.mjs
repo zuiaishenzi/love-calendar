@@ -6,9 +6,10 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const [source,target]=process.argv.slice(2);
 if(!source||!target)throw Error('用法: import-app-release.mjs 私有仓库目录 发布目录');
+let found=false;
 for(const [manifestName,platform] of [['latest.json','android'],['windows.json','windows']]){
 const windows=platform==='windows',manifest=path.join(source,manifestName);
-try{lstatSync(manifest);}catch(error){if(error.code==='ENOENT'&&windows)continue;throw error;}if(!lstatSync(manifest).isFile())throw Error('清单必须为普通文件');
+try{lstatSync(manifest);}catch(error){if(error.code==='ENOENT')continue;throw error;}if(!lstatSync(manifest).isFile())throw Error('清单必须为普通文件');found=true;
 const info=JSON.parse(readFileSync(manifest,'utf8'));
 if(info.packageId!==(windows?'xyz.ourdays.desktop':'xyz.ourdays.mobile')||! (windows?/^[A-Za-z0-9][A-Za-z0-9._-]*\.exe$/:/^[A-Za-z0-9][A-Za-z0-9._-]*\.apk$/).test(info.filename)||!Number.isSafeInteger(info.versionCode)||info.versionCode<1||! /^\d+\.\d+\.\d+$/.test(info.versionName)||! /^[a-f0-9]{64}$/.test(info.sha256)||typeof info.notes!=='string'||info.notes.length>4000)throw Error('私有仓库清单无效');
 let file=path.join(source,info.filename),temp=null;
@@ -21,3 +22,5 @@ if(current&&current.versionCode>=info.versionCode){if(current.versionCode===info
 const result=spawnSync(process.execPath,[fileURLToPath(new URL('./publish-app.mjs',import.meta.url)),file,target,String(info.versionCode),info.versionName,info.notes,platform],{stdio:'inherit'});if(result.status!==0)throw Error('安装包发布失败');
 }finally{if(temp)rmSync(temp,{recursive:true,force:true});}
 }
+
+if(!found)throw Error('没有可发布的安装包清单');
