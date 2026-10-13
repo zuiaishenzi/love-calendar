@@ -31,7 +31,7 @@ function renderMemos(){
    ul.append(li);
   }card.append(ul);list.append(card);
  }
- $('#memo-edit-mode').textContent=memoEditMode?'完成编辑':'编辑分类条目';$('#memo-edit-mode').disabled=memoBusy||readOnly;
+ $('#memo-edit-mode').textContent=memoEditMode?'完成编辑':'编辑分类条目';$('#memo-edit-mode').setAttribute('aria-pressed',String(memoEditMode));$('#memo-edit-mode').disabled=memoBusy||readOnly;
  const automatic=entries.filter(e=>!e.kind.startsWith('custom:'));
  if(!memoData.notes.length&&!memoData.categories.length)list.append(el('p','从一件小事开始，慢慢记住对方。','memo-empty'));
  const pending=automatic.filter(e=>e.kind==='待整理');if(pending.length||memoEditMode)group('待整理',pending);
