@@ -20,3 +20,13 @@ apps/android/local.properties
 *.exe.blockmap
 
 app-updates/
+
+*.ipa
+*.p12
+*.mobileprovision
+*.xcarchive/
+*.xcuserstate
+apps/ios/OurDays.xcodeproj/
+*.p8
+*.pfx
+*.dSYM/

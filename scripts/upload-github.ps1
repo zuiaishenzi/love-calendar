@@ -3,6 +3,7 @@ param(
     [string]$Message = 'Update website and app release',
     [string]$ApkPath,
     [string]$WindowsPath,
+    [string]$IosPath,
     [string]$Notes = '客户端修复与体验优化',
     [switch]$CodeOnly,
     [switch]$CheckOnly
@@ -55,7 +56,7 @@ function CommitAndPush([string]$Root, [string]$CommitMessage) {
     elseif ($LASTEXITCODE -ne 0) { throw '无法检查暂存区。' }
     Invoke-RepoGit $Root @('push', 'origin', 'main') | Out-Host
 }
-if ($CodeOnly -and ($ApkPath -or $WindowsPath)) { throw 'CodeOnly 与 ApkPath 不可同时使用。' }
+if ($CodeOnly -and ($ApkPath -or $WindowsPath -or $IosPath)) { throw 'CodeOnly 与 ApkPath 不可同时使用。' }
 if ((Invoke-RepoGit $sourceRoot @('remote', 'get-url', 'origin')) -ne 'https://github.com/zuiaishenzi/love-calendar.git') { throw '源码 origin 地址不符合约定。' }
 if ((Invoke-RepoGit $sourceRoot @('branch', '--show-current')) -ne 'main') { throw '请先切换到源码仓库的 main 分支；脚本不会自动切换或合并。' }
 if (-not $CodeOnly) {
@@ -89,6 +90,20 @@ if (-not $CodeOnly) {
     $windowsVersion = (Get-Item -LiteralPath $WindowsPath).VersionInfo.FileVersion
     if ($windowsVersion -ne "$version.$windowsBuild") { throw "Windows 安装包构建版本不符，预期 $version.$windowsBuild，实际 $windowsVersion，请重新构建。" }
 }
+$iosConfig = Get-Content (Join-Path $sourceRoot 'apps/ios/client-build.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+if (-not $CodeOnly) {
+    if (-not $IosPath) {
+        $candidate = Join-Path $sourceRoot "../love-app/OurDays-$($iosConfig.version)-iOS-build$($iosConfig.build).ipa"
+        if (Test-Path -LiteralPath $candidate) { $IosPath = $candidate }
+    }
+    if ($IosPath) {
+        $IosPath = (Resolve-Path -LiteralPath $IosPath).Path
+        if (-not $IosPath.StartsWith($allowedRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'iOS 安装包必须位于同级 love-app 目录。' }
+        if ($iosConfig.version -ne $version) { throw 'iOS 显示版本与网页及其他客户端不同。' }
+        & python (Join-Path $sourceRoot 'scripts/validate-ios-ipa.py') $IosPath ([string]$iosConfig.build) $iosConfig.version
+        if ($LASTEXITCODE -ne 0) { throw 'iOS 安装包身份或签名材料校验失败，未上传。' }
+    } else { Write-Host '尚无 iOS 安装包，本次跳过 iOS；已发布的包不受影响。' }
+}
 if ($CheckOnly) { Write-Host '检查通过：源码目标公开、安装包目标私有；未提交、未推送。'; return }
 if (-not $CodeOnly) {
     Invoke-RepoGit $packageRoot @('pull', '--ff-only', 'origin', 'main') | Out-Host
@@ -112,17 +127,27 @@ if (-not $CodeOnly) {
         if ($LASTEXITCODE -ne 0) { throw 'Windows 发布清单生成失败，未推送。' }
     }
 }
+if (-not $CodeOnly -and $IosPath) {
+    $iosManifest = Join-Path $packageRoot 'ios.json'
+    $iosLatest = if (Test-Path $iosManifest) { Get-Content $iosManifest -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
+    if ($iosLatest -and $iosLatest.versionCode -eq $iosConfig.build) {
+        if ($iosLatest.sha256 -ne (Get-FileHash -LiteralPath $IosPath -Algorithm SHA256).Hash.ToLowerInvariant()) { throw '同一 iOS 构建号的安装包不同，请增加 iOS build。' }
+    } else {
+        & node (Join-Path $sourceRoot 'scripts/publish-app.mjs') $IosPath $packageRoot $iosConfig.build $iosConfig.version $Notes ios private
+        if ($LASTEXITCODE -ne 0) { throw 'iOS 发布清单生成失败，未推送。' }
+    }
+}
 if (-not $CodeOnly) {
     Invoke-RepoGit $packageRoot @('add', '-A') | Out-Null
     $privateFiles = @(Invoke-RepoGit $packageRoot @('ls-files'))
-    if ($privateFiles | Where-Object { $_ -notmatch '^(latest\.json|windows\.json|README\.md|\.gitignore|OurDays-[A-Za-z0-9._-]+\.(apk|exe)(\.part\d{3})?)$' }) { throw '私有包仓库含非发布文件，停止推送。未执行推送。' }
+    if ($privateFiles | Where-Object { $_ -notmatch '^(latest\.json|windows\.json|ios\.json|README\.md|\.gitignore|OurDays-[A-Za-z0-9._-]+\.(apk|exe|ipa)(\.part\d{3})?)$' }) { throw '私有包仓库含非发布文件，停止推送。未执行推送。' }
 }
 Invoke-RepoGit $sourceRoot @('add', '-A') | Out-Null
 $tracked = @(Invoke-RepoGit $sourceRoot @('ls-files'))
-$unsafe = $tracked | Where-Object { $_ -match '(?i)(\.(apk|aab|exe|jks|keystore|sqlite|sqlite-wal|sqlite-shm|pem|key)$|(^|/)\.env($|\.)|(^|/)(data|local-preview-data|node_modules)/|(^|/)\.database-key$)' -and $_ -ne '.env.example' }
+$unsafe = $tracked | Where-Object { $_ -match '(?i)(\.(apk|aab|exe|ipa|p12|mobileprovision|jks|keystore|sqlite|sqlite-wal|sqlite-shm|pem|key)$|(^|/)\.env($|\.)|(^|/)(data|local-preview-data|node_modules)/|(^|/)\.database-key$)' -and $_ -ne '.env.example' }
 if ($unsafe) { throw ('公开仓库检测到禁止上传的文件，未提交或推送：' + ($unsafe -join ', ')) }
 CommitAndPush $sourceRoot $Message
 if (-not $CodeOnly) {
-    CommitAndPush $packageRoot "Publish Android $build and Windows $windowsBuild"
+    CommitAndPush $packageRoot "Publish Android $build and Windows $windowsBuild with optional iOS"
 }
-Write-Host '上传完成：源码在公开 love-calendar，安装包在私有 love-app。服务器执行 update.sh 获取更新。'
+Write-Host '上传完成：源码在公开 love-calendar，Android / Windows / iOS 安装包在私有 love-app。服务器执行 update.sh 获取更新。'

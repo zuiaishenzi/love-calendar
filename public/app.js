@@ -116,7 +116,7 @@ $('#memory-reply-close').onclick=()=>$('#memory-reply-dialog').close();
 $('#memory-reply-dialog').addEventListener('close',()=>{replyingMemory=null;++replyGeneration;});
 $('#memory-reply-form').onsubmit=async event=>{event.preventDefault();const memory=replyingMemory,generation=replyGeneration,form=event.target;if(!memory||replySending)return;replySending=true;$('#memory-reply-send').disabled=true;$('#memory-reply-error').textContent='';try{const rows=await api('/api/memories/'+memory.id+'/replies','POST',{body:form.elements.body.value});if(generation!==replyGeneration||!currentUser)return;memory.replies=rows;form.reset();renderMemoryReplies(rows);await load();}catch(error){if(generation===replyGeneration)$('#memory-reply-error').textContent=error.message;}finally{replySending=false;if(replyingMemory&&currentUser)renderMemoryReplies(replyingMemory.replies||[]);}};
 
-if(navigator.userAgent.includes('OurDaysAndroid/'))document.body.classList.add('android-app');
+if(/OurDays(?:Android|iOS)\//.test(navigator.userAgent))document.body.classList.add('android-app');
 function calendarSwipe(grid){
  let gesture=null,suppressClickUntil=0;const pointers=new Set();
  grid.addEventListener('pointerdown',event=>{
@@ -139,7 +139,7 @@ function calendarSwipe(grid){
 calendarSwipe($('.calendar'));
 
 // Suppress WebView text-selection menus; chat keeps its own pointer-based menu.
-if(navigator.userAgent.includes('OurDaysAndroid/')){
+if(/OurDays(?:Android|iOS)\//.test(navigator.userAgent)){
  document.addEventListener('selectstart',event=>{if(!event.target.closest('input,textarea'))event.preventDefault();});
  document.addEventListener('contextmenu',event=>event.preventDefault());
 }
