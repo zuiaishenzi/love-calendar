@@ -679,3 +679,36 @@ dialog:not(#photo-viewer){clip-path:inset(0 round 17px)}
  :is(dialog,#day-detail,#chat-messages,#memory-reply-list)::-webkit-scrollbar-button{display:none;width:0;height:0}
  :is(dialog,#day-detail,#chat-messages,#memory-reply-list)::-webkit-scrollbar-corner{background:transparent}
 }
+
+/* Center the history reader and keep its filters in a gentle, compact panel. */
+#chat-history-dialog{position:fixed;inset:0;margin:auto;width:min(760px,calc(100vw - 40px));max-height:88dvh;padding:24px;border:1px solid #eadce3;border-radius:20px;background:#fffcfd;scrollbar-gutter:stable both-edges;clip-path:inset(0 round 20px)}
+#chat-history-dialog .history-dialog-heading{align-items:center;margin-bottom:18px;gap:16px}
+.history-kicker{display:block;margin-bottom:5px;font-size:9px;letter-spacing:2px;color:#b08a9d}
+#chat-history-dialog .history-dialog-heading h2{font-size:25px;line-height:1.4;color:#654752}
+#chat-history-dialog #chat-history-close{width:34px;height:34px;flex:none;padding:0;display:flex;align-items:center;justify-content:center;border:1px solid #ecdee5;border-radius:50%;background:#f9eff4;color:#9b6c82;font-size:22px}
+#chat-history-form{padding:18px;border:1px solid #eee0e7;border-radius:16px;background:linear-gradient(135deg,#fcf6f9,#faf4f6);margin:0 0 16px}
+#chat-history-form label{margin-bottom:0;font-size:12px;color:#927283;min-width:0;line-height:1.5}
+#chat-history-form .history-search{display:block;margin-bottom:14px}
+#chat-history-form input,#chat-history-form select{box-sizing:border-box;width:100%;min-width:0;min-height:42px;margin:7px 0 0;padding:10px 12px;border:1px solid #e5d5dd;border-radius:10px;background:#fffdfd;color:#59434e;font-size:13px;line-height:1.4;accent-color:var(--wine)}
+#chat-history-form input::placeholder{color:#b6a0ac}
+#chat-history-form input:focus,#chat-history-form select:focus{border-color:#bd8ea5;outline:2px solid #ead2de;outline-offset:1px}
+#chat-history-form .chat-history-filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(112px,.7fr);gap:12px}
+#chat-history-form>.hint{font-size:11px;line-height:1.6;color:#aa8d9d;margin:12px 0}
+#chat-history-form>.memo-actions{justify-content:flex-end;gap:8px}
+#chat-history-form>.memo-actions button{min-height:36px;padding:8px 16px;border-radius:10px;font-size:12px}
+#chat-history-reset{background:#fffbfd;border-color:#e5d4dd;color:#997286}
+#chat-history-status{margin:8px 0 14px;text-align:center;font-size:12px;line-height:1.7;color:#a08090}
+#chat-history-results{width:100%;margin:0 auto;min-width:0}
+#chat-history-results .chat-time-divider{text-align:center;color:#b08f9f;font-size:11px;margin:18px 0 10px}
+#chat-history-results .chat-history-entry{width:100%;margin:10px auto;padding:14px 16px;border:1px solid #eee0e7;border-radius:14px;background:white;box-shadow:0 2px 9px #835e7104}
+#chat-history-results .chat-history-entry>small{color:#9e6b85;font-size:11px}
+#chat-history-results .chat-text{margin:7px 0 0;font-size:13px;line-height:1.85}
+#chat-history-more{margin:18px auto 0;border-color:#e7d4df;border-radius:20px;padding:8px 20px;background:#fbf2f7;color:#9b6c84;font-size:12px}
+@media(max-width:560px){
+ #chat-history-dialog{width:calc(100vw - 24px);padding:18px 14px;max-height:90dvh;border-radius:18px;clip-path:inset(0 round 18px)}
+ #chat-history-dialog .history-dialog-heading h2{font-size:22px}
+ #chat-history-form{padding:14px}
+ #chat-history-form .chat-history-filters{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ #chat-history-form .chat-history-filters>label:last-child{grid-column:1/-1}
+ #chat-history-form>.memo-actions button{flex:1}
+}

@@ -99,3 +99,13 @@ test('确认窗口：跨用户验证码无效、错误次数限制、十分钟�
   assert.ok(service.status(1).request.expires>deadline);
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('岁月拾忆封面、年份目录与日期分组保留全部回忆并隔离账本',async()=>{
+ const {memoirDocument}=await import('./memoir-export.mjs'),{openDatabase}=await import('./db.mjs');const dir=mkdtempSync(path.join(os.tmpdir(),'love-memoir-design-')),db=openDatabase(dir);
+ try{
+  db.exec("INSERT INTO ledgers(id,code) VALUES(1,'BOOK1'),(2,'BOOK2');INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(1,'<小满>','x','x',1,1),(2,'阿迟','x','x',1,2),(3,'其他账本','x','x',2,1);");
+  const add=db.prepare('INSERT INTO memories(day,title,body,author,updated,ledger_id) VALUES(?,?,?,1,1,1)');add.run('2025-12-31','第一段','');add.run('2026-01-01','第二段','');add.run('2026-01-01','第三段','');db.exec("INSERT INTO memories(day,title,body,author,updated,ledger_id) VALUES('2026-01-01','不可见回忆','',3,1,2)");
+  const html=[...memoirDocument(db,1)].join('');assert.ok(html.includes('&lt;小满&gt;'));assert.ok(!html.includes('不可见回忆'));assert.equal((html.match(/class="day-group"/g)||[]).length,2);assert.equal((html.match(/class="memory-card"/g)||[]).length,3);assert.ok(html.includes('href="#year-2025"'));assert.ok(html.includes('id="year-2026"'));assert.ok(html.indexOf('第二段')<html.indexOf('第三段'));assert.ok(!html.includes('<script'));assert.ok(html.includes('@media print'));assert.ok(html.endsWith('</body></html>'));
+ }finally{db.close();rmSync(dir,{recursive:true,force:true});}
+});
