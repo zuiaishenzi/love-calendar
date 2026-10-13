@@ -16,6 +16,9 @@ test('双人私密日历完整流程',async()=>{
  async function call(url,method='GET',data,cookie='',customOrigin=origin){const r=await fetch(origin+url,{method,headers:{Origin:customOrigin,'Content-Type':'application/json',Cookie:cookie},body:data===undefined?undefined:JSON.stringify(data)});return {status:r.status,cookie:r.headers.get('set-cookie')?.split(';')[0],data:r.headers.get('content-type')?.startsWith('application/json')?await r.json():await r.arrayBuffer()};}
  try {
   await start();
+  const home=await (await fetch(origin+'/')).text(),scripts=[...home.matchAll(/<script src="([^"]+)"/g)].map(match=>match[1]);
+  assert.ok(scripts.some(url=>/^\/photo-viewer\.js\?v=.+-[a-f0-9]{16}$/.test(url)));
+  for(const url of scripts){const asset=await fetch(origin+url);assert.equal(asset.status,200,'Missing script: '+url);assert.ok(asset.headers.get('content-type').startsWith('text/javascript'));assert.equal(await asset.text(),readFileSync(new URL('./public'+url.split('?')[0],import.meta.url),'utf8'));}
   assert.equal((await call('/api/memories?month=2026-02')).status,401);
   assert.equal((await call('/api/timeline')).status,401);
   assert.equal((await call('/api/login','POST',{name:'third',password:'not-allowed'})).status,401);

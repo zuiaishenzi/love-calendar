@@ -219,6 +219,7 @@ const server=http.createServer(async(req,res)=>{
       throw fail(404,'接口不存在');
     }
     const files={'/dialog-history.js':['dialog-history.js','text/javascript; charset=utf-8'],'/home-quotes.json':['home-quotes.json','application/json; charset=utf-8'],'/realtime.js':['realtime.js','text/javascript; charset=utf-8'],'/presence-messages.json':['presence-messages.json','application/json; charset=utf-8'],'/':['index.html','text/html; charset=utf-8'],'/photo-preview.js':['photo-preview.js','text/javascript; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/features.js':['features.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/favicon.svg':['favicon.svg','image/svg+xml']};
+    files['/photo-viewer.js']=['photo-viewer.js','text/javascript; charset=utf-8'];
     files['/settings.js']=['settings.js','text/javascript; charset=utf-8'];
     files['/memos.js']=['memos.js','text/javascript; charset=utf-8'];
     files['/chat.js']=['chat.js','text/javascript; charset=utf-8'];

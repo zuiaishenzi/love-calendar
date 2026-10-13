@@ -405,12 +405,21 @@ test('设置弹窗与嵌套弹窗锁定背景，全部关闭后恢复原滚动�
 
 test('图片双指缩放、拖动边界、缩放上限与关闭重置',()=>{
  const source=readFileSync(new URL('./public/photo-viewer.js',import.meta.url),'utf8'),nodes=new Map();
- const get=id=>{if(!nodes.has(id))nodes.set(id,{style:{},events:{},clientWidth:300,clientHeight:200,addEventListener(name,fn){this.events[name]=fn;},setPointerCapture:()=>{},close:()=>{}});return nodes.get(id);};
+ const get=id=>{if(!nodes.has(id))nodes.set(id,{style:{},events:{},clientWidth:300,clientHeight:200,addEventListener(name,fn){this.events[name]=fn;},setPointerCapture:()=>{},close(){this.closed=true;}});return nodes.get(id);};
  const actions=runInNewContext(source+';({zoomPhotoView,resetPhotoView,state:()=>({scale:photoScale,x:photoX,y:photoY})})',{$:get,Map,Math,Date,window:{addEventListener:()=>{}}});
- actions.resetPhotoView();const stage=get('#photo-viewer-stage');
+ actions.resetPhotoView();get('#photo-zoom-in').onclick();assert.equal(actions.state().scale,1.5);assert.equal(get('#photo-zoom-reset').textContent,'150%');get('#photo-zoom-out').onclick();assert.equal(actions.state().scale,1);get('#photo-zoom-in').onclick();get('#photo-zoom-reset').onclick();assert.equal(actions.state().scale,1);const stage=get('#photo-viewer-stage');
  const event=(id,x,y,type='pointermove')=>({pointerId:id,clientX:x,clientY:y,button:0,pointerType:'touch',type,preventDefault:()=>{}});
  stage.events.pointerdown(event(1,100,100));stage.events.pointerdown(event(2,200,100));stage.events.pointermove(event(2,300,100));assert.equal(actions.state().scale,2);
  stage.events.pointerup(event(2,300,100,'pointerup'));stage.events.pointermove(event(1,1000,100));assert.ok(actions.state().x<=150);
  actions.zoomPhotoView(99);assert.equal(actions.state().scale,5);actions.zoomPhotoView(-1);assert.equal(actions.state().scale,1);assert.equal(actions.state().x,0);
- get('#photo-viewer').events.close();assert.equal(actions.state().scale,1);assert.equal(get('#photo-zoom-reset').textContent,'100%');
+ get('#photo-viewer-close').onclick();assert.equal(get('#photo-viewer').closed,true);get('#photo-viewer').events.close();assert.equal(actions.state().scale,1);assert.equal(get('#photo-zoom-reset').textContent,'100%');
+});
+
+
+test('图片查看器仅在打开时显示，关闭按钮有通用弹窗关闭入口',()=>{
+ const css=readFileSync(new URL('./public/style.css',import.meta.url),'utf8'),html=readFileSync(new URL('./public/index.html',import.meta.url),'utf8');
+ assert.ok(css.includes('#photo-viewer:not([open]){display:none}'));
+ assert.ok(css.includes('#photo-viewer[open]{display:flex;'));
+ assert.ok(!/#photo-viewer\s*\{[^}]*display\s*:\s*flex/.test(css));
+ assert.ok(html.includes('id="photo-viewer-close" data-close="photo-viewer"'));
 });
