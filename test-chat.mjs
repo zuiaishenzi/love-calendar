@@ -401,3 +401,16 @@ test('设置弹窗与嵌套弹窗锁定背景，全部关闭后恢复原滚动�
  open=true;observe();assert.equal(style.position,'fixed');assert.equal(style.top,'-900px');let prevented=false;touch({target:{closest:()=>null},preventDefault:()=>prevented=true});assert.equal(prevented,true);
  observe();assert.equal(moves.length,0);open=false;observe();assert.equal(style.position,'');assert.equal(moves.length,1);assert.equal(moves[0].top,900);
 });
+
+
+test('图片双指缩放、拖动边界、缩放上限与关闭重置',()=>{
+ const source=readFileSync(new URL('./public/photo-viewer.js',import.meta.url),'utf8'),nodes=new Map();
+ const get=id=>{if(!nodes.has(id))nodes.set(id,{style:{},events:{},clientWidth:300,clientHeight:200,addEventListener(name,fn){this.events[name]=fn;},setPointerCapture:()=>{},close:()=>{}});return nodes.get(id);};
+ const actions=runInNewContext(source+';({zoomPhotoView,resetPhotoView,state:()=>({scale:photoScale,x:photoX,y:photoY})})',{$:get,Map,Math,Date,window:{addEventListener:()=>{}}});
+ actions.resetPhotoView();const stage=get('#photo-viewer-stage');
+ const event=(id,x,y,type='pointermove')=>({pointerId:id,clientX:x,clientY:y,button:0,pointerType:'touch',type,preventDefault:()=>{}});
+ stage.events.pointerdown(event(1,100,100));stage.events.pointerdown(event(2,200,100));stage.events.pointermove(event(2,300,100));assert.equal(actions.state().scale,2);
+ stage.events.pointerup(event(2,300,100,'pointerup'));stage.events.pointermove(event(1,1000,100));assert.ok(actions.state().x<=150);
+ actions.zoomPhotoView(99);assert.equal(actions.state().scale,5);actions.zoomPhotoView(-1);assert.equal(actions.state().scale,1);assert.equal(actions.state().x,0);
+ get('#photo-viewer').events.close();assert.equal(actions.state().scale,1);assert.equal(get('#photo-zoom-reset').textContent,'100%');
+});

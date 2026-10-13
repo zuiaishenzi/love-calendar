@@ -17,6 +17,10 @@
   const show=dialog.showModal.bind(dialog),close=dialog.close.bind(dialog);
   dialog.showModal=()=>{
    if(dialog.open)return;
+   // Older Android clients close the first open dialog in DOM order.
+   // Keep that order aligned with the visual modal stack before opening.
+   const first=document.querySelectorAll('dialog')[0];
+   if(first&&first!==dialog&&first.parentNode===dialog.parentNode)first.parentNode?.insertBefore(dialog,first);
    show();stack.push({dialog,token:++serial});reconcile();
   };
   dialog.close=value=>{close(value);stack=stack.filter(entry=>entry.dialog.open);reconcile();};

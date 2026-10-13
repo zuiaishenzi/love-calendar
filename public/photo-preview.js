@@ -9,5 +9,6 @@ document.addEventListener('click',event=>{
  event.preventDefault();event.stopImmediatePropagation();
  const viewer=document.querySelector('#photo-viewer'),large=document.querySelector('#photo-viewer-image');
  large.src=image.dataset?.original||image.src;large.alt=image.alt;
+ if(typeof resetPhotoView==='function')resetPhotoView();
  if(!viewer.open)viewer.showModal();
 },true);

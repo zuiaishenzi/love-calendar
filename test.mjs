@@ -101,13 +101,14 @@ test('首页短句数量、去重及本地时段边界',()=>{
 test('返回键逐层关闭弹窗，按钮关闭及快速切换不残留历史',()=>{
  const queue=[],listeners={};
  const dialogs=['day','editor','photo','profile','password'].map(id=>({id,open:false,events:{},showModal(){this.open=true;},close(){if(!this.open)return;this.open=false;queue.push(()=>this.events.close?.());},addEventListener(name,fn){this.events[name]=fn;}}));
+ const parent={insertBefore(node,first){dialogs.splice(dialogs.indexOf(node),1);dialogs.splice(dialogs.indexOf(first),0,node);}};for(const dialog of dialogs)dialog.parentNode=parent;
  const entries=[null];let cursor=0;
  const history={get state(){return entries[cursor];},replaceState(value){entries[cursor]=value;},pushState(value){entries.splice(cursor+1);entries.push(value);cursor++;},go(delta){queue.push(()=>{cursor+=delta;assert.ok(cursor>=0);listeners.popstate();});}};
  runInNewContext(readFileSync(new URL('./public/dialog-history.js',import.meta.url),'utf8'),{history,document:{querySelectorAll:()=>dialogs},window:{addEventListener:(event,fn)=>listeners[event]=fn}});
  const flush=()=>{let n=0;while(queue.length){assert.ok(n++<40,'history loop');queue.shift()();}};
  const [day,editor,photo,profile,password]=dialogs;
- day.showModal();editor.showModal();photo.showModal();assert.equal(cursor,3);
- history.go(-1);flush();assert.equal(photo.open,false);assert.equal(editor.open,true);assert.equal(day.open,true);
+ day.showModal();editor.showModal();photo.showModal();assert.equal(cursor,3);assert.equal(dialogs.find(d=>d.open),photo);
+ history.go(-1);flush();assert.equal(photo.open,false);assert.equal(dialogs.find(d=>d.open),editor);assert.equal(editor.open,true);assert.equal(day.open,true);
  history.go(-1);flush();assert.equal(editor.open,false);assert.equal(day.open,true);
  day.close();flush();assert.equal(cursor,0);
  for(let i=0;i<3;i++){day.showModal();day.close();flush();assert.equal(cursor,0);}
