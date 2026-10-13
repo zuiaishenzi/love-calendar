@@ -613,3 +613,50 @@ dialog{overscroll-behavior:contain;touch-action:pan-y}
 #memos-dialog.main-view>#memo-edit-mode{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:6px 12px;border:1px solid #d9bdc9;border-radius:9px;background:white;color:var(--wine);font-size:12px}
 #memos-dialog.main-view>#memo-edit-mode:hover{background:#faf0f4}
 #memos-dialog.main-view>#memo-edit-mode[aria-pressed="true"]{background:#f4e5ec;border-color:var(--wine);font-weight:600}
+
+/* Desktop sidebar trial; mobile navigation keeps its existing layout. */
+@media(min-width:1100px){
+ #app{max-width:1480px;padding-left:196px;padding-right:28px}
+ #app .app-topbar>header{margin-left:-172px}
+ #app>.app-topbar{padding-bottom:0}
+ #app .app-topbar>.view-switch{position:fixed;top:86px;bottom:24px;left:max(24px,calc((100vw - 1480px)/2 + 24px));width:148px;margin:0;padding:18px 10px;display:flex;flex-direction:column;align-items:stretch;gap:8px;border:1px solid #e9dfe5;border-radius:18px;background:#fffcfd;box-shadow:0 6px 24px #72425605;z-index:25}
+ #app .app-topbar>.view-switch::before{content:'OUR DAYS';padding:2px 12px 16px;color:#b08a9b;font-size:10px;letter-spacing:2px}
+ #app .app-topbar>.view-switch::after{content:'两个人 · 很多以后';margin-top:auto;padding:14px 4px 0;border-top:1px solid #f0e8ec;color:#b19aa5;font-size:10px;text-align:center}
+ #app .app-topbar>.view-switch button{flex:none;min-width:0;min-height:46px;padding:10px 12px;display:flex;align-items:center;justify-content:flex-start;gap:10px;border-radius:12px;font-size:13px;background:transparent;color:#927c87;box-shadow:none}
+ #app .app-topbar>.view-switch button[aria-pressed="true"]{color:var(--wine);background:#f4e5ec;font-weight:600;box-shadow:none}
+ #app .app-topbar .tab-icon{display:flex;align-items:center;justify-content:center;width:22px;height:22px;flex:none}
+ #app .app-topbar .tab-icon svg{width:21px;height:21px}
+ #app .app-topbar #chat-unread-badge{margin-left:auto}
+ #app:has(#calendar-view[aria-pressed="true"]){height:auto;min-height:100dvh;display:block}
+ #app:has(#calendar-view[aria-pressed="true"])>.intro{padding:16px 0 22px;display:block}
+ #app>.intro>div{grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:24px}
+ #app>.intro #home-quote{font-size:23px;line-height:1.55;padding:6px 0 6px 24px;color:#66525e}
+ #app:has(#calendar-view[aria-pressed="true"]) .workspace{grid-template-columns:minmax(0,1fr) 320px;gap:22px;align-items:start}
+ #app:has(#calendar-view[aria-pressed="true"]) .calendar{height:auto;min-height:0;border-radius:18px;border-color:#e9dfe5}
+ #app .calendar .grid{flex:none;grid-auto-rows:auto}
+ #app .calendar .grid>.day,#app .calendar .grid>.blank{aspect-ratio:1.25;min-height:78px;padding:10px 9px}
+ #app .calendar .toolbar{padding:18px;flex-wrap:wrap}
+ #app .calendar .week{padding:11px 0}
+ #app #day-detail{height:auto;min-height:520px;border-radius:18px;overflow-y:visible}
+ #app #memos-dialog.main-view,#app #memoir{max-width:1080px;margin-left:auto;margin-right:auto}
+ #app:has(#chat-dialog:not([hidden]))>.app-topbar{padding-bottom:10px}
+ #app #chat-dialog.main-view{width:100%;max-width:960px;margin-left:auto;margin-right:auto}
+}
+@media(min-width:1400px){
+ #app:has(#calendar-view[aria-pressed="true"]) .workspace{grid-template-columns:minmax(0,1fr) 350px;gap:24px}
+}
+
+/* Keep the desktop calendar's navigation, full month and story in one viewport. */
+@media(min-width:1100px){
+ #app:has(#calendar-view[aria-pressed="true"]){height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden;padding-bottom:0}
+ #app:has(#calendar-view[aria-pressed="true"])>.app-topbar{flex:none}
+ #app:has(#calendar-view[aria-pressed="true"])>.intro{flex:none;padding:10px 0 14px}
+ #app:has(#calendar-view[aria-pressed="true"]) .workspace{flex:1;min-height:0;align-items:stretch}
+ #app:has(#calendar-view[aria-pressed="true"]) .calendar{height:100%;min-height:0}
+ #app:has(#calendar-view[aria-pressed="true"]) .calendar .grid{flex:1;min-height:0;grid-auto-rows:minmax(0,1fr)}
+ #app:has(#calendar-view[aria-pressed="true"]) .calendar .grid>.day,#app:has(#calendar-view[aria-pressed="true"]) .calendar .grid>.blank{aspect-ratio:auto;min-height:0;padding:8px 9px}
+ #app:has(#calendar-view[aria-pressed="true"]) .calendar .toolbar{padding:12px 18px}
+ #app:has(#calendar-view[aria-pressed="true"]) .calendar .week{padding:8px 0}
+ #app:has(#calendar-view[aria-pressed="true"]) #day-detail{height:100%;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+ #app:has(#calendar-view[aria-pressed="true"])>.bottom{flex:none;margin:8px 0;font-size:10px}
+}
