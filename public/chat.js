@@ -147,7 +147,6 @@ function setupHoldVoice(button,native){button.textContent='按住说话';button.
 if(matchMedia('(pointer: coarse)').matches){if(nativeVoiceBuild>=10806)setupHoldVoice($('#chat-native-record'),true);else if(!nativeVoiceBuild)setupHoldVoice($('#chat-record'),false);}
 
 async function copyChatText(text){
- if(navigator.userAgent.includes('OurDaysiOS/')&&window.webkit?.messageHandlers?.ourDaysClipboard){window.webkit.messageHandlers.ourDaysClipboard.postMessage(text);return;}
  // Legacy WebView copy runs synchronously within the user's click gesture.
  const legacy=()=>{
   const field=document.createElement('textarea'),active=document.activeElement;

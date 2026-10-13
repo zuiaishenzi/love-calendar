@@ -377,7 +377,6 @@ test('系统设置中的导航偏好只在移动App生效，保存并恢复且�
   runInNewContext(code,{navigator:{userAgent:agent},$:get,document:{querySelectorAll:()=>radios},localStorage:{getItem:()=>{if(storageFails)throw Error();return saved;},setItem:(key,value)=>{if(storageFails)throw Error();writes.push(value);}},menuOpen:()=>closed++});
   return {radios,nodes,writes,get,bottom:()=>bottom,opened:()=>opened,closed:()=>closed};
  }
- const iosClient=boot('OurDaysiOS/10801','bottom');assert.equal(iosClient.bottom(),true);assert.equal(iosClient.get('#system-personalization').hidden,false);
  const mobile=boot('OurDaysAndroid/10808','bottom');assert.equal(mobile.bottom(),true);assert.equal(mobile.get('#system-personalization').hidden,false);mobile.get('#system-open').onclick();assert.equal(mobile.opened(),1);assert.equal(mobile.closed(),1);
  mobile.radios[0].checked=true;mobile.radios[0].onchange();assert.equal(mobile.bottom(),false);assert.deepEqual(mobile.writes,['top']);
  for(const agent of ['browser','OurDaysWindows/1.8.0']){const client=boot(agent,'bottom');assert.equal(client.bottom(),false);assert.equal(client.get('#system-personalization').hidden,true);client.radios[1].checked=true;client.radios[1].onchange();assert.equal(client.bottom(),false);assert.equal(client.writes.length,0);}
@@ -426,29 +425,11 @@ test('图片查看器仅在打开时显示，关闭按钮有通用弹窗关闭�
 });
 
 
-test('iOS清单、私库分片与服务器下载独立发布，旧双端清单继续可用',async()=>{
- const fs=await import('node:fs'),{spawnSync}=await import('node:child_process'),dir=mkdtempSync(path.join(os.tmpdir(),'love-ios-publish-')),source=path.join(dir,'source'),target=path.join(dir,'db','app-updates');let app;
- try{
-  fs.mkdirSync(source);const apk=path.join(dir,'app.apk');fs.writeFileSync(apk,Buffer.from([0x50,0x4b,3,4,1]));
-  const run=(...args)=>spawnSync(process.execPath,args,{encoding:'utf8'});
-  let result=run('scripts/publish-app.mjs',apk,source,'10808','1.8.0','Android');assert.equal(result.status,0,result.stderr);
-  const ipa=path.join(dir,'fixture.ipa'),bytes=Buffer.alloc(90*1024*1024+100);bytes.writeUInt32LE(0x04034b50,0);fs.writeFileSync(ipa,bytes);
-  result=run('scripts/publish-app.mjs',ipa,source,'10801','1.8.0','iOS','ios','private');assert.equal(result.status,0,result.stderr);
-  const info=JSON.parse(fs.readFileSync(path.join(source,'ios.json'),'utf8'));assert.equal(info.packageId,'xyz.ourdays.ios');assert.equal(info.parts.length,2);assert.equal(fs.existsSync(path.join(source,info.filename)),false);
-  result=run('scripts/import-app-release.mjs',source,target);assert.equal(result.status,0,result.stderr);assert.equal(createHash('sha256').update(fs.readFileSync(path.join(target,info.filename))).digest('hex'),info.sha256);
-  app=createApplication({dataDir:path.join(dir,'db'),mailer:{ready:false}});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+app.server.address().port;
-  const ios=await(await fetch(origin+'/api/app/update?platform=ios')).json();assert.equal(ios.packageId,'xyz.ourdays.ios');assert.equal(ios.versionCode,10801);
-  const head=await fetch(origin+ios.downloadUrl,{method:'HEAD'});assert.equal(head.status,200);assert.equal(head.headers.get('content-length'),String(bytes.length));
-  const android=await(await fetch(origin+'/api/app/update')).json();assert.equal(android.packageId,'xyz.ourdays.mobile');assert.deepEqual(await(await fetch(origin+'/api/app/update?platform=windows')).json(),{available:false});
-  fs.writeFileSync(path.join(source,info.parts[1].filename),Buffer.from('broken'));assert.notEqual(run('scripts/import-app-release.mjs',source,target).status,0);
-  fs.writeFileSync(path.join(target,'ios.json'),JSON.stringify({...info,filename:'../evil.ipa'}));assert.equal((await fetch(origin+'/api/app/update?platform=ios')).status,503);
- }finally{if(app){await new Promise(r=>app.server.close(r));app.db.close();}rmSync(dir,{recursive:true,force:true});}
-});
-
 test('客户端下载按平台展示，未发布和错误不生成链接，不接受外站地址',async()=>{
  const source=readFileSync(new URL('./public/client-downloads.js',import.meta.url),'utf8');
  class Node{constructor(tag,text){this.tag=tag;this.textContent=text;this.children=[];this.hidden=false;}append(...items){this.children.push(...items);}replaceChildren(){this.children=[];}}
  const nodes=new Map(),get=id=>{if(!nodes.has(id))nodes.set(id,new Node('div'));return nodes.get(id);};
  const context={$:get,el:(...args)=>new Node(...args),Promise,URL,location:{href:'https://love.11215739.xyz:11961/',origin:'https://love.11215739.xyz:11961'},menuOpen:()=>{},api:async url=>url.includes('android')?{available:true,downloadUrl:'/api/app/download/a.apk',filename:'a.apk',versionName:'1.8.0',size:1024}:url.includes('windows')?{available:true,downloadUrl:'https://evil.example/b.exe'}:{available:false}};
- const refresh=runInNewContext(source+';refreshClientDownloads',context);await refresh();const rows=get('#client-download-list').children;assert.equal(rows.length,3);assert.equal(rows[0].children[2].hidden,false);assert.equal(rows[0].children[2].href,'/api/app/download/a.apk');assert.equal(rows[1].children[2].hidden,true);assert.equal(rows[2].children[1].textContent,'暂未发布');
+ const refresh=runInNewContext(source+';refreshClientDownloads',context);await refresh();const rows=get('#client-download-list').children;assert.equal(rows.length,2);assert.equal(rows[0].children[2].hidden,false);assert.equal(rows[0].children[2].href,'/api/app/download/a.apk');assert.equal(rows[1].children[2].hidden,true);assert.ok(rows[0].children[1].textContent.includes('安装包大小：1.0 KB'));
+ context.api=async()=>({available:false});await refresh();assert.equal(get('#client-download-list').children[1].children[1].textContent,'暂未发布');
 });

@@ -665,3 +665,17 @@ dialog{overscroll-behavior:contain;touch-action:pan-y}
 .client-download-list{display:grid;gap:8px}.client-download-row{display:grid;grid-template-columns:1fr auto;gap:5px 12px;align-items:center;padding:12px 14px;border:1px solid #eadde2;border-radius:12px;background:#fffcfd}
 .client-download-row strong{font-size:14px;font-weight:500}.client-download-row small{grid-column:1;font-size:12px;color:#9b7c88}.client-download-row a{grid-column:2;grid-row:1/3;text-decoration:none;color:var(--wine);border:1px solid #d9bdc9;border-radius:8px;padding:8px 10px;font-size:12px}
 #client-downloads>.hint{font-size:12px;margin:12px 0 0}
+
+/* Keep scrollbars inside rounded panels rather than painting over their corners. */
+dialog:not(#photo-viewer){clip-path:inset(0 round 17px)}
+#day-detail{clip-path:inset(0 round 18px)}
+:where(dialog,#day-detail,#chat-messages,#memory-reply-list){scrollbar-color:#bd94a5 transparent}
+@supports selector(::-webkit-scrollbar){
+ :where(dialog,#day-detail,#chat-messages,#memory-reply-list){scrollbar-width:auto;scrollbar-color:auto}
+ :is(dialog,#day-detail,#chat-messages,#memory-reply-list)::-webkit-scrollbar{width:8px;height:8px;background:transparent}
+ :is(dialog,#day-detail,#chat-messages,#memory-reply-list)::-webkit-scrollbar-track{background:transparent;margin:16px 0;border-radius:12px}
+ :is(dialog,#day-detail,#chat-messages,#memory-reply-list)::-webkit-scrollbar-thumb{background:#bd94a5;border:2px solid transparent;background-clip:padding-box;border-radius:12px}
+ :is(dialog,#day-detail,#chat-messages,#memory-reply-list)::-webkit-scrollbar-thumb:hover{background-color:#a8758c}
+ :is(dialog,#day-detail,#chat-messages,#memory-reply-list)::-webkit-scrollbar-button{display:none;width:0;height:0}
+ :is(dialog,#day-detail,#chat-messages,#memory-reply-list)::-webkit-scrollbar-corner{background:transparent}
+}
