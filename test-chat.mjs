@@ -429,7 +429,17 @@ test('客户端下载按平台展示，未发布和错误不生成链接，不�
  const source=readFileSync(new URL('./public/client-downloads.js',import.meta.url),'utf8');
  class Node{constructor(tag,text){this.tag=tag;this.textContent=text;this.children=[];this.hidden=false;}append(...items){this.children.push(...items);}replaceChildren(){this.children=[];}}
  const nodes=new Map(),get=id=>{if(!nodes.has(id))nodes.set(id,new Node('div'));return nodes.get(id);};
- const context={$:get,el:(...args)=>new Node(...args),Promise,URL,location:{href:'https://love.11215739.xyz:11961/',origin:'https://love.11215739.xyz:11961'},menuOpen:()=>{},api:async url=>url.includes('android')?{available:true,downloadUrl:'/api/app/download/a.apk',filename:'a.apk',versionName:'1.8.0',size:1024}:url.includes('windows')?{available:true,downloadUrl:'https://evil.example/b.exe'}:{available:false}};
+ const context={navigator:{userAgent:'browser'},$:get,el:(...args)=>new Node(...args),Promise,URL,location:{href:'https://love.11215739.xyz:11961/',origin:'https://love.11215739.xyz:11961'},menuOpen:()=>{},api:async url=>url.includes('android')?{available:true,downloadUrl:'/api/app/download/a.apk',filename:'a.apk',versionName:'1.8.0',size:1024}:url.includes('windows')?{available:true,downloadUrl:'https://evil.example/b.exe'}:{available:false}};
  const refresh=runInNewContext(source+';refreshClientDownloads',context);await refresh();const rows=get('#client-download-list').children;assert.equal(rows.length,2);assert.equal(rows[0].children[2].hidden,false);assert.equal(rows[0].children[2].href,'/api/app/download/a.apk');assert.equal(rows[1].children[2].hidden,true);assert.ok(rows[0].children[1].textContent.includes('安装包大小：1.0 KB'));
  context.api=async()=>({available:false});await refresh();assert.equal(get('#client-download-list').children[1].children[1].textContent,'暂未发布');
+});
+
+
+test('Android与Windows系统设置隐藏客户端下载且不请求包信息',()=>{
+ const source=readFileSync(new URL('./public/client-downloads.js',import.meta.url),'utf8');
+ for(const agent of ['OurDaysAndroid/10808','OurDaysWindows/1.8.0','browser']){
+  const nodes=new Map();let opened=0;const get=id=>{if(!nodes.has(id))nodes.set(id,{showModal:()=>opened++});return nodes.get(id);};
+  runInNewContext(source,{navigator:{userAgent:agent},$:get,menuOpen:()=>{},api:()=>{throw Error('Native client must not request downloads');}});
+  const native=agent!=='browser';assert.equal(get('#client-downloads').hidden,native);if(native){get('#system-open').onclick();assert.equal(opened,1);}
+ }
 });

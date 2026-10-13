@@ -1,4 +1,6 @@
 let clientDownloadsGeneration=0;
+const hideClientDownloads=/OurDays(?:Android|Windows)\//.test(navigator.userAgent);
+$('#client-downloads').hidden=hideClientDownloads;
 function formatClientSize(bytes){
  if(!Number.isSafeInteger(bytes)||bytes<=0)throw Error('安装包大小无效');
  if(bytes<1024)return bytes+' B';
@@ -20,4 +22,4 @@ async function refreshClientDownloads(){
   }catch{if(generation===clientDownloadsGeneration)status.textContent='暂时无法获取，请重新打开设置';}
  }));
 }
-$('#system-open').onclick=()=>{menuOpen(false);$('#system-dialog').showModal();refreshClientDownloads();};
+$('#system-open').onclick=()=>{menuOpen(false);$('#system-dialog').showModal();if(!hideClientDownloads)refreshClientDownloads();};
