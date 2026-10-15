@@ -18,10 +18,8 @@ EXPOSE 3000
 CMD ["node", "server.mjs"]
 
 FROM base AS test
-COPY test.mjs test-v13.mjs test-encryption.mjs test-settings.mjs test-memos.mjs test-chat.mjs test-speech.mjs test-app-sync.mjs test-harmony.mjs ./
-COPY apps/harmony/entry/src/main/ets/common/NativeVoiceRecorder.ets ./apps/harmony/entry/src/main/ets/common/
-COPY apps/harmony/entry/src/main/ets/common/PageBootstrap.ets ./apps/harmony/entry/src/main/ets/common/
-COPY apps/harmony/entry/src/main/ets/pages/Index.ets ./apps/harmony/entry/src/main/ets/pages/
-RUN npm test
+COPY test.mjs test-v13.mjs test-encryption.mjs test-settings.mjs test-memos.mjs test-chat.mjs test-speech.mjs test-app-sync.mjs test-android-calendar.mjs ./
+COPY apps/android/app/src/main/assets/calendar-layout.js ./apps/android/app/src/main/assets/
+RUN npm run test:server
 
 FROM base AS production

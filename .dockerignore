@@ -10,7 +10,14 @@ data
 node_modules
 test-data-*
 local-preview-data
-apps/
+# Only client source fixtures needed by the Docker test stage enter the context.
+apps/**
+!apps/android/
+!apps/android/app/
+!apps/android/app/src/
+!apps/android/app/src/main/
+!apps/android/app/src/main/assets/
+!apps/android/app/src/main/assets/calendar-layout.js
 .github/
 
 **/*.apk

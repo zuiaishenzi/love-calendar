@@ -1,5 +1,11 @@
 # 朝夕项目交接
 
+## 2026年10月15日后续：修复服务器Docker测试阶段COPY失败
+
+用户随后要求不上传鸿蒙版：服务器Docker上下文继续排除全部鸿蒙工程，测试阶段删除鸿蒙源码与test-harmony.mjs的COPY，改运行npm run test:server（76项全部通过）。本地npm test仍保留完整鸿蒙回归，源码和已有HAP保留；未执行任何上传或部署。下段放行鸿蒙源码的方案已被此调整替代。安卓测试及其唯一源码夹具仍在服务器构建中。
+
+用户截图中三个鸿蒙源码COPY失败的原因是.dockerignore排除了整个apps/，与Dockerfile测试阶段复制客户端测试夹具冲突。现仅放行四个鸿蒙ETS源码及安卓calendar-layout.js，其他客户端文件仍排除；Dockerfile补齐ClientConfig.ets、test-android-calendar.mjs和安卓脚本依赖。完整90项Node测试通过，git diff --check通过；本机没有docker命令，尚未实际验证Docker镜像构建。未提交、推送或部署。需用户上传源码后重新运行服务器更新脚本；本次不变更版本号或安装包。
+
 ## 2026年10月15日后续：Android10809日历首页溢出修复
 
 用户要求基于鸿蒙经验修复安卓版日历首页溢出。原手机布局的日期格有固定最小高度，缺少桌面式视口约束，六行月份易超高。新增AndroidCalendarLayout.java及assets/calendar-layout.js/css：onPageFinished注入脚本，监听WebView原生布局大小和visualViewport变化，以实际可见高度、顶部/底部导航、标题、状态/页脚高度和4/5/6行重新分配日历。只在移动Android原生客户端的已登录日历视图启用根页面高度约束，离开日历、登录页、浏览器和鸿蒙均不受影响；无全局touchmove拦截。初始及视图状态同步测量，不依赖空闲WebView可能延迟的首个动画帧。
