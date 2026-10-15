@@ -116,16 +116,16 @@ if (-not $CodeOnly) {
     # Older private clones ignored every file except APKs; enable both platforms before staging.
     $privateIgnore = Join-Path $packageRoot '.gitignore'
     $ignoreText = if (Test-Path -LiteralPath $privateIgnore) { [IO.File]::ReadAllText($privateIgnore) } else { '' }
-    if (-not $ignoreText.Contains('!windows.json') -or -not $ignoreText.Contains('!OurDays-*.exe.part*')) {
-        [IO.File]::AppendAllText($privateIgnore, "`n# Android and Windows release files`n!latest.json`n!windows.json`n!OurDays-*.apk`n!OurDays-*.exe`n!OurDays-*.exe.part*`n", (New-Object System.Text.UTF8Encoding($false)))
+    if (-not $ignoreText.Contains('!windows.json') -or -not $ignoreText.Contains('!OurDays-*.exe.part*') -or -not $ignoreText.Contains('!harmony.json')) {
+        [IO.File]::AppendAllText($privateIgnore, "`n# Android, Windows and Harmony release files`n!latest.json`n!windows.json`n!harmony.json`n!OurDays-*.apk`n!OurDays-*.exe`n!OurDays-*.exe.part*`n!OurDays-*.hap`n", (New-Object System.Text.UTF8Encoding($false)))
     }
     Invoke-RepoGit $packageRoot @('add', '-A') | Out-Null
     $privateFiles = @(Invoke-RepoGit $packageRoot @('ls-files'))
-    if ($privateFiles | Where-Object { $_ -notmatch '^(latest\.json|windows\.json|README\.md|\.gitignore|OurDays-[A-Za-z0-9._-]+\.(apk|exe)(\.part\d{3})?)$' }) { throw '私有包仓库含非发布文件，停止推送。未执行推送。' }
+    if ($privateFiles | Where-Object { $_ -notmatch '^(latest\.json|windows\.json|harmony\.json|README\.md|\.gitignore|OurDays-[A-Za-z0-9._-]+\.(apk|exe|hap)(\.part\d{3})?)$' }) { throw '私有包仓库含非发布文件，停止推送。未执行推送。' }
 }
 Invoke-RepoGit $sourceRoot @('add', '-A') | Out-Null
 $tracked = @(Invoke-RepoGit $sourceRoot @('ls-files'))
-$unsafe = $tracked | Where-Object { $_ -match '(?i)(\.(apk|aab|exe|ipa|p12|p8|mobileprovision|jks|keystore|sqlite|sqlite-wal|sqlite-shm|pem|key)$|(^|/)\.env($|\.)|(^|/)(data|local-preview-data|node_modules)/|(^|/)\.database-key$)' -and $_ -ne '.env.example' }
+$unsafe = $tracked | Where-Object { $_ -match '(?i)(\.(apk|aab|exe|hap|hsp|app|cer|p7b|ipa|p12|p8|mobileprovision|jks|keystore|sqlite|sqlite-wal|sqlite-shm|pem|key)$|(^|/)\.env($|\.)|(^|/)(data|local-preview-data|node_modules)/|(^|/)\.database-key$)' -and $_ -ne '.env.example' }
 if ($unsafe) { throw ('公开仓库检测到禁止上传的文件，未提交或推送：' + ($unsafe -join ', ')) }
 CommitAndPush $sourceRoot $Message
 if (-not $CodeOnly) {

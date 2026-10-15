@@ -20,6 +20,10 @@ npm run build
 
 ## Android
 
+当前日历修复包：`E:\codex\love-app\OurDays-1.8.0-Android-build10809.apk`（34972字节，SHA256 `36ed8283a4ffcc7eafbd218d1283d6cb70f13d88ba301ae5f81d7278d081e7ed`）。显示1.8.0，构建号10809，签名与10808一致，可覆盖升级，旧包保留。已真实编译、验签，当前未连接安卓设备，尚未真机验证。
+
+日历首页按WebView实际高度、真实导航占位和月份行数布局，覆盖顶部/底部导航和六行月份。JS/CSS随APK打包，CSS由原生拦截指定同源资源提供，遵守网站style-src 'self'，无须先部署网站；只在安卓原生日历页面启用，备忘录、聊天、回忆录、登录、网页和鸿蒙保持原流程。完整90项测试及带真实CSP的30个布局场景通过。`scripts/check-android-calendar.cjs` 可在有Playwright的环境运行（可设OURDAYS_PLAYWRIGHT_MODULE），检查实际样式加载、字体/视口变化和跨页面滚动。后文10808及更早构建为历史记录。
+
 V1.7.2 修复 App 图片上传选择器：使用系统文档选择器，支持图片多选及取消后重试。需要安装 `../love-app/OurDays-1.7.2-Android-test.apk`，仅更新服务器不能更新原生选择器。
 
 Android 8.0 及以上。使用系统 WebView，建议更新 Android System WebView。图片/视频/音频通过系统文件选择器上传，不申请整个存储空间的读取权限。录音首次使用需授予麦克风权限；下载附件自动写入系统 Downloads。返回键先关闭网页弹窗、再返回或退出。

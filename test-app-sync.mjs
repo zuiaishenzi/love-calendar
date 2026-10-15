@@ -17,7 +17,7 @@ function fixture(){
   if(u.hostname==='api.github.com'){
    assert.equal(u.searchParams.get('ref'),revision);const name=decodeURIComponent(u.pathname.split('/contents/')[1]);
    if(manifests.has(name))return Response.json(manifests.get(name));
-   if(name==='latest.json'||name==='windows.json')return new Response(null,{status:404});
+   if(name==='latest.json'||name==='windows.json'||name==='harmony.json')return new Response(null,{status:404});
    if(options.headers.Accept==='application/vnd.github.object+json')return Response.json({type:'file',path:name,size:files.get(name)?.length,download_url:'https://raw.githubusercontent.com/owner/private/'+revision+'/'+name});
   }
   const name=u.pathname.split('/').at(-1),bytes=files.get(name);assert.ok(bytes,'Unexpected installer request: '+name);const offset=Number(/bytes=(\d+)-/.exec(options.headers.Range||'')?.[1]||0);
@@ -31,7 +31,7 @@ test('先检查双端清单，只拉当前文件，版本未变时不下载安�
  const f=fixture();try{
   await syncAppReleases(f.options);assert.equal(await fileHash(path.join(f.target,f.windows.filename)),f.windows.sha256);assert.equal(await fileHash(path.join(f.target,f.android.filename)),f.android.sha256);
   assert.equal(f.calls.filter(c=>c.host==='raw.githubusercontent.com').length,3);assert.ok(f.calls.filter(c=>c.host==='raw.githubusercontent.com').every(c=>!c.authorization));
-  f.calls.length=0;await syncAppReleases(f.options);assert.equal(f.calls.length,4);assert.ok(f.calls.every(c=>!c.path.includes('.apk')&&!c.path.includes('.exe')));assert.ok(f.logs.every(log=>!log.includes(f.options.token)));
+  f.calls.length=0;await syncAppReleases(f.options);assert.equal(f.calls.length,5);assert.ok(f.calls.every(c=>!c.path.includes('.apk')&&!c.path.includes('.exe')));assert.ok(f.logs.every(log=>!log.includes(f.options.token)));
  }finally{f.clean();}
 });
 test('传输中断后在同次重试中从已接收字节续传',async()=>{
@@ -66,5 +66,14 @@ test('下载跳转不向其他域名泄漏凭据',async()=>{
   const base=f.options.fetchImpl;let maliciousRequested=false;
   const fetchImpl=async(url,options)=>{if(new URL(url).hostname==='evil.example'){maliciousRequested=true;throw Error('secret leaked');}if(new URL(url).hostname==='raw.githubusercontent.com')return new Response(null,{status:302,headers:{Location:'https://evil.example/download'}});return base(url,options);};
   await syncAppReleases({...f.options,fetchImpl,attempts:2});assert.equal(maliciousRequested,false);
+ }finally{f.clean();}
+});
+
+test('鸿蒙清单可与双端包一起同步，重复运行不下载未变化的HAP',async()=>{
+ const f=fixture();try{
+  const bytes=Buffer.from([0x50,0x4b,0x03,0x04,8,7,6,5]),harmony={packageId:'xyz.ourdays.harmony',versionCode:10801,versionName:'1.8.0',filename:`OurDays-1.8.0-10801-${sha(bytes).slice(0,12)}.hap`,sha256:sha(bytes),size:bytes.length,notes:'鸿蒙测试'};
+  f.manifests.set('harmony.json',harmony);f.files.set(harmony.filename,bytes);
+  await syncAppReleases(f.options);assert.equal(await fileHash(path.join(f.target,harmony.filename)),harmony.sha256);assert.equal(await fileHash(path.join(f.target,f.android.filename)),f.android.sha256);
+  f.calls.length=0;await syncAppReleases(f.options);assert.equal(f.calls.length,5);assert.ok(!f.calls.some(call=>call.host==='raw.githubusercontent.com'));
  }finally{f.clean();}
 });

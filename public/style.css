@@ -445,7 +445,7 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
 #chat-dialog.main-view #chat-record-preview{background:white;margin:0;padding:0 16px 8px;width:100%;flex-shrink:0}
 #chat-dialog.main-view #chat-status{background:white;min-height:0;margin:0;padding:0 16px 10px;font-size:12px;flex-shrink:0}
 #chat-dialog.main-view #chat-status:empty,#app:has(#chat-dialog:not([hidden]))>#status:empty{display:none}
-#chat-native-record,#chat-native-cancel{text-decoration:none}
+#chat-native-record,#chat-native-cancel{text-decoration:none;-webkit-user-drag:none;touch-action:none}
 @media(max-width:760px){
  #app:has(#chat-dialog:not([hidden])){padding:0 12px 10px}
  #app .app-topbar>header{height:54px;min-height:54px}

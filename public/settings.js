@@ -89,10 +89,12 @@ $('#lifecycle-form').onsubmit=async event=>{event.preventDefault();const b=$('#l
  }catch(e){$('#lifecycle-error').textContent=e.message;}finally{b.disabled=false;renderLifecycleProgress();}};
 setInterval(()=>{if(currentUser&&$('#lifecycle-dialog').open)renderLifecycleProgress();},1000);
 
-if(navigator.userAgent.includes('OurDaysAndroid/')){const update=$('#android-update-entry');update.hidden=false;update.onclick=()=>menuOpen(false);}
+const harmonyClient=navigator.userAgent.includes('OurDaysHarmony/');
+if(navigator.userAgent.includes('OurDaysAndroid/')&&!harmonyClient){const update=$('#android-update-entry');update.hidden=false;update.onclick=()=>menuOpen(false);}
+if(harmonyClient)$('#android-update-entry').hidden=true;
 
 // Navigation personalization is available only inside mobile clients.
-const mobilePersonalization=navigator.userAgent.includes('OurDaysAndroid/');
+const mobilePersonalization=/OurDays(?:Android|Harmony)\//.test(navigator.userAgent);
 const navigationPreferenceKey='ourdays.navigation-position';
 function applyNavigationPosition(position){
  const bottom=mobilePersonalization&&position==='bottom';
@@ -103,7 +105,7 @@ let savedNavigationPosition='top';
 if(mobilePersonalization){try{savedNavigationPosition=localStorage.getItem(navigationPreferenceKey)||'top';}catch{}}
 applyNavigationPosition(savedNavigationPosition);
 $('#system-personalization').hidden=!mobilePersonalization;
-if(mobilePersonalization)$('#system-menu-description').textContent='版本更新 · 个性设置';
+if(mobilePersonalization)$('#system-menu-description').textContent=navigator.userAgent.includes('OurDaysHarmony/')?'个性设置':'版本更新 · 个性设置';
 else $('#system-personalization').remove?.();
 $('#system-open').onclick=()=>{menuOpen(false);$('#system-dialog').showModal();};
 for(const radio of document.querySelectorAll('input[name="nav-position"]'))radio.onchange=()=>{

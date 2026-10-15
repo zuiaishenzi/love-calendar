@@ -1,0 +1,33 @@
+/* Loaded as a same-origin native resource: compatible with style-src 'self'. */
+@media(max-width:760px){
+ html[data-android-calendar-fit="true"],html[data-android-calendar-fit="true"] body{height:var(--android-calendar-viewport,100dvh)!important;min-height:0!important;overflow:hidden!important;overscroll-behavior:none}
+ html[data-android-calendar-fit="true"] #app:not([hidden]){height:var(--android-calendar-viewport,100dvh)!important;min-height:0!important;display:flex!important;flex-direction:column;overflow:hidden!important;padding-top:0!important;padding-bottom:0!important}
+ html[data-android-calendar-fit="true"] #app.nav-bottom{padding-bottom:var(--android-calendar-nav-height,68px)!important}
+ html[data-android-calendar-fit="true"] #app>.app-topbar{flex:none}
+ html[data-android-calendar-fit="true"] #app.nav-bottom .app-topbar>.view-switch{bottom:max(0px,calc(100dvh - var(--android-calendar-viewport,100dvh)))!important}
+ html[data-android-calendar-fit="true"] #app>.intro{flex:none;padding:8px 2px!important}
+ html[data-android-calendar-fit="true"] #app .workspace{flex:1 1 0!important;min-height:0!important;grid-template-columns:minmax(0,1fr)!important;align-items:stretch;overflow:hidden}
+ html[data-android-calendar-fit="true"] #app .calendar{height:var(--android-calendar-height,100%)!important;max-height:100%;min-height:0!important;display:flex;flex-direction:column}
+ html[data-android-calendar-fit="true"] #app .calendar .grid{flex:1 1 0!important;min-height:0!important;grid-template-rows:repeat(var(--android-calendar-rows,6),minmax(0,1fr))!important;grid-auto-rows:minmax(0,1fr)}
+ html[data-android-calendar-fit="true"] #app .calendar :is(.day,.blank){min-height:0!important;aspect-ratio:auto!important;padding:4px;gap:2px;overflow:hidden}
+ html[data-android-calendar-fit="true"] #app .calendar :is(.toolbar,.week,footer,.calendar-note){flex:none}
+ html[data-android-calendar-fit="true"] #app .calendar-note{margin:0;padding-bottom:5px}
+ html[data-android-calendar-fit="true"] #app>.bottom{flex:none;margin:4px 0;font-size:9px}
+ html[data-android-calendar-fit="true"] #app>#status{flex:none;margin:0;font-size:12px}
+ html[data-android-calendar-fit="true"] #app>#status:empty{display:none}
+}
+@media(max-width:760px) and (max-height:680px){
+ html[data-android-calendar-fit="true"] #app>.intro{padding:5px 2px!important}
+ html[data-android-calendar-fit="true"] #app>.intro p{font-size:11px;line-height:1.4}
+ html[data-android-calendar-fit="true"] #app #home-quote{font-size:18px!important;line-height:1.35!important}
+ html[data-android-calendar-fit="true"] #app .toolbar{padding:6px 8px!important;gap:4px}
+ html[data-android-calendar-fit="true"] #app .toolbar h2{font-size:21px}
+ html[data-android-calendar-fit="true"] #app .week{padding:6px 0}
+ html[data-android-calendar-fit="true"] #app .calendar footer{padding:6px 8px}
+ html[data-android-calendar-fit="true"] #app .calendar :is(.day,.blank){padding:2px 4px;gap:1px}
+ html[data-android-calendar-fit="true"] #app .calendar .day span{font-size:15px;line-height:18px}
+ html[data-android-calendar-fit="true"] #app .calendar .day small{font-size:9px;line-height:11px}
+}
+@media(max-width:760px) and (max-height:600px){
+ html[data-android-calendar-fit="true"] #app>.intro,html[data-android-calendar-fit="true"] #app>.bottom{display:none!important}
+}

@@ -36,6 +36,7 @@ import android.widget.Toast;
 public class MainActivity extends Activity {
     private static final int PICK_FILE = 10, RECORD_AUDIO = 11;
     private WebView web;
+    private AndroidCalendarLayout calendarLayout;
     private AppUpdater appUpdater;
     private NativeVoiceRecorder nativeVoice;
     private boolean nativeVoicePending=false,voiceRequested=false;
@@ -73,6 +74,11 @@ public class MainActivity extends Activity {
         android.app.job.JobScheduler jobs=getSystemService(android.app.job.JobScheduler.class);if(jobs!=null)jobs.cancelAll();
         android.app.NotificationManager notices=getSystemService(android.app.NotificationManager.class);if(notices!=null){notices.cancelAll();for(android.app.NotificationChannel channel:notices.getNotificationChannels())notices.deleteNotificationChannel(channel.getId());}
         web = new WebView(this);
+        calendarLayout = new AndroidCalendarLayout(this);
+        web.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        web.addOnLayoutChangeListener((view,left,top,right,bottom,oldLeft,oldTop,oldRight,oldBottom) -> {
+            if(right-left!=oldRight-oldLeft||bottom-top!=oldBottom-oldTop)calendarLayout.apply(web);
+        });
         web.setBackgroundColor(Color.rgb(250, 246, 248));
         root.addView(web, new FrameLayout.LayoutParams(-1, -1));
         WebSettings settings = web.getSettings();
@@ -104,7 +110,8 @@ public class MainActivity extends Activity {
             @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
                 if (request.isForMainFrame() && response.getStatusCode() >= 400) showError();
             }
-            @Override public void onPageFinished(WebView view, String url) { CookieManager.getInstance().flush(); }
+            @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) { return calendarLayout.intercept(request); }
+            @Override public void onPageFinished(WebView view, String url) { CookieManager.getInstance().flush(); calendarLayout.apply(view); }
         });
         web.setWebChromeClient(new WebChromeClient() {
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {

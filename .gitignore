@@ -18,6 +18,16 @@ apps/android/local.properties
 *.aab
 *.exe
 *.exe.blockmap
+*.hap
+*.hsp
+*.app
+*.cer
+*.p7b
+apps/harmony/.hvigor/
+apps/harmony/.idea/
+apps/harmony/**/build/
+apps/harmony/**/oh_modules/
+apps/harmony/local.properties
 
 app-updates/
 

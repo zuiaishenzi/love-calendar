@@ -281,14 +281,17 @@ test('录音结束回调尚未执行时清理仍断开回调并释放麦克风',
 
 
 test('原生录音在聊天内显示计时，结束与取消恢复按钮',()=>{
- const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8');const handlers={},nodes=new Map();let tick,cleared=0,status='';
- const context={matchMedia:()=>({matches:false}),navigator:{userAgent:'OurDaysAndroid/10805'},$:id=>{if(!nodes.has(id))nodes.set(id,{hidden:true,pause:()=>{}});return nodes.get(id);},window:{addEventListener:(name,fn)=>handlers[name]=fn},document:{querySelectorAll:()=>[]},chatOwner:1,recordGeneration:0,voiceStarting:false,voiceRecorder:null,currentUser:{},chatSending:false,voiceSeconds:0,releaseRecording:()=>{context.recordGeneration++;},chatStatus:text=>status=text,setInterval:fn=>{tick=fn;return 1;},clearInterval:()=>cleared++,Uint8Array,Blob,atob,URL:{createObjectURL:()=> 'blob:voice'}};
+ const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8');
+ for(const agent of ['OurDaysAndroid/10805','OurDaysHarmony/10801']){
+ const handlers={},nodes=new Map();let tick,cleared=0,status='';
+ const context={matchMedia:()=>({matches:false}),navigator:{userAgent:agent},$:id=>{if(!nodes.has(id))nodes.set(id,{hidden:true,pause:()=>{}});return nodes.get(id);},window:{location:{},addEventListener:(name,fn)=>handlers[name]=fn},document:{querySelectorAll:()=>[]},chatOwner:1,recordGeneration:0,voiceStarting:false,voiceRecorder:null,currentUser:{},chatSending:false,voiceSeconds:0,releaseRecording:()=>{context.recordGeneration++;},chatStatus:text=>status=text,setInterval:fn=>{tick=fn;return 1;},clearInterval:()=>cleared++,Uint8Array,Blob,atob,URL:{createObjectURL:()=> 'blob:voice'}};
  runInNewContext(source.slice(source.indexOf('const nativeVoiceBuild=')),context);
- context.$('#chat-dialog').hidden=false;context.$('#chat-native-record').onclick({preventDefault:()=>{throw Error('unexpected');}});
- handlers['native-voice-result']({detail:{recording:true}});assert.equal(context.$('#chat-native-record').href,'/app/finish-voice');assert.equal(context.$('#chat-native-cancel').hidden,false);tick();assert.match(context.$('#chat-native-record').textContent,/1秒/);
- handlers['native-voice-result']({detail:{data:'AQID',duration:2}});assert.equal(context.$('#chat-native-record').href,'/app/record-voice');assert.equal(context.$('#chat-native-cancel').hidden,true);assert.equal(context.$('#chat-record-send').hidden,false);assert.ok(cleared>0);assert.equal(status,'');
+ context.$('#chat-dialog').hidden=false;context.$('#chat-native-record').onclick({preventDefault:()=>{}});assert.equal(context.window.location.href,'/app/record-voice');
+ handlers['native-voice-result']({detail:{recording:true}});context.$('#chat-native-record').onclick({preventDefault:()=>{}});assert.equal(context.window.location.href,'/app/finish-voice');assert.equal(context.$('#chat-native-cancel').hidden,false);tick();assert.match(context.$('#chat-native-record').textContent,/1秒/);
+ handlers['native-voice-result']({detail:{data:'AQID',duration:2}});assert.equal(context.$('#chat-native-record').href,undefined);assert.equal(context.$('#chat-native-cancel').hidden,true);assert.equal(context.$('#chat-record-send').hidden,false);assert.ok(cleared>0);assert.equal(status,'');
  handlers['native-voice-result']({detail:{recording:true}});handlers['native-voice-result']({detail:{cancelled:true}});assert.equal(context.$('#chat-native-cancel').hidden,true);assert.equal(status,'');
  runInNewContext('voiceHeld=true',context);handlers['native-voice-result']({detail:{recording:true}});assert.equal(context.$('#chat-native-cancel').hidden,true);handlers['native-voice-result']({detail:{cancelled:true}});
+ }
 });
 
 
@@ -304,7 +307,7 @@ test('按住录音松开发送、滑动取消或转文字填入草稿，短按�
  const context={nativeVoiceBuild:10806,nativeVoiceActive:true,voiceRecorder:null,voiceStarting:false,chatSending:false,currentUser:{},chatOwner:1,recordGeneration:0,voiceBlob:{},voiceSeconds:2,window:{location:{}},document:{querySelectorAll:()=>[],elementFromPoint:()=>({closest:()=>target})},$:node,matchMedia:()=>({matches:true}),setTimeout:fn=>{timer=fn;return 1;},clearTimeout:()=>{},releaseRecording:()=>release++,chatStatus:()=>{},transcribeVoiceDraft:async()=> '识别文字',chatBase64:async()=> 'audio-data',sendChat:async()=>{sent++;return true;}};
  const controls=runInNewContext(code+';({completeHeldVoice})',context);node('#chat-dialog').hidden=false;const event=id=>({pointerId:id,button:0,preventDefault:()=>{},type:'pointerup'});
  events.pointerdown(event(1));events.pointerup(event(1));assert.equal(context.window.location.href,undefined);
- events.pointerdown(event(2));await timer();events.pointerup(event(2));assert.equal(context.window.location.href,'/app/finish-voice');await controls.completeHeldVoice();assert.equal(sent,1);
+ events.pointerdown(event(2));await timer();let dragPrevented=false;events.dragstart({preventDefault:()=>dragPrevented=true});assert.equal(dragPrevented,true);assert.equal(context.window.location.href,'/app/record-voice');events.pointermove(event(2));assert.equal(context.window.location.href,'/app/record-voice');assert.equal(node('#chat-native-record').draggable,false);events.pointerup(event(2));assert.equal(context.window.location.href,'/app/finish-voice');await controls.completeHeldVoice();assert.equal(sent,1);
  events.pointerdown(event(3));await timer();target={dataset:{action:'cancel'}};events.pointermove(event(3));events.pointerup(event(3));assert.equal(context.window.location.href,'/app/cancel-voice');await controls.completeHeldVoice();assert.equal(sent,1);
  events.pointerdown(event(4));await timer();target={dataset:{action:'text'}};events.pointermove(event(4));events.pointerup(event(4));await controls.completeHeldVoice();assert.equal(node('#chat-form').elements.text.value,'识别文字');assert.equal(sent,1);assert.ok(release>0);
 });
@@ -377,8 +380,10 @@ test('系统设置中的导航偏好只在移动App生效，保存并恢复且�
   runInNewContext(code,{navigator:{userAgent:agent},$:get,document:{querySelectorAll:()=>radios},localStorage:{getItem:()=>{if(storageFails)throw Error();return saved;},setItem:(key,value)=>{if(storageFails)throw Error();writes.push(value);}},menuOpen:()=>closed++});
   return {radios,nodes,writes,get,bottom:()=>bottom,opened:()=>opened,closed:()=>closed};
  }
- const mobile=boot('OurDaysAndroid/10808','bottom');assert.equal(mobile.bottom(),true);assert.equal(mobile.get('#system-personalization').hidden,false);mobile.get('#system-open').onclick();assert.equal(mobile.opened(),1);assert.equal(mobile.closed(),1);
- mobile.radios[0].checked=true;mobile.radios[0].onchange();assert.equal(mobile.bottom(),false);assert.deepEqual(mobile.writes,['top']);
+ for(const agent of ['OurDaysAndroid/10808','OurDaysHarmony/10801']){
+  const mobile=boot(agent,'bottom');assert.equal(mobile.bottom(),true);assert.equal(mobile.get('#system-personalization').hidden,false);mobile.get('#system-open').onclick();assert.equal(mobile.opened(),1);assert.equal(mobile.closed(),1);
+  mobile.radios[0].checked=true;mobile.radios[0].onchange();assert.equal(mobile.bottom(),false);assert.deepEqual(mobile.writes,['top']);
+ }
  for(const agent of ['browser','OurDaysWindows/1.8.0']){const client=boot(agent,'bottom');assert.equal(client.bottom(),false);assert.equal(client.get('#system-personalization').hidden,true);client.radios[1].checked=true;client.radios[1].onchange();assert.equal(client.bottom(),false);assert.equal(client.writes.length,0);}
  const denied=boot('OurDaysAndroid/10808',null,true);denied.radios[1].checked=true;denied.radios[1].onchange();assert.equal(denied.bottom(),true);
  const html=readFileSync(new URL('./public/index.html',import.meta.url),'utf8');assert.equal((html.match(/id="android-update-entry"/g)||[]).length,1);assert.ok(html.indexOf('id="android-update-entry"')>html.indexOf('id="system-dialog"'));
@@ -387,7 +392,7 @@ test('系统设置中的导航偏好只在移动App生效，保存并恢复且�
 
 test('App复制使用同步兼容路径，网页权限失败后回退且清理临时字段',async()=>{
  const source=readFileSync(new URL('./public/chat.js',import.meta.url),'utf8'),code=source.slice(source.indexOf('async function copyChatText('));
- for(const agent of ['OurDaysAndroid/10808','browser']){
+ for(const agent of ['OurDaysAndroid/10808','OurDaysHarmony/10801','browser']){
   let removed=0,restored=0,copied=0,attempts=0;const field={style:{},setAttribute:()=>{},focus:()=>{},select:()=>{},setSelectionRange:()=>{},remove:()=>removed++};
   const copy=runInNewContext(code+';copyChatText',{navigator:{userAgent:agent,clipboard:{writeText:async()=>{attempts++;throw Error('denied');}}},document:{createElement:()=>field,activeElement:{focus:()=>restored++},body:{append:()=>{}},execCommand:command=>{assert.equal(command,'copy');copied++;return true;}}});
   await copy('测试文字');assert.equal(field.value,'测试文字');assert.equal(copied,1);assert.equal(removed,1);assert.equal(restored,1);assert.equal(attempts,agent==='browser'?1:0);
@@ -430,14 +435,15 @@ test('客户端下载按平台展示，未发布和错误不生成链接，不�
  class Node{constructor(tag,text){this.tag=tag;this.textContent=text;this.children=[];this.hidden=false;}append(...items){this.children.push(...items);}replaceChildren(){this.children=[];}}
  const nodes=new Map(),get=id=>{if(!nodes.has(id))nodes.set(id,new Node('div'));return nodes.get(id);};
  const context={navigator:{userAgent:'browser'},$:get,el:(...args)=>new Node(...args),Promise,URL,location:{href:'https://love.11215739.xyz:11961/',origin:'https://love.11215739.xyz:11961'},menuOpen:()=>{},api:async url=>url.includes('android')?{available:true,downloadUrl:'/api/app/download/a.apk',filename:'a.apk',versionName:'1.8.0',size:1024}:url.includes('windows')?{available:true,downloadUrl:'https://evil.example/b.exe'}:{available:false}};
- const refresh=runInNewContext(source+';refreshClientDownloads',context);await refresh();const rows=get('#client-download-list').children;assert.equal(rows.length,2);assert.equal(rows[0].children[2].hidden,false);assert.equal(rows[0].children[2].href,'/api/app/download/a.apk');assert.equal(rows[1].children[2].hidden,true);assert.ok(rows[0].children[1].textContent.includes('安装包大小：1.0 KB'));
+ const refresh=runInNewContext(source+';refreshClientDownloads',context);await refresh();const rows=get('#client-download-list').children;assert.equal(rows.length,3);assert.equal(rows[0].children[2].hidden,false);assert.equal(rows[0].children[2].href,'/api/app/download/a.apk');assert.equal(rows[1].children[2].hidden,true);assert.equal(rows[2].children[2].hidden,true);assert.ok(rows[0].children[1].textContent.includes('安装包大小：1.0 KB'));
  context.api=async()=>({available:false});await refresh();assert.equal(get('#client-download-list').children[1].children[1].textContent,'暂未发布');
+ context.api=async url=>url.includes('harmony')?{available:true,downloadUrl:'/api/app/download/a.hap',filename:'a.hap',versionName:'1.8.0',size:134009}:{available:false};await refresh();const harmony=get('#client-download-list').children[2];assert.equal(harmony.children[2].hidden,false);assert.equal(harmony.children[2].href,'/api/app/download/a.hap');assert.match(harmony.children[1].textContent,/需匹配设备签名/);
 });
 
 
-test('Android与Windows系统设置隐藏客户端下载且不请求包信息',()=>{
+test('Android、鸿蒙与Windows系统设置隐藏客户端下载且不请求包信息',()=>{
  const source=readFileSync(new URL('./public/client-downloads.js',import.meta.url),'utf8');
- for(const agent of ['OurDaysAndroid/10808','OurDaysWindows/1.8.0','browser']){
+ for(const agent of ['OurDaysAndroid/10808','OurDaysHarmony/10801','OurDaysWindows/1.8.0','browser']){
   const nodes=new Map();let opened=0;const get=id=>{if(!nodes.has(id))nodes.set(id,{showModal:()=>opened++});return nodes.get(id);};
   runInNewContext(source,{navigator:{userAgent:agent},$:get,menuOpen:()=>{},api:()=>{throw Error('Native client must not request downloads');}});
   const native=agent!=='browser';assert.equal(get('#client-downloads').hidden,native);if(native){get('#system-open').onclick();assert.equal(opened,1);}

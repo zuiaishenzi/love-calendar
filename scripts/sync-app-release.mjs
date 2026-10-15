@@ -67,7 +67,7 @@ export async function syncAppReleases({repo,branch='main',cache,target,token,fet
  const reference=await client.json(base+'/git/ref/heads/'+encodeURIComponent(branch));const revision=reference.object?.sha;
  if(!/^[a-f0-9]{40}$/.test(revision||'')||reference.object?.type!=='commit')throw Error('私库提交信息无效');
  const content=name=>base+'/contents/'+encodeURIComponent(name)+'?ref='+revision;
- log('正在检查 Android / Windows 最新安装包清单…');
+ log('正在检查 Android / Windows / HarmonyOS 最新安装包清单…');
  const manifests=await Promise.all(releasePlatforms.map(async([manifest,platform])=>({manifest,platform,info:await client.json(content(manifest),true,true)})));
  let failures=0,found=0;
  for(const {manifest,platform,info} of manifests){
