@@ -31,14 +31,26 @@ export function createSpeechRecognizer({env=process.env,fetcher=fetch,now=()=>Da
   async status(id){const result=await call('DescribeTaskStatus',{TaskId:id});const data=result.Data;if(!data||![0,1,2,3].includes(data.Status))throw fail(502,'腾讯云返回了无效任务状态');if(data.Status===3)throw fail(422,'音频识别失败，请检查录音是否清晰');if(data.Status!==2)return {status:'pending'};const text=(Array.isArray(data.ResultDetail)?data.ResultDetail.map(row=>row.FinalSentence||'').filter(Boolean).join('\n'):'')||data.Result||'';const cleaned=text.replace(/^\[[\d:.\s,-]+\]\s*/gm,'').trim();if(!cleaned)throw fail(422,'未识别到文字，请检查录音中是否有人声');if(cleaned.length>4000)throw fail(422,'识别文字超过4000字，请使用更短的语音');return {status:'done',text:cleaned};}
  };
 }
-export function speechService(db,recognizer,{now=()=>Date.now()}={}){
+export function speechService(db,recognizer,{now=()=>Date.now(),notify=()=>{}}={}){
  db.exec('CREATE TABLE IF NOT EXISTS chat_transcriptions (message_id INTEGER NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,text TEXT NOT NULL,PRIMARY KEY(message_id,user_id))');
+ db.exec('CREATE TABLE IF NOT EXISTS chat_transcription_visibility(message_id INTEGER NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,hidden INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(message_id,user_id))');
  const jobs=new Map();
- function save(job,result,check){check();if(job.messageId!==null){if(!db.prepare('SELECT id FROM chat_messages WHERE id=? AND ledger_id=? AND retracted_at IS NULL').get(job.messageId,job.ledger))throw fail(404,'语音消息已撤回');db.prepare('INSERT INTO chat_transcriptions(message_id,user_id,text) VALUES(?,?,?) ON CONFLICT(message_id,user_id) DO UPDATE SET text=excluded.text').run(job.messageId,job.user,result.text);}job.result=result;return result;}
+ const cached=id=>db.prepare('SELECT text FROM chat_transcriptions WHERE message_id=? ORDER BY user_id LIMIT 1').get(id);
+ const message=(id,user)=>{if(!Number.isSafeInteger(id)||id<1)throw fail(400,'语音消息无效');if(!db.prepare("SELECT id FROM chat_messages WHERE id=? AND ledger_id=? AND kind='audio' AND retracted_at IS NULL").get(id,user.ledger_id))throw fail(404,'语音消息不存在');};
+ const sharedJob=(id,ledger)=>[...jobs.values()].find(job=>job.messageId===id&&job.ledger===ledger);
+ function save(job,result,check){check();if(job.messageId!==null){if(!db.prepare('SELECT id FROM chat_messages WHERE id=? AND ledger_id=? AND retracted_at IS NULL').get(job.messageId,job.ledger))throw fail(404,'语音消息已撤回');db.prepare('INSERT INTO chat_transcriptions(message_id,user_id,text) VALUES(?,?,?) ON CONFLICT(message_id,user_id) DO UPDATE SET text=excluded.text').run(job.messageId,job.user,result.text);notify({id:job.user,ledger_id:job.ledger});}job.result=result;return result;}
  return async function route(req,url,user,input,check){
-  check();for(const [id,job] of jobs)if(job.expires<=now())jobs.delete(id);
+  for(const [id,job] of jobs)if(job.expires<=now())jobs.delete(id);
+  const lookup=url.pathname.match(/^\/api\/chat\/transcriptions\/message\/(\d+)(\/visibility)?$/);
+  if(lookup){
+   const id=Number(lookup[1]);message(id,user);
+   if(req.method==='GET'&&!lookup[2]){const result=cached(id),hidden=Boolean(db.prepare('SELECT hidden FROM chat_transcription_visibility WHERE message_id=? AND user_id=?').get(id,user.id)?.hidden);if(result)return {status:'done',text:result.text,hidden};const job=sharedJob(id,user.ledger_id);return job?{id:job.id,status:'pending'}:{status:'missing'};}
+   if(req.method==='POST'&&lookup[2]){check();if(typeof input.hidden!=='boolean')throw fail(400,'显示设置无效');if(!cached(id))throw fail(404,'尚无转文字结果');db.prepare('INSERT INTO chat_transcription_visibility(message_id,user_id,hidden) VALUES(?,?,?) ON CONFLICT(message_id,user_id) DO UPDATE SET hidden=excluded.hidden').run(id,user.id,Number(input.hidden));notify(user);return {hidden:input.hidden};}
+   throw fail(404,'接口不存在');
+  }
+  check();
   if(url.pathname==='/api/chat/transcriptions'&&req.method==='POST'){
-   if(input.messageId!==undefined){if(!Number.isSafeInteger(input.messageId)||input.messageId<1)throw fail(400,'语音消息无效');if(!db.prepare("SELECT id FROM chat_messages WHERE id=? AND ledger_id=? AND kind='audio' AND retracted_at IS NULL").get(input.messageId,user.ledger_id))throw fail(404,'语音消息不存在');}
+   if(input.messageId!==undefined){message(input.messageId,user);const result=cached(input.messageId),job=sharedJob(input.messageId,user.ledger_id);if(result)return {status:'done',text:result.text,...(job?{id:job.id}:{})};if(job)return {id:job.id,status:'pending'};}
    if(typeof input.data!=='string'||input.data.length>5200000||!input.data||!/^[A-Za-z0-9+/]*={0,2}$/.test(input.data))throw fail(400,'识别音频格式无效');
    const data=Buffer.from(input.data,'base64');
    if(data.length<46||data.length>3840044||data.toString('ascii',0,4)!=='RIFF'||data.toString('ascii',8,12)!=='WAVE'||data.toString('ascii',12,16)!=='fmt '||data.readUInt32LE(16)!==16||data.readUInt16LE(20)!==1||data.readUInt16LE(22)!==1||data.readUInt32LE(24)!==16000||data.readUInt32LE(28)!==32000||data.readUInt16LE(32)!==2||data.readUInt16LE(34)!==16||data.toString('ascii',36,40)!=='data'||data.readUInt32LE(40)!==data.length-44||data.readUInt32LE(4)!==data.length-8||(data.length-44)%2)throw fail(400,'请提供2分钟以内的16kHz单声道 WAV 音频');
@@ -50,7 +62,7 @@ export function speechService(db,recognizer,{now=()=>Date.now()}={}){
   }
   const match=url.pathname.match(/^\/api\/chat\/transcriptions\/([a-f0-9]{36})$/);
   if(match&&req.method==='GET'){
-   const job=jobs.get(match[1]);if(!job||job.user!==user.id||job.ledger!==user.ledger_id)throw fail(404,'识别任务不存在或已过期，请重新识别');
+   const job=jobs.get(match[1]);if(!job||(job.messageId===null&&job.user!==user.id)||job.ledger!==user.ledger_id)throw fail(404,'识别任务不存在或已过期，请重新识别');
    if(job.messageId!==null&&!db.prepare('SELECT id FROM chat_messages WHERE id=? AND ledger_id=? AND retracted_at IS NULL').get(job.messageId,user.ledger_id)){jobs.delete(job.id);throw fail(404,'语音消息已撤回');}
    if(job.result)return job.result;if(job.busy||job.task===null||now()-job.polled<2000)return {status:'pending'};
    job.busy=true;job.polled=now();try{const result=await recognizer.status(job.task);check();if(result.status==='done')save(job,result,check);return result;}finally{job.busy=false;}

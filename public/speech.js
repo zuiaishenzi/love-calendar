@@ -3,11 +3,20 @@ function closeSpeech(){speechGeneration++;speechResults.clear();}
 function speechKey(id){return chatOwner+':'+id;}
 function speechTranscript(card,row){
  const text=el('p',undefined,'voice-transcript');text.dataset.speechId=String(row.id);text.setAttribute('role','status');
- const result=speechResults.get(speechKey(row.id));text.textContent=result?.text||row.transcript||'';text.hidden=!text.textContent;text.classList.toggle('pending',result?.status==='pending');text.classList.toggle('error',result?.status==='error');card.append(text);
+ const result=row.transcript?{status:'done',text:row.transcript}:speechResults.get(speechKey(row.id));text.textContent=result?.text||'';text.dataset.speechHidden=String(Boolean(row.transcript_hidden));text.hidden=!text.textContent||Boolean(row.transcript_hidden);text.classList.toggle('pending',result?.status==='pending');text.classList.toggle('error',result?.status==='error');card.append(text);
 }
 function paintSpeech(id,result){
  speechResults.set(speechKey(id),result);
- for(const text of document.querySelectorAll('[data-speech-id="'+id+'"]')){text.textContent=result.text;text.hidden=false;text.classList.toggle('pending',result.status==='pending');text.classList.toggle('error',result.status==='error');}
+ for(const text of document.querySelectorAll('[data-speech-id="'+id+'"]')){text.textContent=result.text;text.hidden=text.dataset.speechHidden==='true';text.classList.toggle('pending',result.status==='pending');text.classList.toggle('error',result.status==='error');}
+}
+function configureSpeechMenu(row){
+ const button=$('#chat-context-transcribe'),result=speechResults.get(speechKey(row.id)),done=Boolean(row.transcript||result?.status==='done'),pending=!done&&result?.status==='pending';
+ button.textContent=done?(row.transcript_hidden?'显示语音转文字':'收回语音转文字'):pending?'正在转文字…':'转文字';button.disabled=pending||Boolean(currentUser?.lifecycle?.readonly);button.title=done?'仅更改自己的显示，保留双方共用的识别结果':'优先获取已有结果，没有结果时才发送至腾讯云识别';
+}
+async function setSpeechVisibility(row,hidden,active){
+ const result=await api('/api/chat/transcriptions/message/'+row.id+'/visibility','POST',{hidden});if(!active())return;
+ row.transcript_hidden=Number(result.hidden);for(const item of chatRows)if(item.id===row.id)item.transcript_hidden=Number(result.hidden);
+ for(const text of document.querySelectorAll('[data-speech-id="'+row.id+'"]')){text.dataset.speechHidden=String(result.hidden);text.hidden=result.hidden||!text.textContent;}
 }
 function speechWav(samples){
  const bytes=new ArrayBuffer(44+samples.length*2),view=new DataView(bytes);
@@ -25,20 +34,23 @@ async function speechAudio(blob){
 }
 $('#chat-context-transcribe').onclick=async()=>{
  const row=chatContextRow;if(!row||row.kind!=='audio'||row.retracted_at)return;closeChatMenu();
- const previous=speechResults.get(speechKey(row.id));if(previous?.status==='pending')return;
- if(row.transcript||previous?.status==='done'){paintSpeech(row.id,{status:'done',text:row.transcript||previous.text});return;}
  const owner=chatOwner,generation=speechGeneration,active=()=>owner===chatOwner&&generation===speechGeneration;
+ const previous=speechResults.get(speechKey(row.id));if(previous?.status==='pending'&&!row.transcript)return;
+ if(row.transcript||previous?.status==='done'){try{await setSpeechVisibility(row,!row.transcript_hidden,active);}catch(error){if(active())chatStatus(error.message);}return;}
  paintSpeech(row.id,{status:'pending',text:'正在转文字…'});
  try{
-  const response=await fetch('/api/chat/media/'+row.id,{credentials:'same-origin'});if(!response.ok)throw Error('语音消息不存在或已撤回');
-  const data=await chatBase64(await speechAudio(await response.blob()));if(!active())return;
-  const job=await api('/api/chat/transcriptions','POST',{data,messageId:row.id});
-  if(!active())return;if(job.status==='done'){paintSpeech(row.id,job);return;}
+  let job=await api('/api/chat/transcriptions/message/'+row.id);if(!active())return;
+  if(job.status==='missing'){
+   const response=await fetch('/api/chat/media/'+row.id,{credentials:'same-origin'});if(!response.ok)throw Error('语音消息不存在或已撤回');
+   const data=await chatBase64(await speechAudio(await response.blob()));if(!active())return;
+   job=await api('/api/chat/transcriptions','POST',{data,messageId:row.id});
+  }
+  if(!active())return;if(job.status==='done'){row.transcript=job.text;paintSpeech(row.id,job);if(job.hidden)await setSpeechVisibility(row,false,active);return;}
   const deadline=Date.now()+5*60000;
   for(let i=0;Date.now()<deadline&&active();i++){
    if(i)await new Promise(resolve=>setTimeout(resolve,i<5?2000:4000));if(!active())return;
    const result=await api('/api/chat/transcriptions/'+job.id);if(!active())return;
-   if(result.status==='done'){paintSpeech(row.id,result);return;}
+   if(result.status==='done'){row.transcript=result.text;paintSpeech(row.id,result);return;}
   }
   if(active())throw Error('识别等待时间较长，请再次选择转文字重试');
  }catch(error){if(active())paintSpeech(row.id,{status:'error',text:error.message+'（右键或长按可重试）'});}
