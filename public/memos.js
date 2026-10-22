@@ -6,7 +6,7 @@ function openMemoEditor(note=null){
  if(!memoData||memoBusy)return;resetMemoEditor();$('#memo-editor-status').textContent='';
  $('#memo-form').elements.day.value=localDay();
  $('#memo-editor-title').textContent=note?'编辑备忘录':'新增备忘录';
- if(note){memoImages=(note.images||[]).map(image=>({id:image.id}));paintMemoImages();memoEditing=note.id;const f=$('#memo-form');f.elements.day.value=note.day||'';f.elements.title.value=note.title||'';f.elements.body.value=note.body;f.elements.category_id.value=note.category_id??(note.ai_category?'ai:'+note.ai_category:'');$('#memo-save').textContent='保存修改';}
+ if(note){memoImages=(note.images||[]).map(image=>({id:image.id}));paintMemoImages();memoEditing=note.id;const f=$('#memo-form');f.elements.day.value=note.day||'2026-10-07';f.elements.title.value=note.title||'';f.elements.body.value=note.body;f.elements.category_id.value=note.category_id??(note.ai_category?'ai:'+note.ai_category:'');$('#memo-save').textContent='保存修改';}
  $('#memo-cancel').hidden=false;$('#memo-editor-dialog').showModal();$('#memo-form').elements.body.focus();
 }
 function renderMemos(){
@@ -65,9 +65,9 @@ $('#memos-organize').onclick=async()=>{
 
 function renderMemoOriginals(){
  const list=$('#memo-originals-list');list.replaceChildren();if(!memoData)return;
- const readOnly=Boolean(currentUser?.lifecycle?.readonly),days=new Map(),today=localDay();
+ const readOnly=Boolean(currentUser?.lifecycle?.readonly),days=new Map(),legacyDay='2026-10-07';
  const dateTitle=day=>{const [year,month,date]=day.split('-');return `${year}年${Number(month)}月${Number(date)}日`;};
- for(const note of [...memoData.notes].sort((a,b)=>(b.day||today).localeCompare(a.day||today)||b.id-a.id)){const day=note.day||today;if(!days.has(day))days.set(day,[]);days.get(day).push(note);}
+ for(const note of [...memoData.notes].sort((a,b)=>(b.day||legacyDay).localeCompare(a.day||legacyDay)||b.id-a.id)){const day=note.day||legacyDay;if(!days.has(day))days.set(day,[]);days.get(day).push(note);}
  if(memoData.categories.length){const categories=el('details',undefined,'memo-category-management');categories.append(el('summary','管理自定义分类'));for(const category of memoData.categories){const row=el('div',undefined,'memo-actions'),remove=el('button','删除分类');remove.disabled=readOnly||memoBusy;remove.onclick=()=>memoMutate('/api/memos/categories/'+category.id,'DELETE',{});row.append(el('span',category.name),remove);categories.append(row);}list.append(categories);}
  if(!days.size)list.append(el('p','还没有记录，先新增一件小事吧。','memo-empty'));
  for(const [day,notes] of days){const section=el('section',undefined,'memo-diary-day');for(const note of notes){const article=el('article',undefined,'memo-diary-entry');article.append(el('h4',dateTitle(day)),el('p',note.body,'memo-text'));const pictures=el('div',undefined,'memo-images');for(const photo of note.images||[]){const img=el('img');img.src='/api/memos/images/'+photo.id;img.alt='备忘图片';img.loading='lazy';img.onclick=()=>openPhoto(img);pictures.append(img);}article.append(pictures);const actions=el('div',undefined,'memo-actions'),edit=el('button','编辑'),remove=el('button','删除');edit.disabled=remove.disabled=readOnly||memoBusy;edit.onclick=()=>openMemoEditor(note);remove.onclick=()=>{if(confirm('删除这条原文及从中提取的全部要点？'))memoMutate('/api/memos/notes/'+note.id,'DELETE',{});};actions.append(edit,remove);article.append(actions);section.append(article);}list.append(section);}

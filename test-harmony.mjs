@@ -53,8 +53,8 @@ test('鸿蒙文档启动适配兼容旧网页，但不影响外站和子框架',
  for(const [origin,main,enabled] of [['https://love.11215739.xyz:11961',true,true],['https://evil.example',true,false],['https://love.11215739.xyz:11961',false,false]]){
   const styles=[],navigator={userAgent:'Mozilla/5.0 OpenHarmony'},window={};window.top=main?window:{};
   new Script(bootstrap).runInNewContext({location:{origin},window,navigator,MutationObserver:class{observe(){}},document:{querySelectorAll:()=>[],getElementById:()=>null,createElement:()=>({}),documentElement:{append:style=>styles.push(style)},addEventListener:()=>{}}});
-  assert.equal(navigator.userAgent.includes('OurDaysHarmony/10813'),enabled);assert.equal(styles.length,enabled?1:0);
-  if(enabled){assert.match(navigator.userAgent,/OurDaysAndroid\/10808/);assert.equal(styles[0].rel,'stylesheet');assert.equal(styles[0].href,'https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10813');}
+  assert.equal(navigator.userAgent.includes('OurDaysHarmony/10814'),enabled);assert.equal(styles.length,enabled?1:0);
+  if(enabled){assert.match(navigator.userAgent,/OurDaysAndroid\/10808/);assert.equal(styles[0].rel,'stylesheet');assert.equal(styles[0].href,'https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10814');}
  }
 });
 
@@ -68,7 +68,7 @@ test('鸿蒙内置CSS仅拦截指定同源GET子资源，遵守服务器style-sr
  class Response{setResponseData(value){this.body=value;}setResponseMimeType(value){this.mime=value;}setResponseEncoding(value){this.encoding=value;}setResponseCode(value){this.status=value;}setReasonMessage(){}setResponseHeader(value){this.headers=value;}}
  const Harness=new Script(code).runInNewContext({...constants,commandPath,WebResourceResponse:Response});
  for(const [url,verb,main,allowed] of [
-  ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10813','GET',false,true],
+  ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10814','GET',false,true],
   ['https://evil.example/__ourdays_harmony__/appearance.css','GET',false,false],
   ['https://love.11215739.xyz:11961/style.css','GET',false,false],
   ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css','POST',false,false],
@@ -83,9 +83,9 @@ test('鸿蒙加载后补注入复用已安装适配，丢失样式可恢复',()=
  const bootstrap=new Script(source+';HARMONY_BOOTSTRAP;').runInNewContext({});
  let style=null,appends=0,observers=0,refreshes=0;
  const window={dispatchEvent:()=>refreshes++};window.top=window;
- const context=createContext({location:{origin:'https://love.11215739.xyz:11961'},window,navigator:{userAgent:'OurDaysHarmony/10813'},Event:class{},MutationObserver:class{constructor(){observers++;}observe(){}},document:{getElementById:()=>style,createElement:()=>({}),documentElement:{append:node=>{style=node;appends++;}},querySelectorAll:()=>[],addEventListener:()=>{}}});
+ const context=createContext({location:{origin:'https://love.11215739.xyz:11961'},window,navigator:{userAgent:'OurDaysHarmony/10814'},Event:class{},MutationObserver:class{constructor(){observers++;}observe(){}},document:{getElementById:()=>style,createElement:()=>({}),documentElement:{append:node=>{style=node;appends++;}},querySelectorAll:()=>[],addEventListener:()=>{}}});
  const run=()=>new Script(bootstrap).runInContext(context);
- run();assert.equal(window.__ourdaysHarmonyBootstrap,'10813');assert.equal(appends,1);const initialObservers=observers;
+ run();assert.equal(window.__ourdaysHarmonyBootstrap,'10814');assert.equal(appends,1);const initialObservers=observers;
  run();assert.equal(appends,1);assert.equal(observers,initialObservers);assert.equal(refreshes,1);
  style=null;run();assert.equal(appends,2);assert.equal(observers,initialObservers);
 });
@@ -191,4 +191,21 @@ test('历史麦克风拒绝通过系统设置再次征求同意，同意才启�
  }
  const fresh=recorderFixture();fresh.instance.start();fresh.deny();await fresh.flush();assert.ok(!fresh.calls.includes('settings'));assert.ok(!fresh.calls.includes('start'));
  const cancelled=recorderFixture();cancelled.instance.start();await cancelled.flush();cancelled.instance.cancel();cancelled.previouslyDenied();await cancelled.flush();assert.ok(!cancelled.calls.includes('settings'));assert.ok(!cancelled.calls.includes('start'));
+});
+
+
+test('鸿蒙回忆录滚条位于框外右侧，窄边距不越界，弹窗仍位于框内',()=>{
+ const source=stripTypeScriptTypes(readFileSync('apps/harmony/entry/src/main/ets/common/PageBootstrap.ets','utf8'),{mode:'transform'}).replaceAll('export const','const');
+ const script=new Script(source+';HARMONY_SCROLLBARS;').runInNewContext({});
+ const paint=script.slice(script.indexOf(' const paint='),script.indexOf(' const sizes='));
+ const host={},layer={getBoundingClientRect:()=>({left:0,top:0})};
+ const context=createContext({document:{body:host,scrollingElement:{}},getComputedStyle:()=>({overflowY:'auto',overflowX:'hidden'}),viewport:()=>({width:390,height:780}),create:()=>{throw Error('Unexpected creation');},getLayer:()=>layer});
+ const run=new Script(paint+';paint;').runInContext(context);
+ for(const [id,right,expected] of [['memoir',370,374],['memoir',389,383],['memos-dialog',370,361],['chat-history-dialog',370,361]]){
+  const node={id,clientHeight:500,scrollHeight:1500,scrollTop:500,closest:()=>null},bar={host,layer,rail:{style:{}},thumb:{style:{}}},entry={y:bar};
+  run(node,entry,'y',{top:100,bottom:600,left:20,right});
+  assert.match(bar.rail.style.cssText,new RegExp('^left:'+expected+'px;'));
+  assert.equal(bar.rail.hidden,false);assert.ok(bar.travel>0);assert.equal(bar.max,1000);
+  node.scrollHeight=500;run(node,entry,'y',{top:100,bottom:600,left:20,right});assert.equal(bar.rail.hidden,true);
+ }
 });
