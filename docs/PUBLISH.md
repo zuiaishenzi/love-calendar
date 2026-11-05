@@ -86,6 +86,12 @@ SSH 成功会显示已认证但 GitHub 不提供 shell，退出码 1 是正常�
 
 ## 后续更新
 
+### Alpine 镜像 403 或依赖下载失败
+
+若构建日志显示 `APKINDEX.tar.gz: HTTP 403`，随后报 `python3 / make / g++ (no such package)`，表示软件源索引没有下载成功。Dockerfile 在指定镜像失败时会自动恢复基础镜像原有的软件源并重试，保留原有 Alpine 版本、CPU 架构和 HTTPS 校验；如果两个源都无法访问，构建仍会停止。
+
+上传此修复后，按下方命令重新更新即可。若仍部署同一个曾失败的提交，使用 `sudo bash /opt/love-calendar/bin/update.sh --retry`；上传修复后产生的新提交直接使用普通更新命令。构建阶段失败时尚未停止旧容器，无需手动删除数据或重建现有服务。
+
 本机运行上传脚本后，服务器只需：
 
 ```bash

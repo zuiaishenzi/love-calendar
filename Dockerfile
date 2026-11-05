@@ -4,8 +4,14 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 # Keep the base image's Alpine release and architecture; only change the mirror.
 # Retain HTTPS verification and apk package signature checks.
-RUN sed -i "s#https\?://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories \
- && apk add --no-cache --virtual .build-deps python3 make g++
+RUN cp /etc/apk/repositories /tmp/apk-repositories \
+ && sed -i "s#https\?://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories \
+ && { apk add --no-cache --virtual .build-deps python3 make g++ || { \
+      echo 'Alpine mirror failed; retrying the original repositories.' >&2; \
+      cp /tmp/apk-repositories /etc/apk/repositories; \
+      apk add --no-cache --virtual .build-deps python3 make g++; \
+    }; } \
+ && rm /tmp/apk-repositories
 RUN npm ci --omit=dev --include=optional && apk del .build-deps
 COPY server.mjs db.mjs encrypted-db.mjs accounts.mjs lifecycle.mjs memoir-export.mjs mail.mjs calendar.mjs reminders.mjs realtime.mjs memos.mjs chat.mjs media.mjs speech.mjs app-updates.mjs notifications.mjs agreements.mjs agreement-lines.mjs ./
 COPY public ./public
