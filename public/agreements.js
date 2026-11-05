@@ -1,0 +1,44 @@
+let agreementRows=[],agreementOwner=null,agreementFilter='pending',agreementEditing=null,agreementCompleting=null,agreementBusy=false,agreementRequest=0,agreementLineMode='disabled';
+const agreementDate=day=>day?`${day.slice(0,4)!==localDay().slice(0,4)?day.slice(0,4)+'年':''}${Number(day.slice(5,7))}月${Number(day.slice(8))}日`:'';
+function resetAgreementView(){agreementRequest++;agreementRows=[];agreementOwner=null;$('#agreement-list').replaceChildren();$('#agreement-editor').close();$('#agreement-completion').close();}
+async function refreshAgreements(){
+ const owner=currentUser?.id,request=++agreementRequest;if(!owner)return;$('#agreement-status').textContent='正在翻开约定…';
+ try{const [rows,config]=await Promise.all([api('/api/agreements'),api('/api/agreements/config')]);if(owner!==currentUser?.id||request!==agreementRequest)return;agreementRows=rows;agreementLineMode=config.line_mode;agreementOwner=owner;renderAgreements();paintAgreementCalendar();$('#agreement-status').textContent='';}
+ catch(e){if(request===agreementRequest)$('#agreement-status').textContent=e.message;}
+}
+function renderAgreements(){
+ const done=agreementRows.filter(a=>a.completed_day).length,readonly=Boolean(currentUser?.lifecycle?.readonly),list=$('#agreement-list');
+ $('#agreement-add').disabled=agreementBusy||readonly;
+ for(const button of document.querySelectorAll('[data-agreement-filter]')){const key=button.dataset.agreementFilter,count=key==='done'?done:key==='pending'?agreementRows.length-done:agreementRows.length;button.textContent=({pending:'待完成',done:'已完成',all:'全部'})[key]+' '+count;button.setAttribute('aria-selected',String(agreementFilter===key));}
+ list.replaceChildren();const rows=agreementRows.filter(a=>agreementFilter==='all'||Boolean(a.completed_day)===(agreementFilter==='done')).sort((a,b)=>agreementFilter==='done'?(b.completed_day||'').localeCompare(a.completed_day||'')||b.id-a.id:b.id-a.id);
+ if(!rows.length){const empty=el('div',undefined,'agreement-empty');empty.append(el('span','♡'),el('h3',agreementFilter==='done'?'好事，值得慢慢发生':'下一件想一起做的事是什么？'),el('p',agreementFilter==='done'?'完成的约定，会在这里和日历上留下一个小小的勾。':'从一顿饭、一场电影，或者一次散步开始。'));list.append(empty);}
+ for(const row of rows){const card=el('article',undefined,'agreement-card'+(row.completed_day?' is-done':'')),check=el('button',row.completed_day?'✓':'','agreement-check');check.type='button';check.setAttribute('aria-label',(row.completed_day?'取消完成：':'标记完成：')+row.title);check.setAttribute('aria-pressed',String(Boolean(row.completed_day)));check.disabled=agreementBusy||readonly;check.onclick=()=>row.completed_day?reopenAgreement(row):openAgreementCompletion(row);
+ const content=el('div',undefined,'agreement-card-content');content.append(el('h3',row.title));
+ const caption=el('div',undefined,'agreement-caption-row'),line=el('p',row.warm_line||(row.warm_status==='pending'?'正在为这件小事写一句话…':''),'agreement-warm-line');line.title=row.warm_source==='ai'?'由AI生成的温馨小字':'';caption.append(line);
+ const date=row.completed_day||row.planned_day;if(date)caption.append(el('time',(row.completed_day?'✓ ':'')+agreementDate(date),'agreement-inline-date'));content.append(caption);
+ if(row.note)content.append(el('p',row.note,'agreement-note'));
+ if(agreementLineMode==='ai'&&(row.warm_status==='error'||row.warm_status==='empty')){const retry=el('button',row.warm_status==='error'?'重试温馨小字':'生成温馨小字','quiet agreement-line-retry');retry.disabled=agreementBusy||readonly;retry.title=row.warm_error||'';retry.onclick=()=>mutateAgreement('/api/agreements/'+row.id+'/warm-line',{});content.append(retry);}
+ const footer=el('div',undefined,'agreement-card-footer');footer.append(el('small',row.completed_day?row.completed_name+' 标记完成':row.creator_name+' 写下的约定'));
+ const edit=el('button','编辑','quiet');edit.disabled=agreementBusy||readonly;edit.onclick=()=>openAgreementEditor(row);footer.append(edit);
+ if(row.completed_day){const change=el('button','修改日期','quiet'),jump=el('button','查看日历 ↗','quiet');change.disabled=agreementBusy||readonly;change.onclick=()=>openAgreementCompletion(row);jump.onclick=()=>jumpToAgreementDay(row.completed_day);footer.append(change,jump);}content.append(footer);card.append(check,content);list.append(card);}
+}
+function openAgreementEditor(row=null){if(agreementBusy)return;agreementEditing=row?.id||null;const form=$('#agreement-form');form.reset();form.elements.title.value=row?.title||'';form.elements.planned_day.value=row?.planned_day||'';form.elements.note.value=row?.note||'';resetAgreementPlanDate();$('#agreement-editor-title').textContent=row?'编辑我们的约定':'写下一个约定';$('#agreement-editor-error').textContent='';$('#agreement-editor').showModal();form.elements.title.focus();}
+function openAgreementCompletion(row){if(agreementBusy)return;agreementCompleting=row.id;$('#agreement-completion-name').textContent=row.title;$('#agreement-completion-title').textContent=row.completed_day?'把完成日期记准确':'又一起完成了一件事';const input=$('#agreement-completion-form').elements.day;input.value=row.completed_day||localDay();input.max=localDay();$('#agreement-completion-error').textContent='';$('#agreement-completion').showModal();}
+async function mutateAgreement(url,input,dialog,error){if(agreementBusy)return false;const owner=currentUser?.id;agreementBusy=true;renderAgreements();$('#agreement-save').disabled=$('#agreement-complete-save').disabled=true;
+ try{const rows=await api(url,'POST',input);if(owner!==currentUser?.id)return false;agreementRows=rows;agreementOwner=owner;if(dialog)$(dialog).close();if(view==='calendar')render();else paintAgreementCalendar();return true;}
+ catch(e){if(owner===currentUser?.id)$(error||'#agreement-status').textContent=e.message;return false;}
+ finally{agreementBusy=false;$('#agreement-save').disabled=$('#agreement-complete-save').disabled=false;if(owner===currentUser?.id)renderAgreements();}
+}
+function reopenAgreement(row){if(confirm('将“'+row.title+'”恢复为待完成？日历上的对应完成标记会同步移除。'))mutateAgreement('/api/agreements/'+row.id+'/completion',{day:null});}
+$('#agreement-form').onsubmit=e=>{e.preventDefault();const f=e.target.elements;mutateAgreement('/api/agreements'+(agreementEditing?'/'+agreementEditing:''),{title:f.title.value,note:f.note.value,planned_day:f.planned_day.value},'#agreement-editor','#agreement-editor-error');};
+$('#agreement-completion-form').onsubmit=e=>{e.preventDefault();mutateAgreement('/api/agreements/'+agreementCompleting+'/completion',{day:e.target.elements.day.value},'#agreement-completion','#agreement-completion-error');};
+$('#agreement-add').onclick=()=>openAgreementEditor();$('#agreements-open').onclick=()=>switchView('agreements');
+for(const button of document.querySelectorAll('[data-agreement-filter]'))button.onclick=()=>{agreementFilter=button.dataset.agreementFilter;renderAgreements();};
+for(const dialog of ['agreement-editor','agreement-completion'])document.querySelectorAll('[data-close="'+dialog+'"]').forEach(button=>button.onclick=()=>$('#'+dialog).close());
+async function jumpToAgreementDay(day){selected=day;month=day.slice(0,7);await switchView('calendar');if(innerWidth<=760)openMobileDay();}
+function paintAgreementCalendar(){
+ if(agreementOwner!==currentUser?.id)return;
+ for(const button of document.querySelectorAll('#grid>.day')){button.querySelector('.day-statuses')?.remove();const day=button.getAttribute('aria-label').slice(0,10),count=agreementRows.filter(a=>a.completed_day===day).length,memory=button.querySelector('i');const status=el('div',undefined,'day-statuses');if(memory){memory.remove();status.append(el('small','●','day-memory-status'));}else if(button.classList.contains('has-memory'))status.append(el('small','●','day-memory-status'));
+ if(count){button.classList.add('has-agreement');const mark=el('small','✓'+(count>1?' '+count:''),'agreement-day-mark');mark.title='一起完成了'+count+'个约定';mark.setAttribute('aria-label',mark.title);status.append(mark);}else button.classList.remove('has-agreement');if(status.children.length)button.append(status);}
+ const dayRows=agreementRows.filter(a=>a.completed_day===selected),box=$('#day-agreements');box.replaceChildren();box.hidden=!dayRows.length;$('#stories>.empty')?.toggleAttribute('hidden',Boolean(dayRows.length));if(dayRows.length){box.append(el('p','TOGETHER, WE DID IT','eyebrow'),el('h3','这天一起完成了'));for(const row of dayRows){const item=el('div',undefined,'day-agreement-item'),title=el('span',row.title),date=el('button','修改日期','quiet');date.disabled=Boolean(currentUser?.lifecycle?.readonly);date.onclick=()=>openAgreementCompletion(row);item.append(el('span','✓','day-agreement-check'),title,date);box.append(item);}const all=el('button','看看我们的全部约定 ↗','quiet');all.onclick=()=>{if($('#day-dialog').open)$('#day-dialog').close();switchView('agreements');};box.append(all);}
+}

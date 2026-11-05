@@ -5,7 +5,7 @@ import {scryptSync} from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import {createApplication} from './server.mjs';
-import {memoService} from './memos.mjs';
+import {memoService,createMemoOrganizer,MEMO_ORGANIZER_PROMPT} from './memos.mjs';
 import {openDatabase} from './db.mjs';
 
 test('旧整理结果迁移为可选AI分类，重启不覆盖手动改回待整理的记录',()=>{
@@ -158,4 +158,12 @@ test('备忘图片账号隔离、保留和删除，AI只接收文字并跳过纯
   await call('notes',{id:note.id,body:'喜欢花',images:[]});assert.equal(app.db.prepare('SELECT id FROM memo_images WHERE id=?').get(photo),undefined);
   await service.route({method:'DELETE'},{pathname:'/api/memos/notes/'+imageOnly.notes[1].id},{id:1},{},()=>{});assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM memo_images').get().n,0);
  }finally{if(app.server.listening)await new Promise(r=>app.server.close(r));app.db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('备忘整理采用概括分类与忠实提炼提示词，素材及ID原样发送，保持JSON接口兼容',async()=>{
+ const notes=[{id:42,body:'今天点面时说别加葱，香菜可以加。'}];let request;
+ const fixture={items:[{id:42,category:'饮食',text:'点面时不要葱，香菜可以加。'}]};
+ const organizer=createMemoOrganizer({env:{LLM_API_KEY:'test-private-key',LLM_MODEL:'memo-model',LLM_BASE_URL:'https://llm.example/v1'},fetcher:async(url,options)=>{request={url,...options};return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify(fixture)}}]})};}});
+ const result=await organizer.organize(notes),body=JSON.parse(request.body);assert.equal(request.url,'https://llm.example/v1/chat/completions');assert.equal(body.model,'memo-model');assert.equal(body.messages[0].content,MEMO_ORGANIZER_PROMPT);assert.deepEqual(JSON.parse(body.messages[1].content),notes);assert.equal(result.items[0].id,42);assert.equal(result.items[0].category,'饮食');assert.equal(notes[0].body,'今天点面时说别加葱，香菜可以加。');
 });

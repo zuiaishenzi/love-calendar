@@ -1,3 +1,4 @@
+import {agreementService} from './agreements.mjs';
 import {notificationFeed} from './notifications.mjs';
 import {appUpdates} from './app-updates.mjs';
 import {createRealtime} from './realtime.mjs';
@@ -28,6 +29,7 @@ lifecycle.purge();
 const cleanup=setInterval(()=>{try{lifecycle.purge();}catch{console.error('账本到期清理失败');}},60000);cleanup.unref();
 const realtime=createRealtime(accounts.authenticate,lifecycle.status);
 const memos=memoService(db,memoOrganizer);
+const agreements=agreementService(db,user=>realtime.changed(user));
 const chat=chatService(db,(user,type)=>{if(type==='memory')realtime.changed(user);else realtime.chat(user);},{speechRecognizer});
 const updateApp=appUpdates(process.env.APP_UPDATE_DIR||path.join(dataDir,'app-updates'));
 const pendingThumbnails=new Map();
@@ -63,6 +65,7 @@ const server=http.createServer(async(req,res)=>{
     }
     if(url.pathname.startsWith('/api/')) {
       if(!user) throw fail(401,'请先登录');
+      if(url.pathname==='/api/agreements'||url.pathname.startsWith('/api/agreements/'))return send(200,agreements(req,url,user,req.method==='POST'?await body(req,16384):{},ensureWritable));
       const chatAttachment=url.pathname.match(/^\/api\/memory-chat-media\/([a-f0-9]{36})$/);
       if(chatAttachment&&req.method==='GET'){
         const row=db.prepare('SELECT c.data,c.mime FROM memory_chat_messages c JOIN memories m ON m.id=c.memory_id WHERE c.id=? AND m.ledger_id=? AND c.kind!=?').get(chatAttachment[1],user.ledger_id,'text');if(!row)throw fail(404,'附件不存在');
@@ -225,6 +228,9 @@ const server=http.createServer(async(req,res)=>{
     files['/memos.js']=['memos.js','text/javascript; charset=utf-8'];
     files['/chat.js']=['chat.js','text/javascript; charset=utf-8'];
     files['/notifications.js']=['notifications.js','text/javascript; charset=utf-8'];
+    files['/agreements.js']=['agreements.js','text/javascript; charset=utf-8'];
+    files['/calendar-agreements.js']=['calendar-agreements.js','text/javascript; charset=utf-8'];
+    files['/agreement-plan-date.js']=['agreement-plan-date.js','text/javascript; charset=utf-8'];
     files['/speech.js']=['speech.js','text/javascript; charset=utf-8'];
     const presetAsset=url.pathname.match(/^\/avatars\/pair-([1-5])\.png$/);
     if(presetAsset&&req.method==='GET'){
@@ -237,7 +243,7 @@ const server=http.createServer(async(req,res)=>{
     res.writeHead(200,{'Content-Type':file[1]});res.end(page);
   } catch(e) {if(!e.status) console.error('请求处理失败',e.code||'internal');send(e.status||500,{error:e.status?e.message:'服务暂时不可用，请稍后重试'});}
 });
-server.on('close',()=>{clearInterval(cleanup);chat.close();realtime.close();});
+server.on('close',()=>{clearInterval(cleanup);agreements.close();chat.close();realtime.close();});
 return {server,db,worker,realtime,lifecycle};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){

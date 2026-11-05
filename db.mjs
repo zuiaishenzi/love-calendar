@@ -70,6 +70,8 @@ export function openDatabase(dir) {
  CREATE TABLE IF NOT EXISTS memo_images(id INTEGER PRIMARY KEY,note_id INTEGER NOT NULL REFERENCES memo_notes(id) ON DELETE CASCADE,data BLOB NOT NULL);
  CREATE TABLE IF NOT EXISTS memo_summaries(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,content TEXT NOT NULL);`);
  db.exec('CREATE TABLE IF NOT EXISTS memo_ai_categories(user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,PRIMARY KEY(user_id,name))');
+ db.exec(`CREATE TABLE IF NOT EXISTS agreements(id INTEGER PRIMARY KEY,ledger_id INTEGER NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,creator INTEGER NOT NULL REFERENCES users(id),title TEXT NOT NULL,note TEXT NOT NULL DEFAULT '',planned_day TEXT,completed_day TEXT,completed_by INTEGER REFERENCES users(id),created INTEGER NOT NULL,updated INTEGER NOT NULL);CREATE INDEX IF NOT EXISTS agreements_ledger ON agreements(ledger_id);`);
+ for(const [name,type] of [['warm_line',"TEXT NOT NULL DEFAULT ''"],['warm_source',"TEXT NOT NULL DEFAULT ''"],['warm_error',"TEXT NOT NULL DEFAULT ''"]])if(!db.prepare('PRAGMA table_info(agreements)').all().some(c=>c.name===name))db.exec(`ALTER TABLE agreements ADD COLUMN ${name} ${type}`);
  db.exec('CREATE TABLE IF NOT EXISTS memo_display_order(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,content TEXT NOT NULL)');
  for(const [name,type] of [['day','TEXT'],['title',"TEXT NOT NULL DEFAULT ''"]])if(!db.prepare('PRAGMA table_info(memo_notes)').all().some(c=>c.name===name))db.exec(`ALTER TABLE memo_notes ADD COLUMN ${name} ${type}`);
  // The owner confirmed the date of these previously undated originals.
