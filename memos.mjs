@@ -58,6 +58,11 @@ export function memoService(db,organizer){
    check();const text=required(input.value,500,'要点须为1至500字');
    const items=JSON.parse(db.prepare('SELECT content FROM memo_summaries WHERE user_id=?').get(id)?.content||'[]'),item=items[input.index];
    if(!Number.isSafeInteger(input.index)||!item||item.id!==input.id||item.text!==input.text||!db.prepare('SELECT id FROM memo_notes WHERE id=? AND user_id=?').get(input.id,id))throw fail(409,'条目已变化，请关闭后重新打开');
+   if(input.target!==undefined){
+    const target=input.target,custom=typeof target==='string'&&target.startsWith('custom:')?Number(target.slice(7)):null,ai=typeof target==='string'&&target.startsWith('ai:')?target.slice(3):null;
+    if(!(custom&&db.prepare('SELECT id FROM memo_categories WHERE id=? AND user_id=?').get(custom,id))&&!(ai&&db.prepare('SELECT name FROM memo_ai_categories WHERE user_id=? AND name=?').get(id,ai)))throw fail(400,'分类不存在');
+    item.category=ai||'';item.category_id=custom;
+   }
    item.text=text;db.prepare('UPDATE memo_summaries SET content=? WHERE user_id=?').run(JSON.stringify(items),id);return list(id);
   }
   if(p==='/api/memos/move'&&req.method==='POST'){

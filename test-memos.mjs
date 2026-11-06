@@ -160,6 +160,19 @@ test('手动修改单条要点保留原文和其他要点，拒绝过期、越�
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });
 
+test('条目内容和类别一次保存，分类无效时不写入部分修改',async()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-memo-point-category-')),db=openDatabase(dir);
+ try{
+  db.exec("INSERT INTO ledgers(id,code) VALUES(1,'POINTCAT'); INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(1,'test','x','x',1,1),(2,'other','x','x',1,2); INSERT INTO memo_notes(id,user_id,body,ai_category) VALUES(1,1,'完整原文','饮食'); INSERT INTO memo_categories(id,user_id,name) VALUES(1,1,'手动'),(2,2,'他人'); INSERT INTO memo_ai_categories(user_id,name) VALUES(1,'饮食');");
+  db.prepare('INSERT INTO memo_summaries(user_id,content) VALUES(1,?)').run(JSON.stringify([{id:1,category:'饮食',text:'原要点'},{id:1,category:'饮食',text:'其他要点'}]));
+  const service=memoService(db,{ready:false}),call=input=>service.route({method:'POST'},{pathname:'/api/memos/points'},{id:1},input,()=>{});
+  let data=await call({id:1,index:0,text:'原要点',value:'修改内容',target:'custom:1'});assert.equal(data.summary[0].text,'修改内容');assert.equal(data.summary[0].category_id,1);assert.equal(data.summary[1].text,'其他要点');assert.equal(data.notes[0].body,'完整原文');
+  for(const target of ['custom:2','pending','ai:不存在'])await assert.rejects(call({id:1,index:0,text:'修改内容',value:'不应部分保存',target}),e=>e.status===400);
+  assert.equal(JSON.parse(db.prepare('SELECT content FROM memo_summaries').get().content)[0].text,'修改内容');
+  data=await call({id:1,index:0,text:'修改内容',value:'修改内容',target:'ai:饮食'});assert.equal(data.summary[0].category,'饮食');assert.equal(data.summary[0].category_id,null);
+ }finally{db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
 test('备忘图片账号隔离、保留和删除，AI只接收文字并跳过纯图片',async()=>{
  const sharp=(await import('sharp')).default,dir=mkdtempSync(path.join(os.tmpdir(),'love-memo-images-'));let received=null;
  const app=createApplication({dataDir:dir,mailer:{ready:false},memoOrganizer:{ready:true,async organize(notes){received=notes;return {items:notes.map(n=>({id:n.id,category:'喜好',text:'喜欢花'}))};}}});

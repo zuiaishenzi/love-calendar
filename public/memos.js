@@ -27,9 +27,8 @@ function renderMemos(){
   card.dataset.key=category?'custom:'+category.id:name==='待整理'?'pending':'ai:'+name;
   const handle=el('button','⠿','memo-drag-handle');handle.type='button';handle.setAttribute('aria-label','拖动排序 '+name);handle.title='拖动调整分类顺序，也可使用方向键';handle.disabled=readOnly||memoBusy;if(memoEditMode){heading.prepend(handle);bindMemoDrag(handle,card,list);}card.append(heading);
   if(!notes.length)card.append(el('p','还没有记录。','hint'));
-  const ul=el('ul');for(const entry of notes){const {note,text,extracted}=entry,li=el('li');li.append(el('p',text,'memo-text'));if(!extracted){const pictures=el('div',undefined,'memo-images');for(const image of note.images||[]){const img=el('img');img.src='/api/memos/images/'+image.id;img.alt='备忘图片';img.onclick=()=>openPhoto(img);pictures.append(img);}li.append(pictures);}li.className='memo-entry';if(memoEditMode){const handle=el('button','⠿','memo-item-drag');handle.type='button';handle.title='拖动到其他分类';handle.setAttribute('aria-label','拖动条目到其他分类');handle.disabled=memoBusy||readOnly;li.prepend(handle);bindMemoItemDrag(handle,li,entry);
-    const tools=el('div',undefined,'memo-entry-actions'),edit=el('button','修改'),select=el('select');edit.type='button';edit.disabled=memoBusy||readOnly;edit.onclick=()=>extracted?openMemoPointEditor(entry):openMemoEditor(note);select.setAttribute('aria-label','移动条目到分类');select.append(new Option('移动到…',''));
-    const current=memoEntryKey(entry);if(!extracted&&current!=='pending')select.append(new Option('待整理','pending'));for(const name of memoData.ai_categories||[])if(current!=='ai:'+name)select.append(new Option(name,'ai:'+name));for(const c of memoData.categories)if(current!=='custom:'+c.id)select.append(new Option(c.name+' · 自定义','custom:'+c.id));select.disabled=memoBusy||readOnly||select.options.length===1;select.onchange=()=>{if(select.value)moveMemoEntry(entry,select.value);};tools.append(edit,select);li.append(tools);
+  const ul=el('ul');for(const entry of notes){const {note,text,extracted}=entry,li=el('li');li.append(el('p',text,'memo-text'));if(!extracted){const pictures=el('div',undefined,'memo-images');for(const image of note.images||[]){const img=el('img');img.src='/api/memos/images/'+image.id;img.alt='备忘图片';img.onclick=()=>{if(!memoEditMode)openPhoto(img);};pictures.append(img);}li.append(pictures);}li.className='memo-entry';if(memoEditMode){const handle=el('button','⠿','memo-item-drag');handle.type='button';handle.title='拖动到其他分类';handle.setAttribute('aria-label','拖动条目到其他分类');handle.disabled=memoBusy||readOnly;li.prepend(handle);bindMemoItemDrag(handle,li,entry);
+    li.tabIndex=0;li.setAttribute('role','button');li.setAttribute('aria-label','编辑条目：'+text.slice(0,40));li.setAttribute('aria-disabled',String(memoBusy||readOnly));li.onclick=event=>{if(!event.target.closest('button'))openMemoPointEditor(entry);};li.onkeydown=event=>{if(event.target===li&&(event.key==='Enter'||event.key===' ')){event.preventDefault();openMemoPointEditor(entry);}};
    }
    ul.append(li);
   }card.append(ul);list.append(card);
@@ -82,10 +81,23 @@ function renderMemoCategories(){
  const list=$('#memo-category-management');list.replaceChildren();const readOnly=Boolean(currentUser?.lifecycle?.readonly);
  for(const category of memoData.categories){const row=el('div',undefined,'memo-category-chip'),remove=el('button','×'),used=memoData.notes.some(note=>note.category_id===category.id)||memoData.summary?.some(item=>item.category_id===category.id);remove.type='button';remove.disabled=readOnly||memoBusy||used;remove.title=used?'请先移出分类中的条目':'删除空分类';remove.setAttribute('aria-label','删除分类 '+category.name);remove.onclick=()=>memoMutate('/api/memos/categories/'+category.id,'DELETE',{});row.append(el('span',category.name),remove);list.append(row);}
 }
-function openMemoPointEditor(entry){if(memoBusy||currentUser?.lifecycle?.readonly)return;memoPointEditing=entry;$('#memo-point-form').reset();$('#memo-point-form').elements.text.value=entry.text;$('#memo-point-status').textContent='';$('#memo-point-dialog').showModal();}
+function openMemoPointEditor(entry){
+ if(memoBusy||currentUser?.lifecycle?.readonly)return;memoPointEditing=entry;const form=$('#memo-point-form');form.reset();form.elements.text.value=entry.text;form.elements.text.maxLength=entry.extracted?500:20000;form.elements.text.required=entry.extracted||!entry.note.images?.length;$('#memo-point-status').textContent='';$('#memo-point-hint').textContent=entry.extracted?'只修改这条要点，原文和其他条目会保留。':'内容与类别一起保存，原有日期和图片会保留。';
+ const categories=$('#memo-point-categories'),current=memoEntryKey(entry);categories.replaceChildren();const choices=[...(!entry.extracted?[['待整理','pending']]:[]),...(memoData.ai_categories||[]).map(name=>[name,'ai:'+name]),...memoData.categories.map(category=>[category.name+' · 自定义','custom:'+category.id])];
+ for(const [name,value] of choices){const label=el('label',undefined,'memo-category-choice'),input=el('input');input.type='radio';input.name='target';input.value=value;input.checked=value===current;input.required=true;label.append(input,el('span',name));categories.append(label);}
+ const pictures=$('#memo-point-images');pictures.replaceChildren();if(!entry.extracted)for(const photo of entry.note.images||[]){const img=el('img');img.src='/api/memos/images/'+photo.id;img.alt='备忘图片';img.onclick=()=>openPhoto(img);pictures.append(img);}$('#memo-point-dialog').showModal();
+}
 $('#memo-point-close').onclick=$('#memo-point-cancel').onclick=()=>$('#memo-point-dialog').close();
-$('#memo-point-dialog').addEventListener('close',()=>{memoPointEditing=null;});
-$('#memo-point-form').onsubmit=async event=>{event.preventDefault();const entry=memoPointEditing;if(!entry||memoBusy)return;if(await memoMutate('/api/memos/points','POST',{id:entry.note.id,index:entry.index,text:entry.text,value:event.target.elements.text.value}))$('#memo-point-dialog').close();};
+$('#memo-point-dialog').addEventListener('close',()=>{if(!$('#memo-point-dialog').open)memoPointEditing=null;});
+let memoPointOutside=false;
+$('#memo-point-dialog').addEventListener('pointerdown',event=>{const rect=event.currentTarget.getBoundingClientRect();memoPointOutside=event.target===event.currentTarget&&(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom);});
+$('#memo-point-dialog').addEventListener('click',event=>{if(memoPointOutside&&event.target===event.currentTarget)event.currentTarget.close();memoPointOutside=false;});
+$('#memo-point-form').onsubmit=async event=>{
+ event.preventDefault();const entry=memoPointEditing;if(!entry||memoBusy)return;const value=event.target.elements.text.value,target=event.target.elements.target.value;
+ if(value.trim()===entry.text.trim()&&target===memoEntryKey(entry)){$('#memo-point-dialog').close();return;}
+ const url=entry.extracted?'/api/memos/points':'/api/memos/notes',input=entry.extracted?{id:entry.note.id,index:entry.index,text:entry.text,value,target}:{id:entry.note.id,body:value,category_id:target.startsWith('custom:')?Number(target.slice(7)):null,ai_category:target.startsWith('ai:')?target.slice(3):null};
+ if(await memoMutate(url,'POST',input))$('#memo-point-dialog').close();
+};
 function memoEntryKey(entry){return entry.kind.startsWith('custom:')?entry.kind:entry.kind==='待整理'?'pending':'ai:'+entry.kind;}
 function scrollMemoDrag(node,y){
  for(let parent=node.parentElement;parent;parent=parent.parentElement){const style=getComputedStyle(parent);if(parent.scrollHeight>parent.clientHeight&&/auto|scroll/.test(style.overflowY)){const rect=parent.getBoundingClientRect();if(y>Math.min(innerHeight,rect.bottom)-45)parent.scrollBy(0,12);else if(y>rect.top&&y<rect.top+45)parent.scrollBy(0,-12);return;}}
