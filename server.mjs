@@ -230,6 +230,8 @@ const server=http.createServer(async(req,res)=>{
     files['/memos.js']=['memos.js','text/javascript; charset=utf-8'];
     files['/chat.js']=['chat.js','text/javascript; charset=utf-8'];
     files['/notifications.js']=['notifications.js','text/javascript; charset=utf-8'];
+    files['/calendar-ui.js']=['calendar-ui.js','text/javascript; charset=utf-8'];
+    files['/calendar-ui.css']=['calendar-ui.css','text/css; charset=utf-8'];
     files['/agreements.js']=['agreements.js','text/javascript; charset=utf-8'];
     files['/calendar-agreements.js']=['calendar-agreements.js','text/javascript; charset=utf-8'];
     files['/agreement-plan-date.js']=['agreement-plan-date.js','text/javascript; charset=utf-8'];

@@ -51,11 +51,43 @@ test('Android原生日历适配不作用于浏览器或鸿蒙兼容标记',()=>{
 test('切月加载只显示浮层，旧请求完成不隐藏新请求提示或覆盖月份',async()=>{
  const app=readFileSync('public/app.js','utf8'),code=app.slice(app.indexOf('function animateCalendarMonth('),app.indexOf('function scheduleHolidayRefresh(')),nodes=new Map(),pending=[],renders=[];
  const context={view:'calendar',month:'2026-11',loadVersion:0,holidayRefreshTimer:null,calendarMonthAnimation:null,currentUser:{id:1},clearTimeout(){},matchMedia:()=>({matches:true}),$:selector=>{if(!nodes.has(selector))nodes.set(selector,{hidden:true,textContent:''});return nodes.get(selector);},api:url=>new Promise(resolve=>pending.push({url,resolve})),render:()=>renders.push(context.month),scheduleHolidayRefresh(){}};
- context.waitForCalendarGesture=async()=>{};
+ context.waitForCalendarGesture=async()=>{};context.calendarLoadingMessage=()=>'';
  const load=new Script(code+';load').runInNewContext(context),first=load();assert.equal(nodes.get('#calendar-load-hint').hidden,false);assert.equal(nodes.get('#status').textContent,'');
  context.month='2026-12';const second=load();const resolve=entry=>entry.resolve(entry.url.startsWith('/api/calendar')?{days:[]}:[]);
  pending.slice(0,4).forEach(resolve);await first;assert.equal(nodes.get('#calendar-load-hint').hidden,false);assert.deepEqual(renders,[]);
  pending.slice(4).forEach(resolve);await second;assert.equal(nodes.get('#calendar-load-hint').hidden,true);assert.deepEqual(renders,['2026-12']);
+});
+
+test('月份加载文案区分过去、当月与未来，并支持跨年',()=>{
+ const app=readFileSync('public/app.js','utf8'),code=app.slice(app.indexOf('function calendarLoadingMessage('),app.indexOf('function animateCalendarMonth('));
+ const message=new Script(code+';calendarLoadingMessage').runInNewContext({localDay:()=> '2026-11-06'});
+ assert.equal(message('2026-10'),'正在翻开回忆…');assert.equal(message('2026-11'),'正在翻开这个月的小日子…');assert.equal(message('2026-12'),'正在规划未来…');assert.equal(message('2027-01'),'正在规划未来…');assert.equal(message('2025-12'),'正在翻开回忆…');
+});
+
+test('后台刷新保留尚未跳转的年份和月份，实际切月后清除选择草稿',()=>{
+ const ui=readFileSync('public/calendar-ui.js','utf8'),code=ui.slice(ui.indexOf('function syncMonthPicker(){'),ui.indexOf('function setMonthDraft(')),nodes={'#jump-year':{value:'2026'},'#jump-month':{value:'11'},'#calendar-month-value':{}},context={month:'2026-11',calendarPickerOpen:false,calendarFormDraft:{base:'2026-11',year:'2027',month:'02'},$:selector=>nodes[selector]};
+ const sync=new Script(code+';syncMonthPicker').runInNewContext(context);sync();assert.equal(nodes['#jump-year'].value,'2027');assert.equal(nodes['#jump-month'].value,'02');assert.equal(nodes['#calendar-month-value'].textContent,'2月');
+ context.month='2027-02';sync();assert.equal(context.calendarFormDraft,null);
+});
+
+test('回忆轻提示仅主动新增后展示，三秒隐藏，日历渲染不触发',()=>{
+ const ui=readFileSync('public/calendar-ui.js','utf8'),code=ui.slice(ui.indexOf('function hideCalendarHint('),ui.indexOf('function measureCalendarLayout(')),nodes={'#app':{hidden:false},'#calendar-month-hint':{hidden:true},'#calendar-month-hint-text':{}},timers=new Map();let next=0;
+ const context={innerWidth:390,view:'calendar',currentUser:{id:1},calendarHintTimer:null,syncMonthPicker(){},queueCalendarLayout(){},matchMedia:()=>({matches:true}),$:selector=>nodes[selector],setTimeout:(fn,ms)=>{timers.set(++next,{fn,ms});return next;},clearTimeout:id=>timers.delete(id)};
+ const actions=new Script(code+';({renderCalendarDetails,showCalendarMemoryHint,hideCalendarHint})').runInNewContext(context);
+ for(let n=0;n<3;n++)actions.renderCalendarDetails();assert.equal(nodes['#calendar-month-hint'].hidden,true);assert.equal(timers.size,0);
+ actions.showCalendarMemoryHint({day:'2026-11-20',title:'一起散步'});assert.equal(nodes['#calendar-month-hint'].hidden,false);assert.equal(nodes['#calendar-month-hint-text'].textContent,'11.20 · 一起散步');assert.equal(timers.values().next().value.ms,3000);
+ timers.values().next().value.fn();assert.equal(nodes['#calendar-month-hint'].hidden,true);actions.renderCalendarDetails();assert.equal(timers.size,0);
+ actions.showCalendarMemoryHint({day:'2026-11-21',title:'看日出'});actions.hideCalendarHint();assert.equal(nodes['#calendar-month-hint'].hidden,true);assert.equal(timers.size,0);
+ context.view='chat';actions.showCalendarMemoryHint({day:'2026-11-21',title:'看日出'});assert.equal(nodes['#calendar-month-hint'].hidden,true);
+});
+
+test('只有新增回忆保存成功才触发轻提示，编辑与保存失败不触发',async()=>{
+ const app=readFileSync('public/app.js','utf8'),start=app.indexOf("$('#memory-form').onsubmit="),handler=app.slice(start,app.indexOf('\n',start)),form={elements:{photos:{files:[]},attachments:{files:[]},day:{value:'2026-11-20'},title:{value:'一起散步'},body:{value:''}}},nodes={'#memory-form':form,'#save':{},'#editor-error':{},'#editor':{close(){}}},notices=[];
+ const context={editing:null,kept:[],keptAttachments:[],selected:'2026-11-20',month:'2026-11',$:selector=>nodes[selector],api:async()=>({id:1}),load:async()=>{},showCalendarMemoryHint:row=>notices.push(row)};
+ new Script(handler).runInNewContext(context);const save=()=>form.onsubmit({preventDefault(){},target:form});
+ await save();assert.equal(notices.length,1);assert.equal(notices[0].title,'一起散步');
+ context.editing={id:1};await save();assert.equal(notices.length,1);
+ context.editing=null;context.api=async()=>{throw Error('保存失败');};await save();assert.equal(notices.length,1);assert.equal(nodes['#editor-error'].textContent,'保存失败');
 });
 
 test('后台日历刷新等待手势结束，新请求取代旧请求时立即退出等待',async()=>{
