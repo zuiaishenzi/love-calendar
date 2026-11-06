@@ -222,7 +222,7 @@ dialog::-webkit-scrollbar-thumb{background:#c99baa;border-radius:12px}
 #day-detail .day-reminders{border-top-color:#e6d5dd}
 #day-detail .empty .heart{color:#c38da3}
 #day-detail .outline{border-radius:10px;border-color:#dcc2cd}
-#day-dialog #day-detail{border:0;background:none}
+#day-dialog #day-detail{border:0;background:none;border-radius:0;clip-path:none}
 @media(min-width:761px){
  .view-switch{gap:4px}
  .view-switch button{border-radius:9px;font-size:14px}
@@ -588,7 +588,6 @@ body.android-app,body.android-app *{-webkit-user-select:none;user-select:none;-w
 #memos-dialog.main-view>.dialog-heading{margin-bottom:8px}
 #memos-dialog.main-view>.hint{margin-bottom:8px;line-height:1.6}
 #memos-dialog.main-view>.memo-ai-bar{margin:8px 0 6px;gap:6px}
-#memos-dialog.main-view>#memo-edit-mode{margin:0 0 8px;padding:4px 8px}
 #memos-dialog.main-view>#memos-status{min-height:0;margin:0 0 8px;line-height:1.5}
 #memos-dialog.main-view>#memos-status:empty{display:none}
 @media(max-width:760px){
@@ -616,9 +615,6 @@ dialog{overscroll-behavior:contain;touch-action:pan-y}
  #memos-dialog.main-view #memos-list>.memo-empty{column-span:all}
 }
 
-#memos-dialog.main-view>#memo-edit-mode{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:6px 12px;border:1px solid #d9bdc9;border-radius:9px;background:white;color:var(--wine);font-size:12px}
-#memos-dialog.main-view>#memo-edit-mode:hover{background:#faf0f4}
-#memos-dialog.main-view>#memo-edit-mode[aria-pressed="true"]{background:#f4e5ec;border-color:var(--wine);font-weight:600}
 
 /* Desktop sidebar trial; mobile navigation keeps its existing layout. */
 @media(min-width:1100px){
@@ -757,3 +753,50 @@ body[data-calendar-hub-platform="mobile"] #calendar-pull-hint{top:calc(70px + en
 @media(max-width:760px){.calendar .toolbar>.month-overview{gap:12px;padding:1px 2px;font-size:11px}.month-overview strong{font-size:14px}.month-overview-label{font-size:10px;padding-right:10px}}
 @media(max-width:760px){html[data-android-calendar-fit="true"] #app .calendar .grid>.day:has(.day-statuses){padding-bottom:12px!important}html[data-android-calendar-fit="true"] #app .calendar .day-statuses{bottom:2px;min-height:8px}html[data-android-calendar-fit="true"] #app .calendar .day>span{flex-shrink:0}}
 .agreement-plan-field{margin-bottom:19px;min-width:0}.agreement-plan-field>label{margin-bottom:8px}#agreement-plan-trigger{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:12px;text-align:left;background:#fff9fc;border:1px solid #e4d1dc;border-radius:9px;color:#b298a6;font-size:14px}#agreement-plan-trigger.has-date{color:#80566e}#agreement-plan-trigger[aria-expanded="true"]{border-color:#b97d9b;box-shadow:0 0 0 3px #c79bb31a}#agreement-plan-trigger svg{width:19px;height:19px;flex:none;color:#ad8b9e}#agreement-plan-picker{margin-top:9px;padding:13px;background:linear-gradient(145deg,#fff8fc,#f9edf4);border:1px solid #e8cfdf;border-radius:14px;box-shadow:0 5px 17px #80516e0b;max-width:100%}.agreement-plan-heading{display:flex;align-items:center;justify-content:space-between;margin:0 0 12px}.agreement-plan-heading strong{font-size:14px;font-weight:500;color:#82546e}.agreement-plan-heading button{display:grid;place-items:center;padding:0;width:31px;height:31px;border:0;border-radius:50%;background:#f2e2ec;color:#aa7896;font-size:23px;line-height:1}.agreement-plan-week,#agreement-plan-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.agreement-plan-week{font-size:11px;text-align:center;color:#b397a8;margin-bottom:6px}#agreement-plan-days button{min-width:0;min-height:34px;padding:5px 0;border:1px solid transparent;border-radius:9px;background:transparent;color:#88677b;font-size:12px}#agreement-plan-days button:hover{background:#efdae7;color:#8c496c}#agreement-plan-days button.today{border-color:#d6aec4;color:#9c5378}#agreement-plan-days button.selected{background:#a7557e;color:#fff9fc;border-color:#a7557e;box-shadow:0 2px 5px #9c5c7d14}.agreement-plan-footer{display:flex;justify-content:space-between;margin-top:10px;padding-top:9px;border-top:1px solid #ead6e2}.agreement-plan-footer button{padding:5px 7px;border:0;background:transparent;color:#a47790;font-size:11px}.agreement-plan-footer button:last-child{background:#f1deeb;border-radius:8px;color:#8e5174}@media(max-width:380px){#agreement-plan-picker{padding:10px}.agreement-plan-week,#agreement-plan-days{gap:2px}#agreement-plan-days button{min-height:32px}}
+
+#editor{width:min(720px,calc(100vw - 24px));max-width:calc(100vw - 24px)}
+
+/* Memo browsing stays quiet; all management actions live in edit mode. */
+#memos-dialog.main-view>.memo-ai-bar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 0 12px}
+#memos-dialog.main-view>.memo-ai-bar>button{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:100%;min-width:0;height:42px;margin:0;padding:8px 6px;border:1px solid #e5d2dc;border-radius:11px;background:#fffcfd;color:#946078;font-size:13px;line-height:1.4;white-space:nowrap}
+#memos-dialog.main-view>.memo-ai-bar>button.primary{background:var(--wine);border-color:var(--wine);color:#fff9fc}
+#memos-dialog.main-view>.memo-ai-bar>button:hover{background:#f6eaf0}
+#memos-dialog.main-view>.memo-ai-bar>button.primary:hover{background:#733047}
+#memos-dialog.main-view>.memo-ai-bar>button[aria-pressed="true"]{background:#f1e0e9;border-color:#c899ae}
+.memo-ai-bar svg{width:18px;height:18px;flex:none}.memo-ai-bar button[aria-busy="true"] svg{opacity:.5}
+#memo-edit-tools{padding:13px 14px;border:1px solid #ecdae3;border-radius:12px;background:#faf1f6;margin-bottom:14px}
+#memo-edit-tools>p{margin:0 0 10px;color:#9d7c8d;font-size:12px;line-height:1.6}
+#memo-edit-tools #memo-category-form{display:flex;flex-wrap:nowrap;gap:8px;margin:0}
+#memo-category-form input{min-width:0;flex:1;margin:0;padding:9px 10px;font-size:12px}
+#memo-category-form button{flex:none;font-size:12px;padding:8px 10px;color:#95677e}
+#memo-category-management{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}#memo-category-management:empty{display:none}
+.memo-category-chip{display:flex;align-items:center;gap:5px;border:1px solid #e9d4df;border-radius:18px;background:#fffafb;padding:3px 4px 3px 10px;color:#9c788b;font-size:11px}.memo-category-chip button{border:0;background:transparent;padding:1px 5px;font-size:16px;line-height:1.3;color:inherit}
+#memos-dialog.main-view #memos-list.is-editing{display:grid;column-count:auto;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:14px}
+#memos-dialog.main-view #memos-list.is-editing>.memo-group{display:block;margin:0;width:auto}
+#memos-list.is-editing .memo-group ul{list-style:none;padding:0}
+#memos-list.is-editing .memo-entry{display:grid;grid-template-columns:22px minmax(0,1fr);gap:6px;padding:12px 0;border-bottom:1px solid #f0e4eb}
+#memos-list.is-editing .memo-entry:last-child{border-bottom:0}
+#memos-list.is-editing .memo-entry>.memo-item-drag{grid-column:1;grid-row:1;padding:1px 2px;line-height:1.4}
+#memos-list.is-editing .memo-entry>.memo-text,#memos-list.is-editing .memo-entry>.memo-images,#memos-list.is-editing .memo-entry>.memo-entry-actions{grid-column:2;min-width:0}
+.memo-entry>.memo-images:empty{display:none}
+.memo-entry-actions{display:flex;align-items:center;gap:8px;margin-top:3px}.memo-entry-actions>button{font-size:11px;padding:6px 10px;color:#98677e;border-color:#e6d2dd;background:#fff9fc;flex:none}.memo-entry-actions>select{width:auto;min-width:0;flex:1;border:1px solid #e6d2dd;border-radius:8px;background:#fffcfd;color:#9c7a8d;font-family:inherit;font-size:11px;line-height:1.5;padding:6px}
+#memo-point-dialog{width:min(560px,calc(100vw - 24px));max-width:calc(100vw - 24px);background:#fffafb}#memo-point-dialog>.hint,#memo-source-warning{font-size:12px;line-height:1.7;color:#a17e91}#memo-point-status{font-size:12px;color:var(--wine)}#memo-point-dialog .memo-actions{justify-content:flex-end}
+@media(max-width:760px){#memos-dialog.main-view>.memo-ai-bar{gap:6px}#memos-dialog.main-view>.memo-ai-bar>button{font-size:12px;gap:5px}#memos-dialog.main-view #memos-list.is-editing{grid-template-columns:1fr}.memo-ai-bar svg{width:17px;height:17px}#memo-point-dialog{padding:20px}}
+
+/* A single composer surface keeps text, attachments and voice controls together. */
+#chat-dialog.main-view .chat-composer{flex:none;margin:0 14px 14px;border:1px solid #e9d8e1;border-radius:17px;background:linear-gradient(135deg,#fffdfd,#fcf6f9);box-shadow:0 3px 15px #825c7107;overflow:hidden}
+#chat-dialog.main-view .chat-composer #chat-form{padding:12px 12px 9px;margin:0;border:0;background:transparent;gap:10px}
+#chat-dialog.main-view .chat-composer #chat-form textarea{font-family:inherit;font-size:14px;min-height:60px;max-height:120px;padding:10px 11px;line-height:1.6;border:0;border-radius:10px;background:transparent;resize:none;box-shadow:none}
+#chat-dialog.main-view .chat-composer #chat-form textarea::placeholder{color:#b19aaa;font-size:13px}
+#chat-dialog.main-view .chat-composer #chat-form>.primary{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:38px;flex:none;padding:9px 15px;border-radius:11px;font-size:13px}
+#chat-form>.primary svg{width:16px;height:16px;flex:none}
+#chat-dialog.main-view .chat-composer .chat-tools{padding:0 12px 11px;background:transparent;gap:8px;align-items:center;flex-wrap:wrap}
+#chat-dialog.main-view .chat-composer .chat-tools :is(button,.chat-upload){flex:0 0 auto;min-height:34px;border:1px solid #eadce4;border-radius:10px;padding:6px 11px;background:#fffafc;font-size:12px;font-weight:400;gap:6px;max-width:100%;white-space:nowrap}
+#chat-dialog.main-view .chat-composer .chat-tools :is(#chat-record,#chat-native-record,label.chat-upload)::before{content:'';display:inline-block;width:16px;height:16px;flex:none;background:currentColor;-webkit-mask:var(--chat-control-icon,url('/chat-microphone.svg')) center/contain no-repeat;mask:var(--chat-control-icon,url('/chat-microphone.svg')) center/contain no-repeat}
+#chat-dialog.main-view .chat-composer label.chat-upload{--chat-control-icon:url('/chat-image.svg')}
+#chat-dialog.main-view .chat-composer #chat-record-preview{padding:0 12px 10px;background:transparent}
+#chat-dialog.main-view #chat-earlier{position:absolute;top:76px;left:50%;transform:translateX(-50%);z-index:10;margin:0;padding:8px 15px;border:1px solid #e7cbd9;border-radius:20px;background:#fff9fcf5;box-shadow:0 3px 14px #85566c15;color:#9e637f;font-size:12px;line-height:1.4;white-space:nowrap}
+#chat-dialog.main-view #chat-earlier:hover{background:#f8eaf2}
+@media(max-width:760px){#chat-dialog.main-view .chat-composer{margin:0 9px 9px;border-radius:15px}#chat-dialog.main-view .chat-composer #chat-form{padding:9px 9px 6px;gap:6px}#chat-dialog.main-view .chat-composer #chat-form textarea{min-height:52px;padding:7px 5px;font-size:14px}#chat-dialog.main-view .chat-composer #chat-form>.primary{min-height:36px;padding:8px 11px;font-size:12px}#chat-dialog.main-view .chat-composer .chat-tools{padding:0 9px 9px;gap:7px}#chat-dialog.main-view #chat-earlier{top:69px}}
+
+#chat-dialog.main-view .chat-composer .chat-tools :is(#chat-record,#chat-native-record){flex:0 0 auto;width:auto}

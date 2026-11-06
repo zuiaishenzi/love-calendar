@@ -54,6 +54,12 @@ export function memoService(db,organizer){
    db.prepare('INSERT INTO memo_display_order(user_id,content) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET content=excluded.content').run(id,JSON.stringify(input.order));return list(id);
   }
   if(p==='/api/memos'&&req.method==='GET')return list(id);
+  if(p==='/api/memos/points'&&req.method==='POST'){
+   check();const text=required(input.value,500,'要点须为1至500字');
+   const items=JSON.parse(db.prepare('SELECT content FROM memo_summaries WHERE user_id=?').get(id)?.content||'[]'),item=items[input.index];
+   if(!Number.isSafeInteger(input.index)||!item||item.id!==input.id||item.text!==input.text||!db.prepare('SELECT id FROM memo_notes WHERE id=? AND user_id=?').get(input.id,id))throw fail(409,'条目已变化，请关闭后重新打开');
+   item.text=text;db.prepare('UPDATE memo_summaries SET content=? WHERE user_id=?').run(JSON.stringify(items),id);return list(id);
+  }
   if(p==='/api/memos/move'&&req.method==='POST'){
    check();const note=db.prepare('SELECT * FROM memo_notes WHERE id=? AND user_id=?').get(input.id,id);if(!note)throw fail(404,'记录不存在');
    const target=input.target,custom=typeof target==='string'&&target.startsWith('custom:')?Number(target.slice(7)):null,ai=typeof target==='string'&&target.startsWith('ai:')?target.slice(3):null;

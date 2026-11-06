@@ -232,6 +232,8 @@ const server=http.createServer(async(req,res)=>{
     files['/notifications.js']=['notifications.js','text/javascript; charset=utf-8'];
     files['/calendar-ui.js']=['calendar-ui.js','text/javascript; charset=utf-8'];
     files['/calendar-ui.css']=['calendar-ui.css','text/css; charset=utf-8'];
+    files['/chat-microphone.svg']=['chat-microphone.svg','image/svg+xml'];
+    files['/chat-image.svg']=['chat-image.svg','image/svg+xml'];
     files['/agreements.js']=['agreements.js','text/javascript; charset=utf-8'];
     files['/calendar-agreements.js']=['calendar-agreements.js','text/javascript; charset=utf-8'];
     files['/agreement-plan-date.js']=['agreement-plan-date.js','text/javascript; charset=utf-8'];

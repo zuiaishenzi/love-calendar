@@ -1,7 +1,8 @@
-let chatOwner=null,chatTimer=null,chatBusy=false,chatMore=false,chatOldest=null,chatRows=[],chatSending=false,chatGeneration=0,chatRenderKey='';
+let chatOwner=null,chatTimer=null,chatBusy=false,chatRows=[],chatSending=false,chatGeneration=0,chatRenderKey='';
 let voiceStream=null,voiceRecorder=null,voiceBlob=null,voiceUrl=null,voiceTimer=null,voiceSeconds=0,recordGeneration=0,voiceStarting=false;
 let chatMembers=[],chatSelecting=false,chatSelected=new Set(),chatSavingMemory=false;
-let chatSyncSince=0;
+let chatSyncSince=0,chatLoadedLatest=0;
+let chatReadThrough=0,chatUnreadTotal=0,chatReadSeen=new Set(),chatUnreadDismissedThrough=0,chatReadFrame=null,chatReadSaving=false,chatReadReady=false;
 let chatPeerOnline=false,chatPending=null;
 function updateChatPresence(online){chatPeerOnline=online;const badge=$('#chat-peer-status');badge.textContent=online?'在线':'离开';badge.classList.toggle('online',online);}
 function chatSelection(){const readonly=Boolean(currentUser?.lifecycle?.readonly);$('#chat-selection-bar').hidden=!chatSelecting;$('#chat-selection-cancel').disabled=chatSavingMemory;$('#chat-selection-count').textContent=`已选 ${chatSelected.size} 条`;$('#chat-to-memory').disabled=readonly||chatSavingMemory||!chatSelected.size;$('#chat-to-memory').textContent=chatSavingMemory?'正在收藏…':'存入今日回忆';}
@@ -27,7 +28,7 @@ function chatHeader(){const peer=chatMembers.find(m=>m.id!==chatOwner),host=$('#
 let chatStatusTimer=null;
 const chatStatus=text=>{clearTimeout(chatStatusTimer);const notice=$('#chat-status');notice.textContent=text;if(text)chatStatusTimer=setTimeout(()=>{notice.textContent='';},6000);};
 function releaseRecording(){if(typeof nativeVoiceActive!=='undefined'&&nativeVoiceActive){$('#chat-native-cancel').click();resetNativeVoiceUI();}recordGeneration++;clearInterval(voiceTimer);if(voiceRecorder){voiceRecorder.onstop=null;voiceRecorder.ondataavailable=null;voiceRecorder.onerror=null;if(voiceRecorder.state!=='inactive')voiceRecorder.stop();}voiceRecorder=null;voiceStream?.getTracks().forEach(t=>t.stop());voiceStream=null;voiceBlob=null;if(voiceUrl)URL.revokeObjectURL(voiceUrl);voiceUrl=null;$('#chat-record-preview').pause();$('#chat-record-preview').removeAttribute('src');$('#chat-record-preview').hidden=true;$('#chat-record-send').hidden=$('#chat-record-cancel').hidden=true;$('#chat-record').textContent='录制语音';}
-function stopChat(){leaveChatView();if(typeof closeSpeech==="function")closeSpeech();updateChatPresence(false);$('#chat-history-dialog').close();$('#chat-history-form').reset();chatGeneration++;clearTimeout(chatTimer);chatTimer=null;chatBusy=false;chatOwner=null;chatPending=null;chatMembers=[];chatRows=[];chatRenderKey='';$('#chat-messages').replaceChildren();$('#chat-form').reset();releaseRecording();chatUnreadBadge(0);}
+function stopChat(){leaveChatView();if(typeof closeSpeech==="function")closeSpeech();updateChatPresence(false);$('#chat-history-dialog').close();$('#chat-history-form').reset();chatGeneration++;clearTimeout(chatTimer);chatTimer=null;chatBusy=false;chatOwner=null;chatSyncSince=0;chatLoadedLatest=0;chatReadThrough=0;chatUnreadTotal=0;chatReadSeen.clear();chatUnreadDismissedThrough=0;chatReadReady=false;chatReadSaving=false;if(chatReadFrame!==null)cancelAnimationFrame(chatReadFrame);chatReadFrame=null;$('#chat-earlier').hidden=true;chatPending=null;chatMembers=[];chatRows=[];chatRenderKey='';$('#chat-messages').replaceChildren();$('#chat-form').reset();releaseRecording();chatUnreadBadge(0);}
 function startChat(){if(chatOwner!==currentUser?.id){stopChat();chatOwner=currentUser?.id;}syncChat();}
 function chatSelectableRow(wrap,check){
  const toggle=()=>{if(check.disabled)return;check.checked=!check.checked;check.onchange();};
@@ -37,14 +38,14 @@ function chatSelectableRow(wrap,check){
 }
 function renderChat(){
  chatHeader();chatSelection();
- $('#chat-earlier').hidden=!chatMore;
+
  const readonly=Boolean(currentUser?.lifecycle?.readonly);for(const field of $('#chat-form').elements)field.disabled=readonly||chatSending;
  $('#chat-record').disabled=readonly||chatSending||voiceStarting;$('#chat-image-input').disabled=readonly||chatSending;
  for(const row of chatRows)if(row.retracted_at)chatSelected.delete(row.id);chatSelection();
- const key=chatOwner+':'+chatSelecting+':'+JSON.stringify(chatMembers)+':'+(chatPending?.id||'')+':'+chatRows.map(r=>r.id+'-'+(r.retracted_at||0)+'-'+(r.transcript||'')+'-'+(r.transcript_hidden||0)).join(',');if(key===chatRenderKey)return;chatRenderKey=key;
- const list=$('#chat-messages'),bottom=list.scrollHeight-list.scrollTop-list.clientHeight<70;for(const audio of list.querySelectorAll('audio'))audio.pause();list.replaceChildren();
+ const key=chatOwner+':'+chatSelecting+':'+JSON.stringify(chatMembers)+':'+(chatPending?.id||'')+':'+chatRows.map(r=>r.id+'-'+(r.retracted_at||0)+'-'+(r.transcript||'')+'-'+(r.transcript_hidden||0)).join(',');if(key===chatRenderKey){queueChatRead();return;}chatRenderKey=key;
+ const list=$('#chat-messages'),bottom=list.scrollHeight-list.scrollTop-list.clientHeight<70,top=list.scrollTop,bounds=list.getBoundingClientRect(),anchor=[...list.querySelectorAll('.chat-row')].find(node=>node.getBoundingClientRect().bottom>bounds.top),anchorId=anchor?.dataset.messageId,anchorTop=anchor?.getBoundingClientRect().top;for(const audio of list.querySelectorAll('audio'))audio.pause();list.replaceChildren();
  let previous=null;
- for(const row of [...chatRows,...(chatPending?[chatPending]:[])]){appendChatTime(list,row.created,previous);previous=row.created;const mine=row.sender===chatOwner,wrap=el('div',undefined,'chat-row'+(mine?' mine':'')),avatar=el('span',undefined,'avatar chat-avatar'),member=chatMembers.find(m=>m.id===row.sender);avatar.setAttribute('aria-label',mine?'我的头像':row.name+'的头像');if(member)drawAvatar(avatar,member);
+ for(const row of [...chatRows,...(chatPending?[chatPending]:[])]){appendChatTime(list,row.created,previous);previous=row.created;const mine=row.sender===chatOwner,wrap=el('div',undefined,'chat-row'+(mine?' mine':'')),avatar=el('span',undefined,'avatar chat-avatar'),member=chatMembers.find(m=>m.id===row.sender);wrap.dataset.messageId=String(row.id);avatar.setAttribute('aria-label',mine?'我的头像':row.name+'的头像');if(member)drawAvatar(avatar,member);
   if(chatSelecting&&!row.retracted_at){const check=el('input');check.type='checkbox';check.checked=chatSelected.has(row.id);check.disabled=chatSavingMemory;check.setAttribute('aria-label','选择'+row.name+'的'+({text:'文字',image:'图片',audio:'语音'}[row.kind])+'消息');check.onchange=()=>{if(check.checked&&chatSelected.size>=50){check.checked=false;chatStatus('一次最多选择50条消息');return;}if(check.checked)chatSelected.add(row.id);else chatSelected.delete(row.id);wrap.classList.toggle('selected',check.checked);chatSelection();};wrap.append(check);wrap.classList.toggle('selected',check.checked);wrap.classList.add('selectable');chatSelectableRow(wrap,check);}
   const card=el('article',undefined,(row.kind==='audio'&&!row.pending&&!row.retracted_at?'voice-card':'chat-message')+(mine?' mine':''));
   if(row.retracted_at){wrap.classList.add('retracted');card.append(el('p',mine?'你撤回了一条消息':'对方撤回了一条消息','chat-retracted'));wrap.append(card);list.append(wrap);continue;}
@@ -55,17 +56,41 @@ function renderChat(){
   if(!row.pending&&row.kind==='audio'){card.append(voiceMessage('/api/chat/media/'+row.id,row.duration));speechTranscript(card,row);}wrap.append(avatar,card);if(row.pending){const spinner=el('span',undefined,'chat-send-spinner');spinner.setAttribute('role','status');spinner.setAttribute('aria-label','正在发送');wrap.append(spinner);}list.append(wrap);
  }
  if(!chatRows.length&&!chatPending)list.append(el('p','想说的话，随时留给对方。','chat-empty'));
- if(bottom)list.scrollTop=list.scrollHeight;
+ if(bottom)list.scrollTop=list.scrollHeight;else{const restored=anchorId?list.querySelector('[data-message-id="'+anchorId+'"]'):null;list.scrollTop=restored?list.scrollTop+restored.getBoundingClientRect().top-anchorTop:top;}queueChatRead();
 }
+function mergeChatReadState(state){
+ if(!state)return;chatReadThrough=Math.max(chatReadThrough,state.readThrough||0);chatUnreadTotal=state.count||0;for(const id of chatReadSeen)if(id<=chatReadThrough)chatReadSeen.delete(id);paintChatUnreadBadge();
+}
+function paintChatUnreadBadge(){const seen=chatRows.filter(row=>row.id>chatReadThrough&&row.sender!==chatOwner&&!row.retracted_at&&chatReadSeen.has(row.id)).length;chatUnreadBadge(Math.max(0,chatUnreadTotal-seen));}
+function chatCanRead(){return chatReadReady&&chatOwner&&!$('#chat-dialog').hidden&&!document.hidden&&!document.querySelector('dialog[open]');}
+function queueChatRead(){if(chatReadFrame===null)chatReadFrame=requestAnimationFrame(updateChatRead);}
+function updateChatRead(){
+ chatReadFrame=null;if(!chatCanRead()){$('#chat-earlier').hidden=true;return;}
+ const list=$('#chat-messages'),bounds=list.getBoundingClientRect(),nodes=new Map([...list.querySelectorAll('.chat-row')].map(node=>[Number(node.dataset.messageId),node]));if(list.clientHeight<=0)return;
+ for(const row of chatRows){if(row.id<=chatReadThrough||row.sender===chatOwner||row.retracted_at)continue;const rect=nodes.get(row.id)?.getBoundingClientRect();if(rect&&Math.min(rect.bottom,bounds.bottom)-Math.max(rect.top,bounds.top)>=Math.min(rect.height,list.clientHeight)*.5)chatReadSeen.add(row.id);}
+ const unread=chatRows.filter(row=>row.id>Math.max(chatReadThrough,chatUnreadDismissedThrough)&&row.sender!==chatOwner&&!row.retracted_at&&!chatReadSeen.has(row.id)),first=nodes.get(unread[0]?.id)?.getBoundingClientRect(),last=nodes.get(unread.at(-1)?.id)?.getBoundingClientRect(),button=$('#chat-earlier');
+ button.hidden=!first||!last||last.bottom-first.top<=list.clientHeight;button.textContent='↑ '+unread.length+' 条未读消息';paintChatUnreadBadge();flushChatRead();
+}
+async function flushChatRead(){
+ if(chatReadSaving||!chatCanRead())return;let through=chatReadThrough;for(const row of chatRows){if(row.id<=through)continue;if(row.sender!==chatOwner&&!row.retracted_at&&!chatReadSeen.has(row.id))break;through=row.id;}if(through<=chatReadThrough)return;
+ const generation=chatGeneration;chatReadSaving=true;let saved=false;try{const state=await api('/api/chat/read','POST',{through});if(generation!==chatGeneration)return;mergeChatReadState(state);saved=true;}catch{}finally{if(generation===chatGeneration){chatReadSaving=false;if(saved)queueChatRead();}}
+}
+function jumpToUnreadChat(){
+ const row=chatRows.find(row=>row.id>chatReadThrough&&row.sender!==chatOwner&&!row.retracted_at&&!chatReadSeen.has(row.id)),list=$('#chat-messages'),node=row&&list.querySelector('[data-message-id="'+row.id+'"]');if(!node)return;
+ chatUnreadDismissedThrough=Math.max(chatUnreadDismissedThrough,...chatRows.map(row=>row.id));$('#chat-earlier').hidden=true;list.scrollTop+=node.getBoundingClientRect().top-list.getBoundingClientRect().top-12;queueChatRead();
+}
+$('#chat-earlier').onclick=jumpToUnreadChat;
+$('#chat-messages').addEventListener('scroll',queueChatRead,{passive:true});$('#chat-messages').addEventListener('load',queueChatRead,true);window.addEventListener('resize',queueChatRead);
+new ResizeObserver(queueChatRead).observe($('#chat-messages'));
 async function syncChat(){
  clearTimeout(chatTimer);if(!chatOwner||chatBusy)return;chatBusy=true;const generation=chatGeneration;
  try{
-  if(!$('#chat-dialog').hidden){const data=await api('/api/chat/messages?since='+chatSyncSince);if(generation!==chatGeneration)return;chatUnreadBadge(data.unread?.count||0);chatSyncSince=data.revision;chatMembers=data.members;const byId=new Map(chatRows.map(r=>[r.id,r]));for(const row of data.messages)byId.set(row.id,row);for(const retracted of data.retractions||[]){const row=byId.get(retracted.id);if(row)byId.set(row.id,{...row,text:'',mime:null,retracted_at:retracted.retracted_at});}chatRows=[...byId.values()].sort((a,b)=>a.id-b.id);if(chatOldest===null){chatMore=data.more;chatOldest=chatRows[0]?.id||null;}
-   let oldest=data.messages[0]?.id;let more=data.more,fetchedEarlier=false;
-   while(data.unread?.count&&more&&oldest>data.unread.readThrough){const earlier=await api('/api/chat/messages?before='+oldest);if(generation!==chatGeneration||$('#chat-dialog').hidden)return;fetchedEarlier=true;for(const row of earlier.messages)byId.set(row.id,row);const next=earlier.messages[0]?.id;if(!next||next>=oldest)break;oldest=next;more=earlier.more;}
-   chatRows=[...byId.values()].sort((a,b)=>a.id-b.id);chatOldest=chatRows[0]?.id||null;if(fetchedEarlier)chatMore=more;renderChat();
-   if(!$('#chat-dialog').hidden&&!document.hidden){if(data.unread?.count)$('#chat-messages').scrollTop=$('#chat-messages').scrollHeight;await new Promise(resolve=>requestAnimationFrame(resolve));if(generation!==chatGeneration||$('#chat-dialog').hidden||document.hidden)return;const read=await api('/api/chat/read','POST',{through:data.unread?.latest||0});if(generation===chatGeneration)chatUnreadBadge(read.count);}
-  }else{const unread=await api('/api/chat/unread');if(generation===chatGeneration)chatUnreadBadge(unread.count);}
+  if(!$('#chat-dialog').hidden){const data=await api('/api/chat/messages?since='+chatSyncSince);if(generation!==chatGeneration)return;chatSyncSince=data.revision;chatMembers=data.members;const byId=new Map(chatRows.map(r=>[r.id,r]));for(const row of data.messages)byId.set(row.id,row);for(const retracted of data.retractions||[]){const row=byId.get(retracted.id);if(row)byId.set(row.id,{...row,text:'',mime:null,retracted_at:retracted.retracted_at});}chatRows=[...byId.values()].sort((a,b)=>a.id-b.id);
+   let oldest=data.messages[0]?.id;let more=data.more;
+   while(data.unread?.count&&more&&oldest>data.unread.readThrough&&oldest>chatLoadedLatest){const earlier=await api('/api/chat/messages?before='+oldest);if(generation!==chatGeneration||$('#chat-dialog').hidden)return;for(const row of earlier.messages)byId.set(row.id,row);const next=earlier.messages[0]?.id;if(!next||next>=oldest)break;oldest=next;more=earlier.more;}
+   chatRows=[...byId.values()].sort((a,b)=>a.id-b.id);chatLoadedLatest=Math.max(chatLoadedLatest,data.messages.at(-1)?.id||0);mergeChatReadState(data.unread);chatReadReady=true;renderChat();
+
+  }else{const unread=await api('/api/chat/unread');if(generation===chatGeneration)mergeChatReadState(unread);}
  }catch(e){if(generation===chatGeneration)chatStatus(e.message);}finally{if(generation===chatGeneration){chatBusy=false;if(chatOwner)chatTimer=setTimeout(syncChat,!$('#chat-dialog').hidden?4000:15000);}}
 }
 window.addEventListener('chat-update',()=>syncChat());
@@ -74,8 +99,8 @@ function openChatView(){chatGeneration++;chatBusy=false;clearTimeout(chatTimer);
 $('#chat-open').onclick=()=>switchView('chat');
 $('#chat-selection-cancel').onclick=()=>{chatSelecting=false;chatSelected.clear();renderChat();};
 $('#chat-to-memory').onclick=async()=>{if(chatSavingMemory||!chatSelected.size)return;chatSavingMemory=true;chatSelection();const owner=chatOwner;try{const result=await api('/api/chat/memory','POST',{ids:[...chatSelected]});if(owner!==chatOwner)return;chatSelected.clear();chatSelecting=false;renderChat();await load();}catch(e){if(owner===chatOwner)chatStatus(e.message);}finally{chatSavingMemory=false;if(owner===chatOwner)chatSelection();}};
-function leaveChatView(){chatStatus('');chatGeneration++;chatBusy=false;clearTimeout(chatTimer);if(chatOwner)chatTimer=setTimeout(syncChat,15000);if(typeof voiceHoldTimer!=='undefined'){clearTimeout(voiceHoldTimer);voiceHold=null;voiceHeld=false;voiceHoldAction='cancel';$('#chat-hold-actions').hidden=true;if(nativeVoiceBuild>=10806)nativeVoiceCommand('cancel');}closeChatMenu();releaseRecording();for(const audio of $('#chat-messages').querySelectorAll('audio'))audio.pause();$('#chat-history-dialog').close();chatSelecting=false;chatSelected.clear();chatSelection();}
-$('#chat-earlier').onclick=async()=>{const owner=chatOwner;try{const data=await api('/api/chat/messages?before='+chatOldest);if(owner!==chatOwner)return;chatRows=[...data.messages,...chatRows];chatMore=data.more;chatOldest=chatRows[0]?.id||null;renderChat();}catch(e){chatStatus(e.message);}};
+function leaveChatView(){chatStatus('');$('#chat-earlier').hidden=true;if(chatReadFrame!==null)cancelAnimationFrame(chatReadFrame);chatReadFrame=null;chatReadSaving=false;chatGeneration++;chatBusy=false;clearTimeout(chatTimer);if(chatOwner)chatTimer=setTimeout(syncChat,15000);if(typeof voiceHoldTimer!=='undefined'){clearTimeout(voiceHoldTimer);voiceHold=null;voiceHeld=false;voiceHoldAction='cancel';$('#chat-hold-actions').hidden=true;if(nativeVoiceBuild>=10806)nativeVoiceCommand('cancel');}closeChatMenu();releaseRecording();for(const audio of $('#chat-messages').querySelectorAll('audio'))audio.pause();$('#chat-history-dialog').close();chatSelecting=false;chatSelected.clear();chatSelection();}
+
 const chatBase64=blob=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(Error('附件读取失败'));reader.readAsDataURL(blob);});
 async function sendChat(input){if(chatSending)return false;const owner=chatOwner;chatSending=true;chatPending={...input,id:'pending',sender:owner,name:'我',created:Date.now(),pending:true};renderChat();chatStatus('');try{const {preview,...payload}=input;const result=await api('/api/chat/messages','POST',payload);if(owner!==chatOwner)return false;chatPending=null;if(!chatRows.some(row=>row.id===result.id))chatRows.push({...input,id:result.id,sender:owner,name:'我',created:Date.now()});chatRenderKey='';renderChat();await syncChat();return true;}catch(e){if(owner===chatOwner)chatStatus(e.message);return false;}finally{chatPending=null;chatSending=false;if(chatOwner)renderChat();}}
 

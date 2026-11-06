@@ -1,12 +1,12 @@
 let memoImages=[],memoEditorGeneration=0,memoImagesLoading=0;
-let memoData=null,memoEditing=null,memoBusy=false,memoUser=null,memoLoad=0,memoEditMode=false;
-const memoStatus=message=>{ $('#memos-status').textContent=message;$('#memo-editor-status').textContent=message; };
+let memoData=null,memoEditing=null,memoBusy=false,memoUser=null,memoLoad=0,memoEditMode=false,memoPointEditing=null;
+const memoStatus=message=>{ $('#memos-status').textContent=message;$('#memo-editor-status').textContent=message;$('#memo-point-status').textContent=message; };
 function resetMemoEditor(){memoEditorGeneration++;memoEditing=null;memoImages=[];$('#memo-image-previews').replaceChildren();$('#memo-form').reset();$('#memo-save').textContent='保存备忘';$('#memo-cancel').hidden=true;}
 function openMemoEditor(note=null){
  if(!memoData||memoBusy)return;resetMemoEditor();$('#memo-editor-status').textContent='';
  $('#memo-form').elements.day.value=localDay();
- $('#memo-editor-title').textContent=note?'编辑备忘录':'新增备忘录';
- if(note){memoImages=(note.images||[]).map(image=>({id:image.id}));paintMemoImages();memoEditing=note.id;const f=$('#memo-form');f.elements.day.value=note.day||'2026-10-07';f.elements.title.value=note.title||'';f.elements.body.value=note.body;f.elements.category_id.value=note.category_id??(note.ai_category?'ai:'+note.ai_category:'');$('#memo-save').textContent='保存修改';}
+ const summarized=Boolean(note&&memoData.summary?.some(item=>item.id===note.id));$('#memo-editor-title').textContent=note?'编辑原文':'新增备忘录';$('#memo-source-warning').hidden=!summarized;
+ if(note){memoImages=(note.images||[]).map(image=>({id:image.id}));paintMemoImages();memoEditing=note.id;const f=$('#memo-form');f.elements.day.value=note.day||'2026-10-07';f.elements.title.value=note.title||'';f.elements.body.value=note.body;f.elements.category_id.value=note.category_id??(summarized?'':note.ai_category?'ai:'+note.ai_category:'');$('#memo-save').textContent='保存修改';}
  $('#memo-cancel').hidden=false;$('#memo-editor-dialog').showModal();$('#memo-form').elements.body.focus();
 }
 function renderMemos(){
@@ -14,31 +14,34 @@ function renderMemos(){
  select.replaceChildren(new Option('待整理',''),...(memoData.ai_categories||[]).map(name=>new Option(name,'ai:'+name)),...memoData.categories.map(c=>new Option(c.name+' · 自定义',String(c.id))));select.value=value;
  if(select.selectedIndex<0)select.value='';
  $('#memos-organize').disabled=memoBusy||readOnly||!memoData.ai_ready||!memoData.notes.some(n=>n.category_id===null&&!n.ai_category&&n.body.trim());
- $('#memos-organize').textContent=memoBusy?'正在整理…':'一键 AI 整理';
+ $('#memos-organize').querySelector('span').textContent='整理';$('#memos-organize').setAttribute('aria-busy',String(memoBusy));
  $('#memos-organize').title=memoData.ai_ready?'只整理待整理中的记录':'AI 尚未配置，可以先手动记录';
  $('#memo-add').disabled=memoBusy||readOnly;$('#memo-originals-open').disabled=false;
- for(const field of [...$('#memo-form').elements,...$('#memo-category-form').elements])field.disabled=readOnly||memoBusy;
- const list=$('#memos-list');list.replaceChildren();
+ for(const field of [...$('#memo-form').elements,...$('#memo-category-form').elements,...$('#memo-point-form').elements])field.disabled=readOnly||memoBusy;
+ const list=$('#memos-list');list.replaceChildren();list.classList.toggle('is-editing',memoEditMode);$('#memo-edit-tools').hidden=!memoEditMode;
  const originals=new Map(memoData.notes.map(note=>[note.id,note])),summarized=new Set(),entries=[];
  for(const [index,item] of (memoData.summary||[]).entries()){const note=originals.get(item.id);if(!note||note.category_id!==null)continue;summarized.add(note.id);entries.push({note,text:item.text,kind:item.category_id?'custom:'+item.category_id:item.category,extracted:true,index});}
  for(const note of memoData.notes)if(!summarized.has(note.id))entries.push({note,text:note.body,kind:note.category_id?'custom:'+note.category_id:note.ai_category||'待整理',extracted:false});
  function group(name,notes,category=null){
   const card=el('section',undefined,'memo-group'),heading=el('div',undefined,'memo-group-heading');heading.append(el('h3',name),el('small',category?'手动维护 · 不参与 AI':name==='待整理'?'等待整理':'AI 分类 · 原文保留'));
   card.dataset.key=category?'custom:'+category.id:name==='待整理'?'pending':'ai:'+name;
-  const handle=el('button','⠿','memo-drag-handle');handle.type='button';handle.setAttribute('aria-label','拖动排序 '+name);handle.title='拖动调整分类顺序，也可使用方向键';handle.disabled=readOnly||memoBusy;heading.prepend(handle);bindMemoDrag(handle,card,list);card.append(heading);
+  const handle=el('button','⠿','memo-drag-handle');handle.type='button';handle.setAttribute('aria-label','拖动排序 '+name);handle.title='拖动调整分类顺序，也可使用方向键';handle.disabled=readOnly||memoBusy;if(memoEditMode){heading.prepend(handle);bindMemoDrag(handle,card,list);}card.append(heading);
   if(!notes.length)card.append(el('p','还没有记录。','hint'));
-  const ul=el('ul');for(const entry of notes){const {note,text,extracted}=entry,li=el('li');li.append(el('p',text,'memo-text'));if(!extracted){const pictures=el('div',undefined,'memo-images');for(const image of note.images||[]){const img=el('img');img.src='/api/memos/images/'+image.id;img.alt='备忘图片';img.onclick=()=>openPhoto(img);pictures.append(img);}li.append(pictures);}if(memoEditMode){const handle=el('button','⠿','memo-item-drag');handle.type='button';handle.title='拖动到其他分类';handle.disabled=memoBusy||readOnly;li.prepend(handle);bindMemoItemDrag(handle,li,entry);const select=el('select');select.setAttribute('aria-label','移动条目到分类');select.append(new Option('移动到…',''));if(!extracted)select.append(new Option('待整理','pending'));for(const name of memoData.ai_categories||[])select.append(new Option(name,'ai:'+name));for(const c of memoData.categories)select.append(new Option(c.name,'custom:'+c.id));select.disabled=memoBusy||readOnly;select.onchange=()=>{if(select.value)moveMemoEntry(entry,select.value);};li.append(select);}
+  const ul=el('ul');for(const entry of notes){const {note,text,extracted}=entry,li=el('li');li.append(el('p',text,'memo-text'));if(!extracted){const pictures=el('div',undefined,'memo-images');for(const image of note.images||[]){const img=el('img');img.src='/api/memos/images/'+image.id;img.alt='备忘图片';img.onclick=()=>openPhoto(img);pictures.append(img);}li.append(pictures);}li.className='memo-entry';if(memoEditMode){const handle=el('button','⠿','memo-item-drag');handle.type='button';handle.title='拖动到其他分类';handle.setAttribute('aria-label','拖动条目到其他分类');handle.disabled=memoBusy||readOnly;li.prepend(handle);bindMemoItemDrag(handle,li,entry);
+    const tools=el('div',undefined,'memo-entry-actions'),edit=el('button','修改'),select=el('select');edit.type='button';edit.disabled=memoBusy||readOnly;edit.onclick=()=>extracted?openMemoPointEditor(entry):openMemoEditor(note);select.setAttribute('aria-label','移动条目到分类');select.append(new Option('移动到…',''));
+    const current=memoEntryKey(entry);if(!extracted&&current!=='pending')select.append(new Option('待整理','pending'));for(const name of memoData.ai_categories||[])if(current!=='ai:'+name)select.append(new Option(name,'ai:'+name));for(const c of memoData.categories)if(current!=='custom:'+c.id)select.append(new Option(c.name+' · 自定义','custom:'+c.id));select.disabled=memoBusy||readOnly||select.options.length===1;select.onchange=()=>{if(select.value)moveMemoEntry(entry,select.value);};tools.append(edit,select);li.append(tools);
+   }
    ul.append(li);
   }card.append(ul);list.append(card);
  }
- $('#memo-edit-mode').textContent=memoEditMode?'完成编辑':'编辑分类条目';$('#memo-edit-mode').setAttribute('aria-pressed',String(memoEditMode));$('#memo-edit-mode').disabled=memoBusy||readOnly;
+ $('#memo-edit-mode').querySelector('span').textContent=memoEditMode?'完成':'编辑';$('#memo-edit-mode').setAttribute('aria-pressed',String(memoEditMode));$('#memo-edit-mode').disabled=memoBusy||readOnly;
  const automatic=entries.filter(e=>!e.kind.startsWith('custom:'));
  if(!memoData.notes.length&&!memoData.categories.length)list.append(el('p','从一件小事开始，慢慢记住对方。','memo-empty'));
  const pending=automatic.filter(e=>e.kind==='待整理');if(pending.length||memoEditMode)group('待整理',pending);
  for(const kind of new Set([...(memoData.ai_categories||[]),...automatic.filter(e=>e.kind!=='待整理').map(e=>e.kind)])){const notes=automatic.filter(e=>e.kind===kind);if(notes.length||memoEditMode)group(kind,notes);}
  for(const category of memoData.categories)group(category.name,entries.filter(e=>e.kind==='custom:'+category.id),category);
  const cards=[...list.querySelectorAll('.memo-group')],rank=new Map((memoData.order||[]).map((key,index)=>[key,index]));cards.sort((a,b)=>(rank.get(a.dataset.key)??1000)-(rank.get(b.dataset.key)??1000));for(const card of cards)list.append(card);
- renderMemoOriginals();
+ renderMemoCategories();renderMemoOriginals();
 }
 async function memoMutate(url,method,data,closeEditor=false){
  if(memoBusy)return;memoBusy=true;renderMemos();memoStatus('正在保存…');const owner=memoUser;
@@ -51,7 +54,7 @@ async function openMemoView(){
  try{const [user,data]=await Promise.all([api('/api/me'),api('/api/memos')]);if(request!==memoLoad||currentUser?.id!==owner||memoUser!==owner||$('#memos-dialog').hidden)return;currentUser=user;const changed=JSON.stringify(memoData)!==JSON.stringify(data);memoData=data;memoStatus('');if(changed||!cached||readOnly!==Boolean(user.lifecycle?.readonly))renderMemos();}catch(e){if(request===memoLoad)memoStatus(e.message);}
 }
 $('#memos-open').onclick=()=>switchView('memos');
-function stopMemos(clear=true){++memoLoad;$('#memo-originals-dialog').close();$('#memo-editor-dialog').close();resetMemoEditor();memoStatus('');if(clear){memoEditMode=false;$('#memo-originals-list').replaceChildren();memoData=null;memoUser=null;$('#memos-list').replaceChildren();$('#memo-category').replaceChildren();}}
+function stopMemos(clear=true){++memoLoad;$('#memo-originals-dialog').close();$('#memo-editor-dialog').close();$('#memo-point-dialog').close();memoPointEditing=null;resetMemoEditor();memoStatus('');if(clear){memoEditMode=false;$('#memo-originals-list').replaceChildren();memoData=null;memoUser=null;$('#memos-list').replaceChildren();$('#memo-category').replaceChildren();}}
 $('#memo-add').onclick=()=>openMemoEditor();
 $('#memo-editor-close').onclick=$('#memo-cancel').onclick=()=>$('#memo-editor-dialog').close();
 $('#memo-editor-dialog').addEventListener('close',resetMemoEditor);
@@ -59,7 +62,7 @@ $('#memo-form').onsubmit=async e=>{e.preventDefault();if(!memoData)return;if(mem
 $('#memo-category-form').onsubmit=async e=>{e.preventDefault();if(!memoData)return;if(await memoMutate('/api/memos/categories','POST',{name:e.target.elements.name.value}))e.target.reset();};
 $('#memos-organize').onclick=async()=>{
  if(memoBusy||!memoData)return;memoBusy=true;renderMemos();memoStatus('正在整理，原始记录会保留…');const owner=memoUser;
- try{const data=await api('/api/memos/organize','POST',{});if(currentUser?.id!==owner||memoUser!==owner||$('#memos-dialog').hidden)return;memoData=data;memoStatus('已分门别类整理，原文保存在“原文与管理”中。');}
+ try{const data=await api('/api/memos/organize','POST',{});if(currentUser?.id!==owner||memoUser!==owner||$('#memos-dialog').hidden)return;memoData=data;memoStatus('已整理好，完整记录可以在“原文”中查看。');}
  catch(e){if(memoUser===owner)memoStatus(e.message);}finally{memoBusy=false;if(memoData&&memoUser===owner)renderMemos();}
 };
 
@@ -68,30 +71,44 @@ function renderMemoOriginals(){
  const readOnly=Boolean(currentUser?.lifecycle?.readonly),days=new Map(),legacyDay='2026-10-07';
  const dateTitle=day=>{const [year,month,date]=day.split('-');return `${year}年${Number(month)}月${Number(date)}日`;};
  for(const note of [...memoData.notes].sort((a,b)=>(b.day||legacyDay).localeCompare(a.day||legacyDay)||b.id-a.id)){const day=note.day||legacyDay;if(!days.has(day))days.set(day,[]);days.get(day).push(note);}
- if(memoData.categories.length){const categories=el('details',undefined,'memo-category-management');categories.append(el('summary','管理自定义分类'));for(const category of memoData.categories){const row=el('div',undefined,'memo-actions'),remove=el('button','删除分类');remove.disabled=readOnly||memoBusy;remove.onclick=()=>memoMutate('/api/memos/categories/'+category.id,'DELETE',{});row.append(el('span',category.name),remove);categories.append(row);}list.append(categories);}
+
  if(!days.size)list.append(el('p','还没有记录，先新增一件小事吧。','memo-empty'));
  for(const [day,notes] of days){const section=el('section',undefined,'memo-diary-day');for(const note of notes){const article=el('article',undefined,'memo-diary-entry');article.append(el('h4',dateTitle(day)),el('p',note.body,'memo-text'));const pictures=el('div',undefined,'memo-images');for(const photo of note.images||[]){const img=el('img');img.src='/api/memos/images/'+photo.id;img.alt='备忘图片';img.loading='lazy';img.onclick=()=>openPhoto(img);pictures.append(img);}article.append(pictures);const actions=el('div',undefined,'memo-actions'),edit=el('button','编辑'),remove=el('button','删除');edit.disabled=remove.disabled=readOnly||memoBusy;edit.onclick=()=>openMemoEditor(note);remove.onclick=()=>{if(confirm('删除这条原文及从中提取的全部要点？'))memoMutate('/api/memos/notes/'+note.id,'DELETE',{});};actions.append(edit,remove);article.append(actions);section.append(article);}list.append(section);}
 }
 $('#memo-originals-open').onclick=()=>{if(!memoData)return;renderMemoOriginals();$('#memo-originals-dialog').showModal();};
 $('#memo-originals-close').onclick=()=>$('#memo-originals-dialog').close();
 
+function renderMemoCategories(){
+ const list=$('#memo-category-management');list.replaceChildren();const readOnly=Boolean(currentUser?.lifecycle?.readonly);
+ for(const category of memoData.categories){const row=el('div',undefined,'memo-category-chip'),remove=el('button','×'),used=memoData.notes.some(note=>note.category_id===category.id)||memoData.summary?.some(item=>item.category_id===category.id);remove.type='button';remove.disabled=readOnly||memoBusy||used;remove.title=used?'请先移出分类中的条目':'删除空分类';remove.setAttribute('aria-label','删除分类 '+category.name);remove.onclick=()=>memoMutate('/api/memos/categories/'+category.id,'DELETE',{});row.append(el('span',category.name),remove);list.append(row);}
+}
+function openMemoPointEditor(entry){if(memoBusy||currentUser?.lifecycle?.readonly)return;memoPointEditing=entry;$('#memo-point-form').reset();$('#memo-point-form').elements.text.value=entry.text;$('#memo-point-status').textContent='';$('#memo-point-dialog').showModal();}
+$('#memo-point-close').onclick=$('#memo-point-cancel').onclick=()=>$('#memo-point-dialog').close();
+$('#memo-point-dialog').addEventListener('close',()=>{memoPointEditing=null;});
+$('#memo-point-form').onsubmit=async event=>{event.preventDefault();const entry=memoPointEditing;if(!entry||memoBusy)return;if(await memoMutate('/api/memos/points','POST',{id:entry.note.id,index:entry.index,text:entry.text,value:event.target.elements.text.value}))$('#memo-point-dialog').close();};
+function memoEntryKey(entry){return entry.kind.startsWith('custom:')?entry.kind:entry.kind==='待整理'?'pending':'ai:'+entry.kind;}
+function scrollMemoDrag(node,y){
+ for(let parent=node.parentElement;parent;parent=parent.parentElement){const style=getComputedStyle(parent);if(parent.scrollHeight>parent.clientHeight&&/auto|scroll/.test(style.overflowY)){const rect=parent.getBoundingClientRect();if(y>Math.min(innerHeight,rect.bottom)-45)parent.scrollBy(0,12);else if(y>rect.top&&y<rect.top+45)parent.scrollBy(0,-12);return;}}
+ if(y>innerHeight-55)window.scrollBy(0,12);else if(y<55)window.scrollBy(0,-12);
+}
+
 function bindMemoDrag(handle,card,list){
  let start=null,changed=false;
  const order=()=>[...list.querySelectorAll('.memo-group')].map(c=>c.dataset.key);
  const save=()=>{const visible=order(),hidden=(memoData.order||[]).filter(key=>!visible.includes(key)&&(['pending',...(memoData.ai_categories||[]).map(name=>'ai:'+name),...memoData.categories.map(c=>'custom:'+c.id)]).includes(key));memoMutate('/api/memos/order','POST',{order:[...visible,...hidden]});};
  handle.addEventListener('pointerdown',event=>{if(handle.disabled||event.button!==0)return;start={id:event.pointerId,x:event.clientX,y:event.clientY};changed=false;handle.setPointerCapture(event.pointerId);event.preventDefault();});
- handle.addEventListener('pointermove',event=>{if(!start||start.id!==event.pointerId)return;if(Math.hypot(event.clientX-start.x,event.clientY-start.y)<6&&!card.classList.contains('dragging'))return;card.classList.add('dragging');const target=document.elementFromPoint(event.clientX,event.clientY)?.closest('.memo-group');if(!target||target===card||target.parentElement!==list)return;const cards=[...list.children],forward=cards.indexOf(target)>cards.indexOf(card);list.insertBefore(card,forward?target.nextSibling:target);changed=true;});
+ handle.addEventListener('pointermove',event=>{if(!start||start.id!==event.pointerId)return;if(Math.hypot(event.clientX-start.x,event.clientY-start.y)<6&&!card.classList.contains('dragging'))return;card.classList.add('dragging');scrollMemoDrag(card,event.clientY);const target=document.elementFromPoint(event.clientX,event.clientY)?.closest('.memo-group');if(!target||target===card||target.parentElement!==list)return;const cards=[...list.children],forward=cards.indexOf(target)>cards.indexOf(card);list.insertBefore(card,forward?target.nextSibling:target);changed=true;});
  const finish=event=>{if(!start||start.id!==event.pointerId)return;start=null;card.classList.remove('dragging');if(changed){changed=false;save();}};
  handle.addEventListener('pointerup',finish);handle.addEventListener('pointercancel',()=>{start=null;changed=false;card.classList.remove('dragging');if(memoData)renderMemos();});
  handle.addEventListener('keydown',event=>{if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key)||handle.disabled)return;event.preventDefault();const backwards=['ArrowUp','ArrowLeft'].includes(event.key),target=backwards?card.previousElementSibling:card.nextElementSibling;if(!target?.classList.contains('memo-group'))return;list.insertBefore(card,backwards?target:target.nextSibling);save();});
 }
 
-$('#memo-edit-mode').onclick=()=>{memoEditMode=!memoEditMode;renderMemos();};
+$('#memo-edit-mode').onclick=()=>{if(!memoData||memoBusy||currentUser?.lifecycle?.readonly)return;memoEditMode=!memoEditMode;renderMemos();};
 function moveMemoEntry(entry,target){return memoMutate('/api/memos/move','POST',{id:entry.note.id,extracted:entry.extracted,index:entry.index,text:entry.text,target});}
 function bindMemoItemDrag(handle,li,entry){
  let pointer=null,target=null;
  handle.addEventListener('pointerdown',event=>{if(handle.disabled||event.button!==0)return;pointer=event.pointerId;handle.setPointerCapture(pointer);event.preventDefault();li.classList.add('memo-item-moving');});
- handle.addEventListener('pointermove',event=>{if(pointer!==event.pointerId)return;document.querySelectorAll('.memo-drop-target').forEach(c=>c.classList.remove('memo-drop-target'));target=document.elementFromPoint(event.clientX,event.clientY)?.closest('.memo-group');if(target?.parentElement!==$('#memos-list')||(entry.extracted&&target.dataset.key==='pending'))target=null;target?.classList.add('memo-drop-target');if(event.clientY>window.innerHeight-55)window.scrollBy(0,12);else if(event.clientY<55)window.scrollBy(0,-12);});
+ handle.addEventListener('pointermove',event=>{if(pointer!==event.pointerId)return;document.querySelectorAll('.memo-drop-target').forEach(c=>c.classList.remove('memo-drop-target'));target=document.elementFromPoint(event.clientX,event.clientY)?.closest('.memo-group');if(target?.parentElement!==$('#memos-list')||(entry.extracted&&target.dataset.key==='pending'))target=null;target?.classList.add('memo-drop-target');scrollMemoDrag(li,event.clientY);});
  const finish=event=>{if(pointer!==event.pointerId)return;pointer=null;li.classList.remove('memo-item-moving');target?.classList.remove('memo-drop-target');if(event.type==='pointerup'&&target&&target!==li.closest('.memo-group'))moveMemoEntry(entry,target.dataset.key);target=null;};
  handle.addEventListener('pointerup',finish);handle.addEventListener('pointercancel',finish);
 }

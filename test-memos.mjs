@@ -1,12 +1,19 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
+import {runInNewContext} from 'node:vm';
 import {scryptSync} from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import {createApplication} from './server.mjs';
 import {memoService,createMemoOrganizer,MEMO_ORGANIZER_PROMPT} from './memos.mjs';
 import {openDatabase} from './db.mjs';
+
+test('备忘拖动优先滚动实际内容容器，页面滚动作为后备',()=>{
+ const source=readFileSync('public/memos.js','utf8'),code=source.slice(source.indexOf('function scrollMemoDrag('),source.indexOf('function bindMemoDrag(')),paneMoves=[],pageMoves=[],pane={parentElement:null,scrollHeight:900,clientHeight:400,getBoundingClientRect:()=>({top:150,bottom:550}),scrollBy:(x,y)=>paneMoves.push(y)},node={parentElement:pane};
+ const scroll=runInNewContext(code+';scrollMemoDrag',{innerHeight:800,getComputedStyle:()=>({overflowY:'auto'}),window:{scrollBy:(x,y)=>pageMoves.push(y)}});
+ scroll(node,530);scroll(node,170);assert.deepEqual(paneMoves,[12,-12]);assert.deepEqual(pageMoves,[]);pane.scrollHeight=300;scroll(node,780);assert.deepEqual(pageMoves,[12]);
+});
 
 test('旧整理结果迁移为可选AI分类，重启不覆盖手动改回待整理的记录',()=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),'love-memo-category-migration-'));let db=openDatabase(dir);
@@ -138,6 +145,20 @@ test('单个AI要点跨分类移动保留原文，增量整理仅发送待整理
  }finally{Date.now=originalNow;db.close();rmSync(dir,{recursive:true,force:true});}
 });
 
+
+test('手动修改单条要点保留原文和其他要点，拒绝过期、越权与只读修改',async()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-memo-point-edit-')),db=openDatabase(dir);
+ try{
+  db.exec("INSERT INTO ledgers(id,code) VALUES(1,'EDITPOINT'); INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(1,'test','x','x',1,1),(2,'other','x','x',1,2); INSERT INTO memo_notes(id,user_id,body,ai_category) VALUES(1,1,'完整原文，不喜欢太甜的饮料。','饮食');");
+  const points=[{id:1,category:'饮食',text:'饮料不要太甜'},{id:1,category:'习惯',text:'另一条要点'}];db.prepare('INSERT INTO memo_summaries(user_id,content) VALUES(1,?)').run(JSON.stringify(points));
+  const service=memoService(db,{ready:false}),input={id:1,index:0,text:points[0].text,value:'饮料少糖即可'},call=(data=input,id=1,check=()=>{})=>service.route({method:'POST'},{pathname:'/api/memos/points'},{id},data,check);
+  const result=await call();assert.equal(result.summary[0].text,input.value);assert.deepEqual(result.summary[1],points[1]);assert.equal(result.notes[0].body,'完整原文，不喜欢太甜的饮料。');
+  await assert.rejects(call(),e=>e.status===409);await assert.rejects(call({...input,text:input.value},2),e=>e.status===409);
+  for(const value of ['', ' '.repeat(5),'字'.repeat(501)])await assert.rejects(call({...input,text:input.value,value}),e=>e.status===400);
+  await assert.rejects(call({...input,text:input.value},1,()=>{throw Object.assign(Error('只读'),{status:423});}),e=>e.status===423);
+  assert.equal(JSON.parse(db.prepare('SELECT content FROM memo_summaries WHERE user_id=1').get().content)[0].text,input.value);
+ }finally{db.close();rmSync(dir,{recursive:true,force:true});}
+});
 
 test('备忘图片账号隔离、保留和删除，AI只接收文字并跳过纯图片',async()=>{
  const sharp=(await import('sharp')).default,dir=mkdtempSync(path.join(os.tmpdir(),'love-memo-images-'));let received=null;

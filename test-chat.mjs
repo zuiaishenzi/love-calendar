@@ -449,3 +449,24 @@ test('Android、鸿蒙与Windows系统设置隐藏客户端下载且不请求包
   const native=agent!=='browser';assert.equal(get('#client-downloads').hidden,native);if(native){get('#system-open').onclick();assert.equal(opened,1);}
  }
 });
+
+function chatReadFixture(){
+ const source=readFileSync('public/chat.js','utf8'),code=source.slice(source.indexOf('function mergeChatReadState('),source.indexOf("$('#chat-earlier').onclick=jumpToUnreadChat")),button={hidden:true},nodes=new Map(),requests=[],list={clientHeight:200,scrollTop:600,getBoundingClientRect:()=>({top:0,bottom:200}),querySelectorAll:()=>[...nodes.values()],querySelector:selector=>nodes.get(Number(selector.match(/\d+/)[0]))},dialog={hidden:false};
+ const context={chatReadThrough:0,chatUnreadTotal:6,chatReadSeen:new Set(),chatUnreadDismissedThrough:0,chatReadFrame:null,chatReadSaving:false,chatReadReady:true,chatOwner:1,chatGeneration:1,chatRows:[],document:{hidden:false,querySelector:()=>null},$:selector=>selector==='#chat-messages'?list:selector==='#chat-earlier'?button:dialog,chatUnreadBadge(){},requestAnimationFrame:()=>1,api:async(url,method,data)=>{requests.push(data.through);return {readThrough:data.through,count:0};}};
+ const add=(id,top,sender=2)=>{context.chatRows.push({id,sender});nodes.set(id,{dataset:{messageId:String(id)},getBoundingClientRect:()=>({top,bottom:top+100,height:100})});};
+ const actions=runInNewContext(code+';({updateChatRead,jumpToUnreadChat,flushChatRead,mergeChatReadState})',context);return {context,button,list,requests,add,...actions};
+}
+
+test('未读提示只在未读跨度超过聊天区域时显示，点击后定位并抑制旧批次',()=>{
+ const f=chatReadFixture();for(let id=1;id<=6;id++)f.add(id,(id-5)*100);f.updateChatRead();assert.equal(f.button.hidden,false);assert.equal(f.context.chatReadSeen.has(5),true);assert.equal(f.context.chatReadSeen.has(1),false);assert.deepEqual(f.requests,[]);
+ f.jumpToUnreadChat();assert.equal(f.list.scrollTop,188);assert.equal(f.button.hidden,true);f.updateChatRead();assert.equal(f.button.hidden,true);
+ f.add(7,300);f.updateChatRead();assert.equal(f.button.hidden,true);f.add(8,400);f.add(9,500);f.updateChatRead();assert.equal(f.button.hidden,false);
+ for(const row of f.context.chatRows)f.context.chatReadSeen.add(row.id);f.updateChatRead();assert.equal(f.button.hidden,true);
+});
+
+test('只有连续读到的消息推进已读位置，不能跳过屏外未读或在后台标记已读',async()=>{
+ const f=chatReadFixture();f.add(1,-100);f.add(2,0,1);f.add(3,100);f.context.chatReadSeen.add(3);await f.flushChatRead();assert.deepEqual(f.requests,[]);
+ f.context.document.hidden=true;f.updateChatRead();assert.equal(f.context.chatReadSeen.has(1),false);assert.equal(f.button.hidden,true);f.context.chatReadSeen.add(1);await f.flushChatRead();assert.deepEqual(f.requests,[]);
+ f.context.document.hidden=false;await f.flushChatRead();assert.deepEqual(f.requests,[3]);assert.equal(f.context.chatReadThrough,3);assert.equal(f.context.chatReadSeen.size,0);
+ f.mergeChatReadState({readThrough:1,count:0});assert.equal(f.context.chatReadThrough,3);
+});
