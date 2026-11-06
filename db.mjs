@@ -87,6 +87,11 @@ export function openDatabase(dir) {
  for(const table of ['chat_messages','memory_chat_messages'])if(!db.prepare(`PRAGMA table_info(${table})`).all().some(c=>c.name==='duration'))db.exec(`ALTER TABLE ${table} ADD COLUMN duration REAL`);
  db.exec(`CREATE TABLE IF NOT EXISTS memory_replies(id INTEGER PRIMARY KEY,memory_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,author INTEGER NOT NULL REFERENCES users(id),body TEXT NOT NULL,created INTEGER NOT NULL);CREATE INDEX IF NOT EXISTS memory_replies_memory_author ON memory_replies(memory_id,author);`);
  db.exec('CREATE TABLE IF NOT EXISTS chat_reads(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,through_id INTEGER NOT NULL DEFAULT 0)');
+ db.exec(`CREATE TABLE IF NOT EXISTS stickers(id TEXT PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,title TEXT NOT NULL,tags TEXT NOT NULL DEFAULT '',hash TEXT NOT NULL,data BLOB NOT NULL,mime TEXT NOT NULL,source TEXT NOT NULL DEFAULT 'upload',created INTEGER NOT NULL,UNIQUE(user_id,hash));
+ CREATE TABLE IF NOT EXISTS sticker_search_usage(provider TEXT NOT NULL,month TEXT NOT NULL,used INTEGER NOT NULL DEFAULT 0,exhausted INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(provider,month));
+ CREATE TABLE IF NOT EXISTS sticker_search_results(id TEXT PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,url TEXT NOT NULL,preview TEXT NOT NULL,title TEXT NOT NULL,provider TEXT NOT NULL,expires INTEGER NOT NULL);
+ CREATE INDEX IF NOT EXISTS sticker_results_expiry ON sticker_search_results(expires);`);
+ for(const table of ['chat_messages','memory_chat_messages'])if(!db.prepare(`PRAGMA table_info(${table})`).all().some(c=>c.name==='sticker'))db.exec(`ALTER TABLE ${table} ADD COLUMN sticker INTEGER NOT NULL DEFAULT 0`);
  db.exec(`CREATE TABLE IF NOT EXISTS notification_events(id INTEGER PRIMARY KEY AUTOINCREMENT,ledger_id INTEGER NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,sender INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,kind TEXT NOT NULL,object_id INTEGER NOT NULL);
  CREATE INDEX IF NOT EXISTS notification_events_ledger ON notification_events(ledger_id,id);
  CREATE TRIGGER IF NOT EXISTS notification_chat_insert AFTER INSERT ON chat_messages BEGIN INSERT INTO notification_events(ledger_id,sender,kind,object_id) VALUES(NEW.ledger_id,NEW.sender,'chat',NEW.id); END;

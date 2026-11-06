@@ -19,12 +19,13 @@ import {memoirDocument} from './memoir-export.mjs';
 import {Readable} from 'node:stream';
 import {memoService,createMemoOrganizer} from './memos.mjs';
 import {chatService} from './chat.mjs';
+import {stickerService} from './stickers.mjs';
 import {createSpeechRecognizer} from './speech.mjs';
 import {memoryAttachments,sendMedia} from './media.mjs';
 const root=path.dirname(fileURLToPath(import.meta.url));
 const {version:appVersion}=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8'));
 async function body(req,max=32*1024*1024) {let size=0, chunks=[]; for await(const c of req) {size+=c.length; if(size>max) throw fail(413,'上传内容总大小过大'); chunks.push(c);} try{return JSON.parse(Buffer.concat(chunks));}catch{throw fail(400,'请求格式错误');}}
-export function createApplication({dataDir=process.env.DATA_DIR||path.join(root,'data'),mailer=createMailer(),memoOrganizer=createMemoOrganizer(),speechRecognizer=createSpeechRecognizer(),holidayFetcher=fetch}={}) {
+export function createApplication({dataDir=process.env.DATA_DIR||path.join(root,'data'),mailer=createMailer(),memoOrganizer=createMemoOrganizer(),speechRecognizer=createSpeechRecognizer(),holidayFetcher=fetch,stickerOptions={}}={}) {
 const db=openDatabase(dataDir),lifecycle=lifecycleService(db,mailer),accounts=accountService(db,mailer,lifecycle),worker=createReminderWorker(db,mailer);
 const holidays=createHolidaySync({dataDir,fetcher:holidayFetcher});
 lifecycle.purge();
@@ -32,14 +33,15 @@ const cleanup=setInterval(()=>{try{lifecycle.purge();}catch{console.error('账�
 const realtime=createRealtime(accounts.authenticate,lifecycle.status);
 const memos=memoService(db,memoOrganizer);
 const agreements=agreementService(db,user=>realtime.changed(user));
-const chat=chatService(db,(user,type)=>{if(type==='memory')realtime.changed(user);else realtime.chat(user);},{speechRecognizer});
+const stickers=stickerService(db,stickerOptions);
+const chat=chatService(db,(user,type)=>{if(type==='memory')realtime.changed(user);else realtime.chat(user);},{speechRecognizer,stickers});
 const updateApp=appUpdates(process.env.APP_UPDATE_DIR||path.join(dataDir,'app-updates'));
 const pendingThumbnails=new Map();
 const avatarAssets=new Map();
 function memoryReplies(id){return db.prepare('SELECT r.id,r.author,r.body,r.created,u.name AS author_name FROM memory_replies r JOIN users u ON u.id=r.author WHERE r.memory_id=? ORDER BY r.id').all(id);}
 function attachPerspectives(row){
  row.replies=memoryReplies(row.id);
- row.chat_messages=db.prepare('SELECT id,sender,sender_name AS name,kind,text,mime,created,duration FROM memory_chat_messages WHERE memory_id=? ORDER BY position').all(row.id);
+ row.chat_messages=db.prepare('SELECT id,sender,sender_name AS name,kind,text,mime,created,duration,sticker FROM memory_chat_messages WHERE memory_id=? ORDER BY position').all(row.id);
  row.perspectives=db.prepare('SELECT p.*,u.name AS author_name FROM perspectives p JOIN users u ON u.id=p.author WHERE p.memory_id=? ORDER BY p.rowid').all(row.id);
  for(const p of row.perspectives){p.photos=db.prepare('SELECT id FROM photos WHERE memory_id=? AND author=? ORDER BY rowid').all(row.id,p.author).map(x=>x.id);p.attachments=db.prepare('SELECT id,name,kind,mime,length(data) AS size FROM memory_attachments WHERE memory_id=? AND author=? ORDER BY rowid').all(row.id,p.author);}
  return row;
@@ -67,6 +69,7 @@ const server=http.createServer(async(req,res)=>{
     }
     if(url.pathname.startsWith('/api/')) {
       if(!user) throw fail(401,'请先登录');
+      if(url.pathname==='/api/stickers'||url.pathname.startsWith('/api/stickers/')){const result=await stickers.route(req,res,url,user,req.method==='POST'?await body(req):{},ensureWritable);if(result!==null)return send(200,result);return;}
       if(url.pathname==='/api/agreements'||url.pathname.startsWith('/api/agreements/'))return send(200,agreements(req,url,user,req.method==='POST'?await body(req,16384):{},ensureWritable));
       const chatAttachment=url.pathname.match(/^\/api\/memory-chat-media\/([a-f0-9]{36})$/);
       if(chatAttachment&&req.method==='GET'){
@@ -237,6 +240,7 @@ const server=http.createServer(async(req,res)=>{
     files['/agreements.js']=['agreements.js','text/javascript; charset=utf-8'];
     files['/calendar-agreements.js']=['calendar-agreements.js','text/javascript; charset=utf-8'];
     files['/agreement-plan-date.js']=['agreement-plan-date.js','text/javascript; charset=utf-8'];
+    files['/stickers.js']=['stickers.js','text/javascript; charset=utf-8'];
     files['/speech.js']=['speech.js','text/javascript; charset=utf-8'];
     const presetAsset=url.pathname.match(/^\/avatars\/pair-([1-5])\.png$/);
     if(presetAsset&&req.method==='GET'){
