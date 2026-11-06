@@ -13,7 +13,7 @@ RUN cp /etc/apk/repositories /tmp/apk-repositories \
     }; } \
  && rm /tmp/apk-repositories
 RUN npm ci --omit=dev --include=optional && apk del .build-deps
-COPY server.mjs db.mjs encrypted-db.mjs accounts.mjs lifecycle.mjs memoir-export.mjs mail.mjs calendar.mjs reminders.mjs realtime.mjs memos.mjs chat.mjs media.mjs speech.mjs app-updates.mjs notifications.mjs agreements.mjs agreement-lines.mjs ./
+COPY server.mjs db.mjs encrypted-db.mjs accounts.mjs lifecycle.mjs memoir-export.mjs mail.mjs calendar.mjs reminders.mjs realtime.mjs memos.mjs chat.mjs media.mjs speech.mjs app-updates.mjs notifications.mjs agreements.mjs agreement-lines.mjs holidays.mjs ./
 COPY public ./public
 COPY scripts ./scripts
 COPY deploy/update.sh deploy/sync-app-updates.sh ./scripts/
@@ -24,7 +24,7 @@ EXPOSE 3000
 CMD ["node", "server.mjs"]
 
 FROM base AS test
-COPY test.mjs test-v13.mjs test-encryption.mjs test-settings.mjs test-memos.mjs test-chat.mjs test-speech.mjs test-app-sync.mjs test-android-calendar.mjs test-agreements.mjs ./
+COPY test.mjs test-v13.mjs test-encryption.mjs test-settings.mjs test-memos.mjs test-chat.mjs test-speech.mjs test-app-sync.mjs test-android-calendar.mjs test-agreements.mjs test-holidays.mjs ./
 COPY apps/android/app/src/main/assets/calendar-layout.js ./apps/android/app/src/main/assets/
 RUN npm run test:server
 

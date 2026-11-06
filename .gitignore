@@ -40,3 +40,4 @@ apps/ios/OurDays.xcodeproj/
 *.p8
 *.pfx
 *.dSYM/
+.codex-remote-attachments/

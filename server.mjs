@@ -1,4 +1,5 @@
 import {agreementService} from './agreements.mjs';
+import {createHolidaySync} from './holidays.mjs';
 import {notificationFeed} from './notifications.mjs';
 import {appUpdates} from './app-updates.mjs';
 import {createRealtime} from './realtime.mjs';
@@ -23,8 +24,9 @@ import {memoryAttachments,sendMedia} from './media.mjs';
 const root=path.dirname(fileURLToPath(import.meta.url));
 const {version:appVersion}=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8'));
 async function body(req,max=32*1024*1024) {let size=0, chunks=[]; for await(const c of req) {size+=c.length; if(size>max) throw fail(413,'上传内容总大小过大'); chunks.push(c);} try{return JSON.parse(Buffer.concat(chunks));}catch{throw fail(400,'请求格式错误');}}
-export function createApplication({dataDir=process.env.DATA_DIR||path.join(root,'data'),mailer=createMailer(),memoOrganizer=createMemoOrganizer(),speechRecognizer=createSpeechRecognizer()}={}) {
+export function createApplication({dataDir=process.env.DATA_DIR||path.join(root,'data'),mailer=createMailer(),memoOrganizer=createMemoOrganizer(),speechRecognizer=createSpeechRecognizer(),holidayFetcher=fetch}={}) {
 const db=openDatabase(dataDir),lifecycle=lifecycleService(db,mailer),accounts=accountService(db,mailer,lifecycle),worker=createReminderWorker(db,mailer);
+const holidays=createHolidaySync({dataDir,fetcher:holidayFetcher});
 lifecycle.purge();
 const cleanup=setInterval(()=>{try{lifecycle.purge();}catch{console.error('账本到期清理失败');}},60000);cleanup.unref();
 const realtime=createRealtime(accounts.authenticate,lifecycle.status);
@@ -121,7 +123,7 @@ const server=http.createServer(async(req,res)=>{
       if(url.pathname==='/api/me' && req.method==='GET') return send(200,accounts.publicUser(user));
       if(url.pathname==='/api/calendar' && req.method==='GET'){
         const month=url.searchParams.get('month');if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month||'')||month<'2000-01')throw fail(400,'月份格式错误');
-        return send(200,monthDetails(month));
+        return send(200,holidays.month(month));
       }
       if(url.pathname==='/api/reminders'&&req.method==='GET'){
         const today=shanghaiClock().day;const month=url.searchParams.get('month');if(month&&(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||month<'2000-01'))throw fail(400,'月份格式错误');
@@ -243,10 +245,10 @@ const server=http.createServer(async(req,res)=>{
     res.writeHead(200,{'Content-Type':file[1]});res.end(page);
   } catch(e) {if(!e.status) console.error('请求处理失败',e.code||'internal');send(e.status||500,{error:e.status?e.message:'服务暂时不可用，请稍后重试'});}
 });
-server.on('close',()=>{clearInterval(cleanup);agreements.close();chat.close();realtime.close();});
-return {server,db,worker,realtime,lifecycle};
+server.on('close',()=>{clearInterval(cleanup);holidays.close();agreements.close();chat.close();realtime.close();});
+return {server,db,worker,realtime,lifecycle,holidays};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- const {server,worker}=createApplication();
- server.listen(Number(process.env.PORT||3000),process.env.HOST||'0.0.0.0',()=>{console.log('恋爱万年历 v'+appVersion+' 已启动');worker.start();});
+ const {server,worker,holidays}=createApplication();
+ server.listen(Number(process.env.PORT||3000),process.env.HOST||'0.0.0.0',()=>{console.log('恋爱万年历 v'+appVersion+' 已启动');worker.start();holidays.start();});
 }
