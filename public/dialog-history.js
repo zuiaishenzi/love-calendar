@@ -13,6 +13,14 @@
   if(current.length>common){pending=true;history.go(common-current.length);return;}
   for(let i=common;i<desired.length;i++)history.pushState(state(desired.slice(0,i+1)),'');
  }
+ let memoEditLayer=null;
+ window.setMemoEditHistory=active=>{
+  if(active&&!memoEditLayer?.open){
+   memoEditLayer={open:true,_closeFromHistory(){this.open=false;if(typeof exitMemoEditMode==='function')exitMemoEditMode(false);}};
+   stack.push({dialog:memoEditLayer,token:++serial});
+  }else if(!active&&memoEditLayer)memoEditLayer.open=false;
+  reconcile();
+ };
  for(const dialog of document.querySelectorAll('dialog')){
   const show=dialog.showModal.bind(dialog),close=dialog.close.bind(dialog);
   dialog.showModal=()=>{

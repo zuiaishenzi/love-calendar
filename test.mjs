@@ -107,7 +107,8 @@ test('返回键逐层关闭弹窗，按钮关闭及快速切换不残留历史',
  const parent={insertBefore(node,first){dialogs.splice(dialogs.indexOf(node),1);dialogs.splice(dialogs.indexOf(first),0,node);}};for(const dialog of dialogs)dialog.parentNode=parent;
  const entries=[null];let cursor=0;
  const history={get state(){return entries[cursor];},replaceState(value){entries[cursor]=value;},pushState(value){entries.splice(cursor+1);entries.push(value);cursor++;},go(delta){queue.push(()=>{cursor+=delta;assert.ok(cursor>=0);listeners.popstate();});}};
- runInNewContext(readFileSync(new URL('./public/dialog-history.js',import.meta.url),'utf8'),{history,document:{querySelectorAll:()=>dialogs},window:{addEventListener:(event,fn)=>listeners[event]=fn}});
+ let editing=false;const surface={addEventListener:(event,fn)=>listeners[event]=fn};
+ runInNewContext(readFileSync(new URL('./public/dialog-history.js',import.meta.url),'utf8'),{history,document:{querySelectorAll:()=>dialogs},window:surface,exitMemoEditMode:()=>{editing=false;}});
  const flush=()=>{let n=0;while(queue.length){assert.ok(n++<40,'history loop');queue.shift()();}};
  const [day,editor,photo,profile,password]=dialogs;
  day.showModal();editor.showModal();photo.showModal();assert.equal(cursor,3);assert.equal(dialogs.find(d=>d.open),photo);
@@ -120,4 +121,7 @@ test('返回键逐层关闭弹窗，按钮关闭及快速切换不残留历史',
  history.go(1);flush();assert.equal(password.open,false);
  day.showModal();editor.showModal();dialogs.forEach(d=>d.close());flush();assert.equal(dialogs.some(d=>d.open),false);
  day.showModal();day.events.cancel({preventDefault(){}});flush();assert.equal(day.open,false);
+ const base=cursor;editing=true;surface.setMemoEditHistory(true);editor.showModal();history.go(-1);flush();assert.equal(editor.open,false);assert.equal(editing,true);
+ history.go(-1);flush();assert.equal(editing,false);assert.equal(cursor,base);
+ editing=true;surface.setMemoEditHistory(true);editor.showModal();editing=false;surface.setMemoEditHistory(false);editor.close();flush();assert.equal(cursor,base);
 });

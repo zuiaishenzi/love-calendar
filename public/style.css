@@ -407,7 +407,7 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible){outline:none}
 .memo-group-heading .memo-drag-handle:active{cursor:grabbing}.memo-group.dragging{border-color:#c18bA3;box-shadow:0 3px 14px #9b58752a;background:#fff8fb}
 
 .memo-ai-bar{display:flex;flex-direction:row;align-items:center;flex-wrap:wrap;gap:8px}.memo-ai-bar>button,#memo-originals-open{margin:0;padding:9px 12px;font-size:13px;align-self:auto;flex:1;white-space:nowrap}
-#memo-edit-mode{font-size:12px;padding:6px 10px}.memo-group li:has(.memo-item-drag){display:flex;flex-wrap:wrap;align-items:flex-start;gap:5px}.memo-group li>.memo-text{flex:1;min-width:0}.memo-item-drag{touch-action:none;cursor:grab;border:0;background:transparent;color:#a58290;padding:2px 5px;font-size:18px}.memo-item-moving{opacity:.55}.memo-drop-target{border-color:var(--wine);background:#faf0f5}
+#memo-edit-mode{font-size:12px;padding:6px 10px}.memo-group li>.memo-text{flex:1;min-width:0}
 
 #chat-open{display:inline-flex;align-items:center;justify-content:center;gap:6px}.chat-unread-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;box-sizing:border-box;border-radius:10px;background:#a94a6a;color:white;font-size:10px;line-height:1;font-weight:600;letter-spacing:0}.chat-unread-badge[hidden]{display:none}
 
@@ -774,10 +774,10 @@ body[data-calendar-hub-platform="mobile"] #calendar-pull-hint{top:calc(70px + en
 #memos-dialog.main-view #memos-list.is-editing{display:grid;column-count:auto;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:14px}
 #memos-dialog.main-view #memos-list.is-editing>.memo-group{display:block;margin:0;width:auto}
 #memos-list.is-editing .memo-group ul{list-style:none;padding:0}
-#memos-list.is-editing .memo-entry{display:grid;grid-template-columns:22px minmax(0,1fr);gap:6px;padding:12px 0;border-bottom:1px solid #f0e4eb}
+#memos-list.is-editing .memo-entry{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;padding:12px 0;border-bottom:1px solid #f0e4eb}
 #memos-list.is-editing .memo-entry:last-child{border-bottom:0}
-#memos-list.is-editing .memo-entry>.memo-item-drag{grid-column:1;grid-row:1;padding:1px 2px;line-height:1.4}
-#memos-list.is-editing .memo-entry>.memo-text,#memos-list.is-editing .memo-entry>.memo-images{grid-column:2;min-width:0}
+
+#memos-list.is-editing .memo-entry>.memo-text,#memos-list.is-editing .memo-entry>.memo-images{grid-column:1;min-width:0}
 .memo-entry>.memo-images:empty{display:none}
 #memo-point-dialog{width:min(560px,calc(100vw - 24px));max-width:calc(100vw - 24px);background:#fffafb}#memo-point-dialog>.hint,#memo-source-warning{font-size:12px;line-height:1.7;color:#a17e91}#memo-point-status{font-size:12px;color:var(--wine)}#memo-point-dialog .memo-actions{justify-content:flex-end}
 @media(max-width:760px){#memos-dialog.main-view>.memo-ai-bar{gap:6px}#memos-dialog.main-view>.memo-ai-bar>button{font-size:12px;gap:5px}#memos-dialog.main-view #memos-list.is-editing{grid-template-columns:1fr}.memo-ai-bar svg{width:17px;height:17px}#memo-point-dialog{padding:20px}}
