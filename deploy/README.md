@@ -36,6 +36,8 @@ sudo bash /opt/love-calendar/bin/update.sh
 
 脚本拉取 main 的最新提交，在隔离镜像中运行测试，通过后构建正式镜像，备份数据并启动服务，等待健康检查成功。首次部署失败不会启用定时更新。
 
+Docker 基础镜像固定为 `node:24-alpine3.23`，避免浮动标签自动切换 Alpine 发行版。安装构建依赖时依次尝试中科大、阿里云和 Alpine 官方 HTTPS 源，网络超时设为15秒；所有源均保留 TLS 和软件包签名验证。若全部失败，需要排查服务器或 Docker 构建网络的 HTTPS/DNS 连通性。`python3/make/g++ (no such package)` 若伴随索引下载错误，通常是软件源不可访问，并非这些包不存在。修复上传 GitHub 后，使用下文的 `update.sh --retry` 重试，无需删除数据库或重装应用。
+
 应用仅监听服务器本机 `127.0.0.1:3000`。配置 Caddy 或现有 Nginx 反向代理后，通过域名访问。Caddy 示例（替换域名）：
 
 ```caddyfile
