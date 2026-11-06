@@ -457,6 +457,17 @@ function chatReadFixture(){
  const actions=runInNewContext(code+';({updateChatRead,jumpToUnreadChat,flushChatRead,mergeChatReadState})',context);return {context,button,list,requests,add,...actions};
 }
 
+test('输入法收缩聊天区域时只跟随原本在底部的消息，查看历史时保留位置',()=>{
+ const source=readFileSync('public/chat.js','utf8'),code=source.slice(source.indexOf('let chatViewportPinned='),source.indexOf('async function syncChat('));
+ const list={clientHeight:500,scrollHeight:1500,scrollTop:1000,addEventListener(){}},field={addEventListener(){}},styles=new Map();let resized;
+ const context={$:selector=>selector==='#chat-messages'?list:selector==='#chat-form'?{elements:{text:field}}:{hidden:false},innerHeight:800,window:{visualViewport:{height:500,scale:1,addEventListener(){}},addEventListener(){}},document:{documentElement:{style:{setProperty:(name,value)=>styles.set(name,value)}}},queueChatRead(){},ResizeObserver:class{constructor(callback){resized=callback;}observe(){}}};
+ const actions=runInNewContext(code+';({rememberChatBottom,refreshChatViewport})',context);
+ actions.rememberChatBottom();list.clientHeight=250;resized();assert.equal(list.scrollTop,1500);
+ list.scrollTop=200;actions.rememberChatBottom();list.clientHeight=150;resized();assert.equal(list.scrollTop,200);
+ actions.refreshChatViewport();assert.equal(styles.get('--chat-viewport-height'),'500px');
+ context.window.visualViewport.height=800;actions.refreshChatViewport();assert.equal(styles.get('--chat-viewport-height'),'800px');assert.equal(list.scrollTop,200);
+});
+
 test('未读提示只在未读跨度超过聊天区域时显示，点击后定位并抑制旧批次',()=>{
  const f=chatReadFixture();for(let id=1;id<=6;id++)f.add(id,(id-5)*100);f.updateChatRead();assert.equal(f.button.hidden,false);assert.equal(f.context.chatReadSeen.has(5),true);assert.equal(f.context.chatReadSeen.has(1),false);assert.deepEqual(f.requests,[]);
  f.jumpToUnreadChat();assert.equal(f.list.scrollTop,188);assert.equal(f.button.hidden,true);f.updateChatRead();assert.equal(f.button.hidden,true);

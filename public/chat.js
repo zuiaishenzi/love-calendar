@@ -80,8 +80,14 @@ function jumpToUnreadChat(){
  chatUnreadDismissedThrough=Math.max(chatUnreadDismissedThrough,...chatRows.map(row=>row.id));$('#chat-earlier').hidden=true;list.scrollTop+=node.getBoundingClientRect().top-list.getBoundingClientRect().top-12;queueChatRead();
 }
 $('#chat-earlier').onclick=jumpToUnreadChat;
-$('#chat-messages').addEventListener('scroll',queueChatRead,{passive:true});$('#chat-messages').addEventListener('load',queueChatRead,true);window.addEventListener('resize',queueChatRead);
-new ResizeObserver(queueChatRead).observe($('#chat-messages'));
+let chatViewportPinned=true,chatViewportListHeight=$('#chat-messages').clientHeight;
+function rememberChatBottom(){const list=$('#chat-messages');chatViewportPinned=list.scrollHeight-list.scrollTop-list.clientHeight<24;chatViewportListHeight=list.clientHeight;}
+function resizeChatMessages(){const list=$('#chat-messages');if(!$('#chat-dialog').hidden&&list.clientHeight!==chatViewportListHeight&&chatViewportPinned)list.scrollTop=list.scrollHeight;chatViewportListHeight=list.clientHeight;queueChatRead();}
+function refreshChatViewport(){const viewport=window.visualViewport;if(viewport&&viewport.scale===1)document.documentElement.style.setProperty('--chat-viewport-height',Math.floor(Math.min(innerHeight,viewport.height))+'px');resizeChatMessages();}
+$('#chat-form').elements.text.addEventListener('pointerdown',rememberChatBottom);$('#chat-form').elements.text.addEventListener('focus',rememberChatBottom);
+$('#chat-messages').addEventListener('scroll',()=>{if($('#chat-messages').clientHeight===chatViewportListHeight)rememberChatBottom();queueChatRead();},{passive:true});$('#chat-messages').addEventListener('load',queueChatRead,true);
+window.addEventListener('resize',refreshChatViewport);window.visualViewport?.addEventListener('resize',refreshChatViewport);refreshChatViewport();
+new ResizeObserver(resizeChatMessages).observe($('#chat-messages'));
 async function syncChat(){
  clearTimeout(chatTimer);if(!chatOwner||chatBusy)return;chatBusy=true;const generation=chatGeneration;
  try{
