@@ -17,7 +17,7 @@ function hubScrollRoom(target,delta){
  for(let node=target instanceof Element?target:null;node&&node!==document.body;node=node.parentElement){const css=getComputedStyle(node);if(/auto|scroll/.test(css.overflowY)&&node.scrollHeight>node.clientHeight+2&&(delta>0?node.scrollTop+node.clientHeight<node.scrollHeight-2:node.scrollTop>2))return true;}
  const page=document.scrollingElement;return page.scrollHeight>innerHeight+2&&(delta>0?page.scrollTop+innerHeight<page.scrollHeight-2:page.scrollTop>2);
 }
-function hubSwitch(next){hubLockedUntil=hubNow()+650;hubWheel={sum:0,time:0};hideHubHint();switchView(next);if(calendarHubPlatform==='mobile')showHubHint(next==='agreements'?'已打开约定，清单到底后上滑返回日历。':'已回到日历。');}
+function hubSwitch(next){hubLockedUntil=hubNow()+650;hubWheel={sum:0,time:0};hideHubHint();switchView(next);}
 $('#app').addEventListener('wheel',event=>{
  if(calendarHubPlatform!=='desktop'||!['calendar','agreements'].includes(view)||hubDialogOpen()||event.ctrlKey||event.shiftKey||Math.abs(event.deltaX)>Math.abs(event.deltaY)||!hubGestureTarget(event.target))return;
  const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?innerHeight:1),direction=view==='calendar'?1:-1;
@@ -28,20 +28,19 @@ $('#app').addEventListener('wheel',event=>{
 },{passive:false});
 function startHubPull(x,y,target){
  if(calendarHubPlatform!=='mobile'||!['calendar','agreements'].includes(view)||hubDialogOpen()||!hubGestureTarget(target)||hubNow()<hubLockedUntil)return;
- const delta=view==='calendar'?-1:1;
- if(hubScrollRoom(target,delta))return;
+ if(hubScrollRoom(target,-1))return;
  hubPull={x,y,view,distance:0};
 }
 function moveHubPull(x,y,event){
  if(!hubPull)return;if(hubPull.view!==view||hubDialogOpen()){endHubPull(false);return;}
- const dx=x-hubPull.x,dy=y-hubPull.y,distance=hubPull.view==='calendar'?dy:-dy;
+ const dx=x-hubPull.x,dy=y-hubPull.y,distance=dy;
  if(Math.abs(dx)>12&&Math.abs(dx)>Math.abs(dy)){endHubPull(false);return;}
  if(distance<0){endHubPull(false);return;}
  hubPull.distance=distance;if(distance<10)return;event.preventDefault();
- const ready=distance>=90;showHubHint(ready?(view==='calendar'?'松开，看看我们想一起做的事 ♡':'松开，返回日历'):(view==='calendar'?'继续下拉，看看我们想一起做的事。':'继续上滑，返回日历。'),ready);
+ const ready=distance>=90;showHubHint(ready?(view==='calendar'?'松开，看看我们想一起做的事 ♡':'松开，返回日历'):(view==='calendar'?'继续下拉，看看我们想一起做的事。':'继续下拉，返回日历。'),ready);
 }
 function endHubPull(commit){
- const gesture=hubPull;hubPull=null;
+ const gesture=hubPull;hubPull=null;hideHubHint();
  if(gesture&&gesture.distance>=10)hubSuppressClickUntil=hubNow()+700;
  if(commit&&gesture&&gesture.distance>=90){hubSwitch(gesture.view==='calendar'?'agreements':'calendar');}
 }

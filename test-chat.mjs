@@ -220,7 +220,7 @@ test('日历左右滑动切月，竖向滚动、点击、多指及取消不切�
  handlers.pointerdown(event(250,100));handlers.pointercancel(event(250,100));handlers.pointerup(event(100,100));
  handlers.pointerdown(event(250,100));handlers.pointerdown(event(200,100,2));handlers.pointerup(event(100,100));handlers.pointerup(event(100,100,2));assert.deepEqual(moves,[1,-1]);
  handlers.pointerdown(event(250,100));context.month='2026-11';handlers.pointerup(event(100,100));assert.deepEqual(moves,[1,-1]);
- const moveContext={month:'2000-01',selected:'2000-01-01',Date,String,load:()=>{}},move=runInNewContext(source.slice(source.indexOf('function move(delta){'),source.indexOf("$('#prev').onclick"))+';move',moveContext);move(-1);assert.equal(moveContext.month,'2000-01');moveContext.month='9999-12';move(1);assert.equal(moveContext.month,'9999-12');moveContext.month='2026-12';move(1);assert.equal(moveContext.month,'2027-01');
+ const moveContext={month:'2000-01',selected:'2000-01-01',Date,String,load:motion=>moves.push(motion)},move=runInNewContext(source.slice(source.indexOf('function move(delta,offset=0){'),source.indexOf("$('#prev').onclick"))+';move',moveContext);move(-1);assert.equal(moveContext.month,'2000-01');moveContext.month='9999-12';move(1);assert.equal(moveContext.month,'9999-12');moveContext.month='2026-12';move(1);assert.equal(moveContext.month,'2027-01');assert.equal(moves.at(-1).direction,1);assert.equal(moves.at(-1).offset,0);
 });
 
 

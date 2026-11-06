@@ -26,18 +26,36 @@ function voiceMessage(url,duration=null){
 function memoryAttachment(item){const card=el('div',undefined,'memory-attachment'),player=el(item.kind==='video'?'video':'audio'),name=el('p',item.name),download=el('a','下载附件');player.src='/api/memory-attachments/'+item.id;player.controls=true;player.preload='metadata';if(item.kind==='video')player.playsInline=true;download.href=player.src+'?download=1';download.download=item.name;card.append(name,player,download);return card;}
 function attachmentPreviews(){const list=$('#attachment-preview');list.replaceChildren();for(const item of keptAttachments){const card=memoryAttachment(item),remove=el('button','移除');remove.type='button';remove.onclick=()=>{keptAttachments=keptAttachments.filter(a=>a.id!==item.id);attachmentPreviews();};card.append(remove);list.append(card);}}
 async function api(url,method='GET',data) {const r=await fetch(url,{method,headers:method==='GET'?{}:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});const json=await r.json();if(!r.ok){if(r.status===401 && url!='/api/login') showLogin();throw new Error(json.error);}return json;}
-let view='calendar', timelineVersion=0,holidayRefreshTimer=null;
-function showLogin(){clearTimeout(holidayRefreshTimer);if(typeof resetAgreementView==='function')resetAgreementView();if(typeof stopMemos==='function')stopMemos();if(typeof stopChat==='function')stopChat();view='calendar';paintMainViews();stopRealtime();++loadVersion;++timelineVersion;$('#app').hidden=true;$('#login').hidden=false;document.querySelectorAll('dialog').forEach(d=>d.close());currentUser=null;annualReminders=[];calendarInfo={days:[]};memories=[];$('#stories').replaceChildren();$('#timeline-list').replaceChildren();}
+let view='calendar', timelineVersion=0,holidayRefreshTimer=null,calendarMonthAnimation=null;
+function showLogin(){clearTimeout(holidayRefreshTimer);calendarMonthAnimation?.cancel();$('#calendar-load-hint').hidden=true;if(typeof resetAgreementView==='function')resetAgreementView();if(typeof stopMemos==='function')stopMemos();if(typeof stopChat==='function')stopChat();view='calendar';paintMainViews();stopRealtime();++loadVersion;++timelineVersion;$('#app').hidden=true;$('#login').hidden=false;document.querySelectorAll('dialog').forEach(d=>d.close());currentUser=null;annualReminders=[];calendarInfo={days:[]};memories=[];$('#stories').replaceChildren();$('#timeline-list').replaceChildren();}
 async function enter(user){currentUser=user;if(typeof refreshSettings==='function')refreshSettings();startRealtime();if(typeof startChat==='function')startChat();$('#username').textContent=user.name;$('#login').hidden=true;$('#app').hidden=false;await load();}
-async function load(){clearTimeout(holidayRefreshTimer);if(view==='agreements')return refreshAgreements();if(view==='chat')return syncChat();if(view==='memos')return;if(view==='timeline')return loadTimeline();const version=++loadVersion,requestedMonth=month;$('#status').textContent='正在翻开回忆…';try{const [rows,info,reminders,promises]=await Promise.all([api('/api/memories?month='+month),api('/api/calendar?month='+month),api('/api/reminders?month='+month),api('/api/agreements')]);if(version!==loadVersion)return;memories=rows;calendarInfo=info;annualReminders=reminders;agreementRows=promises;agreementOwner=currentUser.id;$('#holiday-note').textContent=info.holiday_note;render();scheduleHolidayRefresh(info,version,requestedMonth);$('#status').textContent='';}catch(e){if(version===loadVersion)$('#status').textContent=e.message;}}
+async function waitForCalendarGesture(version){while(version===loadVersion&&view==='calendar'&&((typeof updateCalendarHub==='function'&&hubPull)||$('#grid').style?.willChange))await new Promise(resolve=>setTimeout(resolve,40));}
+function animateCalendarMonth(frames,duration){
+ if(matchMedia('(prefers-reduced-motion: reduce)').matches)return null;
+ const animation=$('#grid').animate?.(frames,{duration,easing:'cubic-bezier(.2,.8,.2,1)',fill:'both'});animation?.finished.catch(()=>{});return animation;
+}
+async function load(motion=null){
+ clearTimeout(holidayRefreshTimer);calendarMonthAnimation?.cancel();calendarMonthAnimation=null;
+ if(view==='agreements')return refreshAgreements();if(view==='chat')return syncChat();if(view==='memos')return;if(view==='timeline')return loadTimeline();
+ const version=++loadVersion,requestedMonth=month;$('#status').textContent='';$('#calendar-load-hint').hidden=false;
+ const leaving=motion?animateCalendarMonth([{transform:'translate3d('+motion.offset+'px,0,0)',opacity:1},{transform:'translate3d('+(-motion.direction*30)+'px,0,0)',opacity:.55}],140):null;calendarMonthAnimation=leaving;
+ try{
+  const [rows,info,reminders,promises]=await Promise.all([api('/api/memories?month='+requestedMonth),api('/api/calendar?month='+requestedMonth),api('/api/reminders?month='+requestedMonth),api('/api/agreements')]);
+  if(leaving)await leaving.finished.catch(()=>{});await waitForCalendarGesture(version);if(version!==loadVersion)return;
+  memories=rows;calendarInfo=info;annualReminders=reminders;agreementRows=promises;agreementOwner=currentUser.id;leaving?.cancel();render();
+  calendarMonthAnimation=motion?animateCalendarMonth([{transform:'translate3d('+(motion.direction*30)+'px,0,0)',opacity:.55},{transform:'translate3d(0,0,0)',opacity:1}],220):null;
+  scheduleHolidayRefresh(info,version,requestedMonth);
+ }catch(e){if(version===loadVersion){calendarMonthAnimation?.cancel();$('#status').textContent=e.message;}}
+ finally{if(version===loadVersion)$('#calendar-load-hint').hidden=true;}
+}
 function scheduleHolidayRefresh(info,version,requestedMonth,attempt=0){
  clearTimeout(holidayRefreshTimer);if(!info.holiday_syncing||attempt>=10)return;
  holidayRefreshTimer=setTimeout(async()=>{
   if(version!==loadVersion||month!==requestedMonth||view!=='calendar'||!currentUser)return;
-  try{const next=await api('/api/calendar?month='+requestedMonth);if(version!==loadVersion||month!==requestedMonth||view!=='calendar'||!currentUser)return;calendarInfo=next;$('#holiday-note').textContent=next.holiday_note;render();scheduleHolidayRefresh(next,version,requestedMonth,attempt+1);}catch{}
+  try{const next=await api('/api/calendar?month='+requestedMonth);await waitForCalendarGesture(version);if(version!==loadVersion||month!==requestedMonth||view!=='calendar'||!currentUser)return;calendarInfo=next;render();scheduleHolidayRefresh(next,version,requestedMonth,attempt+1);}catch{}
  },1200);
 }
-function paintMainViews(){for(const [name,selector,button] of [['calendar','.workspace','#calendar-view'],['timeline','#memoir','#memoir-view'],['chat','#chat-dialog','#chat-open'],['memos','#memos-dialog','#memos-open'],['agreements','#agreements-view','#agreements-open']]){$(selector).hidden=view!==name;$(button).setAttribute('aria-pressed',String(view===name));}$('#calendar-view').setAttribute('aria-pressed',String(view==='calendar'||view==='agreements'));$('#calendar-hub-switcher').hidden=!['calendar','agreements'].includes(view);$('#calendar-hub-calendar').setAttribute('aria-pressed',String(view==='calendar'));if(typeof updateCalendarHub==='function')updateCalendarHub();}
+function paintMainViews(){if(view!=='calendar')$('#calendar-load-hint').hidden=true;for(const [name,selector,button] of [['calendar','.workspace','#calendar-view'],['timeline','#memoir','#memoir-view'],['chat','#chat-dialog','#chat-open'],['memos','#memos-dialog','#memos-open'],['agreements','#agreements-view','#agreements-open']]){$(selector).hidden=view!==name;$(button).setAttribute('aria-pressed',String(view===name));}$('#calendar-view').setAttribute('aria-pressed',String(view==='calendar'||view==='agreements'));$('#calendar-hub-switcher').hidden=!['calendar','agreements'].includes(view);$('#calendar-hub-calendar').setAttribute('aria-pressed',String(view==='calendar'));if(typeof updateCalendarHub==='function')updateCalendarHub();}
 function switchView(next){if(!['calendar','timeline','chat','memos','agreements'].includes(next))return;if(next===view)return load();const previous=view;view=next;++loadVersion;++timelineVersion;if(previous==='chat')leaveChatView();if(previous==='memos')stopMemos(false);paintMainViews();animateMainView(next,previous);$('#status').textContent='';if(next==='chat')return openChatView();if(next==='memos')return openMemoView();return load();}
 function animateMainView(next,previous){const host=$(({calendar:'.workspace',timeline:'#memoir',chat:'#chat-dialog',memos:'#memos-dialog',agreements:'#agreements-view'})[next]);if(!host?.animate||typeof matchMedia!=='undefined'&&matchMedia('(prefers-reduced-motion: reduce)').matches)return;const vertical=[next,previous].every(name=>['calendar','agreements'].includes(name)),pages=['calendar','chat','agreements','memos','timeline'],offset=vertical?(next==='agreements'?-12:12):pages.indexOf(next)>pages.indexOf(previous)?10:-10,translate=value=>(vertical?'translateY(':'translateX(')+value+'px)';host.getAnimations?.().forEach(animation=>animation.cancel());host.animate([{opacity:.92,transform:translate(offset)},{opacity:1,transform:translate(0)}],{duration:150,easing:'cubic-bezier(.2,.8,.2,1)'});}
 let pickerMainView=null;
@@ -92,7 +110,7 @@ function previews(){const box=$('#photo-preview');box.replaceChildren();kept.for
 function openEditor(r=null){if(currentUser?.lifecycle?.readonly){$('#status').textContent='账本正在注销中，仅可查看或下载。';return;}editing=r;const own=r?.perspectives?.find(p=>p.author===currentUser.id);kept=own?[...own.photos]:[];keptAttachments=own?[...(own.attachments||[])]:[];const f=$('#memory-form');f.reset();f.elements.day.value=r?.day||selected;f.elements.title.value=r?.title||'';f.elements.body.value=own?.body||'';$('#editor-conversation').replaceChildren();if(r)$('#editor-conversation').append(conversation(r));$('#editor-title').textContent=r?'我们的回忆 · 我的视角':'写下回忆';$('#editor-error').textContent='';previews();attachmentPreviews();$('#editor').showModal();announceEditing();}
 $('#close').onclick=()=>$('#editor').close();$('#add-day').onclick=()=>openEditor();
 $('#editor').addEventListener('close',()=>{for(const player of $('#editor').querySelectorAll('audio,video'))player.pause();});
-function move(delta){const [y,m]=month.split('-').map(Number);const date=new Date(y,m-1+delta,1);if(date.getFullYear()<2000||date.getFullYear()>9999)return;month=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;selected=month+'-01';load();}
+function move(delta,offset=0){const [y,m]=month.split('-').map(Number);const date=new Date(y,m-1+delta,1);if(date.getFullYear()<2000||date.getFullYear()>9999)return;month=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;selected=month+'-01';return load({direction:delta,offset});}
 $('#prev').onclick=()=>move(-1);$('#next').onclick=()=>move(1);$('#month-jump').onsubmit=e=>{e.preventDefault();const year=$('#jump-year').value.trim(),part=$('#jump-month').value;if(!/^[0-9]{4}$/.test(year)||Number(year)<2000||Number(year)>9999){$('#status').textContent='请输入2000至9999之间的年份';return;}month=year+'-'+part;selected=month+'-01';load();};$('#today').onclick=()=>{selected=localDay()<'2000-01-01'?'2000-01-01':localDay();month=selected.slice(0,7);load();};
 $('#login-form').onsubmit=async e=>{e.preventDefault();const f=e.target,b=f.querySelector('button');b.disabled=true;$('#login-error').textContent='';try{await enter(await api('/api/login','POST',{name:f.elements.name.value,password:f.elements.password.value}));f.reset();}catch(error){$('#login-error').textContent=error.message;}finally{b.disabled=false;}};
 $('#logout').onclick=async()=>{try{await api('/api/logout','POST',{});showLogin();}catch(e){$('#status').textContent=e.message;}};
@@ -125,22 +143,30 @@ $('#memory-reply-form').onsubmit=async event=>{event.preventDefault();const memo
 
 if(/OurDays(?:Android|Harmony)\//.test(navigator.userAgent))document.body.classList.add('android-app');
 function calendarSwipe(grid){
- let gesture=null,suppressClickUntil=0;const pointers=new Set();
+ let gesture=null,suppressClickUntil=0,frame=null,offset=0;const pointers=new Set(),surface=grid.querySelector?.('#grid');
+ const reduced=()=>typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+ function paintDrag(){frame=null;if(surface?.style)surface.style.transform='translate3d('+offset+'px,0,0)';}
+ function drag(dx){if(!surface?.style||reduced())return;offset=Math.max(-64,Math.min(64,dx*.28));surface.style.willChange='transform';if(frame===null)frame=requestAnimationFrame(paintDrag);}
+ function resetDrag(bounce=false){if(frame!==null){cancelAnimationFrame(frame);frame=null;}const from=offset;offset=0;if(surface?.style){surface.style.transform='';surface.style.willChange='';if(bounce&&from&&!reduced()){const animation=surface.animate?.([{transform:'translate3d('+from+'px,0,0)'},{transform:'translate3d(0,0,0)'}],{duration:160,easing:'cubic-bezier(.2,.8,.2,1)'});animation?.finished.catch(()=>{});}}return from;}
  grid.addEventListener('pointerdown',event=>{
   if(event.pointerType==='mouse'||event.button!==0||view!=='calendar')return;
   if(event.target?.closest('input,textarea,select,.navigation button'))return;
-  if(event.isPrimary===true){pointers.clear();gesture=null;}pointers.add(event.pointerId);if(pointers.size!==1||document.querySelector('dialog[open]')){gesture=null;return;}
-  gesture={id:event.pointerId,x:event.clientX,y:event.clientY,month};
+  if(event.isPrimary===true){pointers.clear();gesture=null;resetDrag();}pointers.add(event.pointerId);if(pointers.size!==1||document.querySelector('dialog[open]')){gesture=null;resetDrag(true);return;}
+  surface?.getAnimations?.().forEach(animation=>animation.cancel());gesture={id:event.pointerId,x:event.clientX,y:event.clientY,month};
  });
- grid.addEventListener('pointermove',event=>{if(!gesture||gesture.id!==event.pointerId)return;const dx=Math.abs(event.clientX-gesture.x),dy=Math.abs(event.clientY-gesture.y);if(dy>12&&dy>dx){gesture=null;return;}if(dx>16&&dx>dy*1.2&&!gesture.captured&&grid.setPointerCapture){grid.setPointerCapture(event.pointerId);gesture.captured=true;}});
+ grid.addEventListener('pointermove',event=>{
+  if(!gesture||gesture.id!==event.pointerId)return;const dx=event.clientX-gesture.x,dy=event.clientY-gesture.y;
+  if(Math.abs(dy)>12&&Math.abs(dy)>Math.abs(dx)){gesture=null;resetDrag(true);return;}
+  if(Math.abs(dx)>16&&Math.abs(dx)>Math.abs(dy)*1.2){if(!gesture.captured&&grid.setPointerCapture){grid.setPointerCapture(event.pointerId);gesture.captured=true;}drag(dx);}
+ });
  grid.addEventListener('pointerup',event=>{
   pointers.delete(event.pointerId);if(!gesture||gesture.id!==event.pointerId)return;
   const start=gesture;gesture=null;const dx=event.clientX-start.x,dy=event.clientY-start.y,threshold=Math.max(40,Math.min(80,grid.clientWidth*0.15));
-  if(start.month!==month||view!=='calendar'||Math.abs(dx)<threshold||Math.abs(dx)<Math.abs(dy)*1.5)return;
-  suppressClickUntil=Date.now()+700;move(dx<0?1:-1);
+  if(start.month!==month||view!=='calendar'||Math.abs(dx)<threshold||Math.abs(dx)<Math.abs(dy)*1.5){if(offset)suppressClickUntil=Date.now()+700;resetDrag(true);return;}
+  suppressClickUntil=Date.now()+700;const from=resetDrag();move(dx<0?1:-1,from);
  });
- grid.addEventListener('pointercancel',event=>{pointers.delete(event.pointerId);gesture=null;});
- grid.addEventListener('pointerleave',event=>{if(gesture?.captured)return;pointers.delete(event.pointerId);if(gesture?.id===event.pointerId)gesture=null;});
+ grid.addEventListener('pointercancel',event=>{pointers.delete(event.pointerId);gesture=null;resetDrag(true);});
+ grid.addEventListener('pointerleave',event=>{if(gesture?.captured)return;pointers.delete(event.pointerId);if(gesture?.id===event.pointerId){gesture=null;resetDrag(true);}});
  grid.addEventListener('click',event=>{if(Date.now()<suppressClickUntil){event.preventDefault();event.stopImmediatePropagation();}},true);
 }
 calendarSwipe($('.calendar'));
