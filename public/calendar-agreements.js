@@ -1,15 +1,15 @@
-// This switch belongs to the calendar: no fifth main navigation item.
+// Mobile clients keep the pull gesture; browser and Windows use main navigation.
 const calendarHubPlatform=/OurDays(?:Android|Harmony)\//.test(navigator.userAgent)?'mobile':/OurDaysWindows\//.test(navigator.userAgent)?'desktop':'web';
-let hubWheel={sum:0,time:0},hubLockedUntil=0,hubPull=null,hubSuppressClickUntil=0,hubHintTimer=null;
+let hubLockedUntil=0,hubPull=null,hubSuppressClickUntil=0,hubHintTimer=null;
 const hubNow=()=>performance.now();
 function hideHubHint(){clearTimeout(hubHintTimer);hubHintTimer=null;$('#calendar-pull-hint').hidden=true;}
 function showHubHint(text,ready=false){const hint=$('#calendar-pull-hint');hint.textContent=text;hint.classList.toggle('ready',ready);hint.hidden=false;if(!hubHintTimer)hubHintTimer=setTimeout(hideHubHint,3000);}
 function updateCalendarHub(){
  const mode=calendarHubPlatform;document.body.dataset.calendarHubPlatform=mode;
- $('#calendar-hub-switcher').hidden=mode==='mobile'||!['calendar','agreements'].includes(view);
- $('#calendar-hub-hint').textContent=mode==='desktop'?(view==='agreements'?'滚动到顶部，再向上滚动返回日历。':'向下滚动，打开约定。'):'把想一起做的事，也放进日历里。';
+ $('#calendar-hub-switcher').hidden=true;if(mode==='mobile'&&view==='agreements')$('#calendar-view').setAttribute('aria-pressed','true');
  if(!['calendar','agreements'].includes(view))hideHubHint();
 }
+if(calendarHubPlatform!=='mobile')$('.view-switch').insertBefore($('#agreements-open'),$('#chat-open'));
 $('#calendar-hub-calendar').onclick=()=>switchView('calendar');
 const hubDialogOpen=()=>Boolean(document.querySelector('dialog[open]'));
 function hubGestureTarget(target){return target instanceof Element&&!target.closest('input,textarea,select,a,nav,#calendar-hub-switcher,#day-detail,button:not(.day),.agreement-check,.agreement-card-footer');}
@@ -17,15 +17,7 @@ function hubScrollRoom(target,delta){
  for(let node=target instanceof Element?target:null;node&&node!==document.body;node=node.parentElement){const css=getComputedStyle(node);if(/auto|scroll/.test(css.overflowY)&&node.scrollHeight>node.clientHeight+2&&(delta>0?node.scrollTop+node.clientHeight<node.scrollHeight-2:node.scrollTop>2))return true;}
  const page=document.scrollingElement;return page.scrollHeight>innerHeight+2&&(delta>0?page.scrollTop+innerHeight<page.scrollHeight-2:page.scrollTop>2);
 }
-function hubSwitch(next){hubLockedUntil=hubNow()+650;hubWheel={sum:0,time:0};hideHubHint();switchView(next);}
-$('#app').addEventListener('wheel',event=>{
- if(calendarHubPlatform!=='desktop'||!['calendar','agreements'].includes(view)||hubDialogOpen()||event.ctrlKey||event.shiftKey||Math.abs(event.deltaX)>Math.abs(event.deltaY)||!hubGestureTarget(event.target))return;
- const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?innerHeight:1),direction=view==='calendar'?1:-1;
- if(Math.sign(delta)!==direction||hubScrollRoom(event.target,delta)){hubWheel={sum:0,time:0};return;}
- event.preventDefault();if(hubNow()<hubLockedUntil)return;
- if(hubNow()-hubWheel.time>230||Math.sign(hubWheel.sum)!==Math.sign(delta))hubWheel.sum=0;
- hubWheel.sum+=delta;hubWheel.time=hubNow();if(Math.abs(hubWheel.sum)>=110)hubSwitch(view==='calendar'?'agreements':'calendar');
-},{passive:false});
+function hubSwitch(next){hubLockedUntil=hubNow()+650;hideHubHint();switchView(next);}
 function startHubPull(x,y,target){
  if(calendarHubPlatform!=='mobile'||!['calendar','agreements'].includes(view)||hubDialogOpen()||!hubGestureTarget(target)||hubNow()<hubLockedUntil)return;
  if(hubScrollRoom(target,-1))return;

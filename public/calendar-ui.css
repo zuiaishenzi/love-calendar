@@ -1,4 +1,12 @@
 @media(min-width:761px){.calendar-toolbar{padding-top:10px!important;padding-bottom:10px!important}}
+@media(min-width:761px){
+ body:not([data-calendar-hub-platform="mobile"]) #app:has(#calendar-view[aria-pressed="true"]) .calendar{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#d8bdcb transparent}
+ body:not([data-calendar-hub-platform="mobile"]) #app:has(#calendar-view[aria-pressed="true"]) .calendar .grid{grid-auto-rows:minmax(104px,1fr);min-height:min-content;flex-shrink:0}
+ body:not([data-calendar-hub-platform="mobile"]) #app:has(#calendar-view[aria-pressed="true"]) .calendar .grid>.day{gap:2px;padding-top:6px}
+ body:not([data-calendar-hub-platform="mobile"]) #app:has(#calendar-view[aria-pressed="true"]) .calendar .day>span{line-height:24px;flex-shrink:0}
+ body:not([data-calendar-hub-platform="mobile"]) #app:has(#calendar-view[aria-pressed="true"]) .calendar .day>.lunar-label,body:not([data-calendar-hub-platform="mobile"]) #app:has(#calendar-view[aria-pressed="true"]) .calendar .day>.reminder-mark{line-height:14px;flex-shrink:0}
+ body:not([data-calendar-hub-platform="mobile"]) #app:has(#calendar-view[aria-pressed="true"]) .calendar .day>.memory-title{display:block;flex:0 0 auto;min-height:16px;line-height:16px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:0}
+}
 @media(max-width:760px){
  #app:not([hidden]):has(#calendar-view[aria-pressed="true"]):has(.workspace:not([hidden]))>.intro{display:flex!important;padding:10px 2px 12px!important;flex:none}
  #app:not([hidden]):has(#calendar-view[aria-pressed="true"]):has(.workspace:not([hidden]))>.intro>div{display:grid!important;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:0 12px;width:100%;align-items:center}

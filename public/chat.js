@@ -85,7 +85,7 @@ function rememberChatBottom(){const list=$('#chat-messages');chatViewportPinned=
 function resizeChatMessages(){const list=$('#chat-messages');if(!$('#chat-dialog').hidden&&list.clientHeight!==chatViewportListHeight&&chatViewportPinned)list.scrollTop=list.scrollHeight;chatViewportListHeight=list.clientHeight;queueChatRead();}
 function refreshChatViewport(){const viewport=window.visualViewport;if(viewport&&viewport.scale===1)document.documentElement.style.setProperty('--chat-viewport-height',Math.floor(Math.min(innerHeight,viewport.height))+'px');resizeChatMessages();}
 $('#chat-form').elements.text.addEventListener('pointerdown',rememberChatBottom);$('#chat-form').elements.text.addEventListener('focus',rememberChatBottom);
-$('#chat-messages').addEventListener('scroll',()=>{if($('#chat-messages').clientHeight===chatViewportListHeight)rememberChatBottom();queueChatRead();},{passive:true});$('#chat-messages').addEventListener('load',queueChatRead,true);
+$('#chat-messages').addEventListener('scroll',()=>{if($('#chat-messages').clientHeight===chatViewportListHeight)rememberChatBottom();queueChatRead();},{passive:true});$('#chat-messages').addEventListener('load',()=>{if(chatViewportPinned&&!$('#chat-dialog').hidden)$('#chat-messages').scrollTop=$('#chat-messages').scrollHeight;queueChatRead();},true);
 window.addEventListener('resize',refreshChatViewport);window.visualViewport?.addEventListener('resize',refreshChatViewport);refreshChatViewport();
 new ResizeObserver(resizeChatMessages).observe($('#chat-messages'));
 async function syncChat(){
@@ -101,7 +101,7 @@ async function syncChat(){
 }
 window.addEventListener('chat-update',()=>syncChat());
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&chatOwner)syncChat();});
-function openChatView(){chatGeneration++;chatBusy=false;clearTimeout(chatTimer);closeChatMenu();chatSelecting=false;chatSelected.clear();chatSelection();chatHeader();chatStatus('');renderChat();return syncChat();}
+function openChatView(){chatGeneration++;chatBusy=false;clearTimeout(chatTimer);closeChatMenu();chatSelecting=false;chatSelected.clear();chatSelection();chatHeader();chatStatus('');const list=$('#chat-messages');list.scrollTop=list.scrollHeight;chatViewportPinned=true;renderChat();list.scrollTop=list.scrollHeight;return syncChat();}
 $('#chat-open').onclick=()=>switchView('chat');
 $('#chat-selection-cancel').onclick=()=>{chatSelecting=false;chatSelected.clear();renderChat();};
 $('#chat-to-memory').onclick=async()=>{if(chatSavingMemory||!chatSelected.size)return;chatSavingMemory=true;chatSelection();const owner=chatOwner;try{const result=await api('/api/chat/memory','POST',{ids:[...chatSelected]});if(owner!==chatOwner)return;chatSelected.clear();chatSelecting=false;renderChat();await load();}catch(e){if(owner===chatOwner)chatStatus(e.message);}finally{chatSavingMemory=false;if(owner===chatOwner)chatSelection();}};
