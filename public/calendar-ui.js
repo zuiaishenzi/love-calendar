@@ -35,7 +35,8 @@ function showCalendarMemoryHint(memory){
 }
 function renderCalendarDetails(){syncMonthPicker();queueCalendarLayout();}
 function measureCalendarLayout(){
- calendarLayoutFrame=null;if(innerWidth>760||view!=='calendar'||$('#app').hidden)return;
+ calendarLayoutFrame=null;if(view!=='calendar'||$('#app').hidden)return;
+ if(innerWidth>760){if(document.body.dataset.calendarHubPlatform==='mobile')return;const rows=Math.max(1,Math.ceil($('#grid').children.length/7)),density=$('#grid').clientHeight/rows<78?'compact':'normal';if(document.documentElement.dataset.calendarDesktopDensity!==density)document.documentElement.dataset.calendarDesktopDensity=density;return;}
  const root=document.documentElement,workspace=$('.workspace'),calendar=$('.calendar'),rows=Math.max(1,Math.ceil($('#grid').children.length/7)),fixed=calendar.querySelector('.toolbar').offsetHeight+calendar.querySelector('.week').offsetHeight+calendar.querySelector('footer').offsetHeight+2,available=workspace.clientHeight,cell=Math.max(38,Math.min(72,Math.floor((available-fixed)/rows)));
  const scroll=available<fixed+rows*38?'true':'false';if(root.dataset.calendarScroll!==scroll)root.dataset.calendarScroll=scroll;
  const bottom=$('#app').classList.contains('nav-bottom')?Math.max(24,innerHeight-$('.view-switch').getBoundingClientRect().top+12):24;
