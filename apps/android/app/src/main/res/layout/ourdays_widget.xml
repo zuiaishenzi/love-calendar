@@ -1,0 +1,14 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/widget_background" android:padding="1dp" android:clipToOutline="true">
+    <ImageView android:id="@+id/widget_background" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop" android:importantForAccessibility="no" android:src="@drawable/widget_background" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/widget_overlay" android:orientation="vertical" android:padding="12dp">
+        <LinearLayout android:id="@+id/widget_content" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="vertical" android:clickable="true">
+            <TextView android:id="@+id/widget_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="11sp" android:textColor="#946B80" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:id="@+id/widget_body" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:textSize="16sp" android:textColor="#704457" android:maxLines="3" android:ellipsize="end" android:paddingTop="5dp" android:paddingBottom="5dp" />
+            <TextView android:id="@+id/widget_caption" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="9sp" android:textColor="#A38694" android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="30dp" android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:id="@+id/widget_read" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:gravity="center_vertical" android:text="✓ 已读" android:textColor="#A16986" android:textSize="11sp" android:contentDescription="标记当前消息已读" />
+            <TextView android:id="@+id/widget_refresh" android:layout_width="32dp" android:layout_height="match_parent" android:gravity="center" android:text="↻" android:textSize="21sp" android:textColor="#A16986" android:contentDescription="立即刷新桌面卡片" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

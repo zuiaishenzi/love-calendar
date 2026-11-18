@@ -71,7 +71,7 @@ public class MainActivity extends Activity {
         }
         appUpdater=new AppUpdater(this);
         // Retire tasks/channels created by older notification-enabled builds.
-        android.app.job.JobScheduler jobs=getSystemService(android.app.job.JobScheduler.class);if(jobs!=null)jobs.cancelAll();
+        android.app.job.JobScheduler jobs=getSystemService(android.app.job.JobScheduler.class);if(jobs!=null)for(android.app.job.JobInfo job:jobs.getAllPendingJobs())if(job.getId()!=WidgetSyncService.JOB_ID)jobs.cancel(job.getId());
         android.app.NotificationManager notices=getSystemService(android.app.NotificationManager.class);if(notices!=null){notices.cancelAll();for(android.app.NotificationChannel channel:notices.getNotificationChannels())notices.deleteNotificationChannel(channel.getId());}
         web = new WebView(this);
         calendarLayout = new AndroidCalendarLayout(this);
@@ -114,6 +114,17 @@ public class MainActivity extends Activity {
             @Override public void onPageFinished(WebView view, String url) { CookieManager.getInstance().flush(); calendarLayout.apply(view); }
         });
         web.setWebChromeClient(new WebChromeClient() {
+            @Override public boolean onJsPrompt(WebView view,String url,String message,String defaultValue,android.webkit.JsPromptResult result){
+                if(message!=null&&message.startsWith("ourdays-widget:")&&trusted(Uri.parse(url))&&trusted(Uri.parse(view.getUrl()))){
+                    String action=message.substring("ourdays-widget:".length());
+                    if("session".equals(action)){try{WidgetStore.session(MainActivity.this,Long.parseLong(defaultValue));}catch(NumberFormatException ignored){}}
+                    else if("refresh".equals(action))WidgetSyncService.refresh(MainActivity.this);
+                    else if("pin".equals(action))WidgetSettingsActivity.pin(MainActivity.this);
+                    else if("settings".equals(action))startActivity(new Intent(MainActivity.this,WidgetSettingsActivity.class));
+                    result.confirm("");return true;
+                }
+                return super.onJsPrompt(view,url,message,defaultValue,result);
+            }
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (!trusted(Uri.parse(view.getUrl()))) { callback.onReceiveValue(null); return true; }
                 if (fileCallback != null) fileCallback.onReceiveValue(null);
@@ -158,9 +169,12 @@ public class MainActivity extends Activity {
                 toast("已开始下载，可在下载目录中查看");
             } catch (RuntimeException error) { toast("下载失败，请检查网络和可用存储空间"); }
         });
-        web.loadUrl(BuildConfig.SERVER_URL);
+        web.loadUrl(widgetUrl(getIntent()));
         root.postDelayed(()->{if(!isFinishing())appUpdater.check(false);},2000);
     }
+
+    private String widgetUrl(Intent intent){String target=intent.getStringExtra("widget_target");if(!"chat".equals(target)&&!"notes".equals(target))return BuildConfig.SERVER_URL;return Uri.parse(BuildConfig.SERVER_URL).buildUpon().appendQueryParameter("widget",target).appendQueryParameter("widgetOwner",String.valueOf(intent.getLongExtra("widget_owner",0))).build().toString();}
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(web!=null)web.loadUrl(widgetUrl(intent));}
 
     private Intent filePicker(WebChromeClient.FileChooserParams params) {
         LinkedHashSet<String> types = new LinkedHashSet<>();
@@ -253,7 +267,7 @@ public class MainActivity extends Activity {
         else pending.deny();
     }
     @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(focused&&nativeVoicePending&&checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED)root.postDelayed(this::startNativeVoice,350);}
-    @Override protected void onResume(){super.onResume();activityResumed=true;if(root!=null)root.post(this::completeAudioPermission);}
+    @Override protected void onResume(){super.onResume();activityResumed=true;if(root!=null)root.post(this::completeAudioPermission);WidgetSyncService.schedule(this);WidgetSyncService.refresh(this);}
 
     @Override public void onBackPressed() {
         if(fileCallback!=null){finishFilePicker(null);filePickerReturnedAt=android.os.SystemClock.elapsedRealtime();return;}

@@ -1,0 +1,42 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {openDatabase} from './db.mjs';
+import {widgetService} from './widget.mjs';
+function fixture(){
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-widget-')),db=openDatabase(dir);db.exec("INSERT INTO ledgers(id,code) VALUES(1,'WIDGET01'),(2,'WIDGET02');");
+ for(const [id,ledger,seat] of [[1,1,1],[2,1,2],[3,2,1]])db.prepare('INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(?,?,?,?,?,?)').run(id,'widget'+id,'hash','salt',ledger,seat);
+ let time=Date.parse('2026-11-18T15:59:59Z');const service=widgetService(db,{now:()=>time}),user=id=>db.prepare('SELECT * FROM users WHERE id=?').get(id),request=(id,method,p,input={},write=()=>{})=>service.route({method},new URL(p,'http://localhost'),user(id),input,write);
+ return {db,service,user,request,tick:()=>time++,setTime:t=>time=Date.parse(t),close(){db.close();rmSync(dir,{recursive:true,force:true});}};
+}
+test('桌面留言仅对方卡片显示，逐条已读、历史保留、跨账号与只读隔离',()=>{
+ const f=fixture();try{const {request:r}=f,id=r(1,'POST','/api/widget/notes',{text:'给你留一颗小星星'}).id;
+ assert.equal(r(1,'GET','/api/widget/state').item,null);assert.equal(r(2,'GET','/api/widget/state').item.id,id);assert.equal(r(2,'GET','/api/widget/state').item.target,'notes');
+ assert.throws(()=>r(3,'POST','/api/widget/read',{type:'note',id}),e=>e.status===404);assert.throws(()=>r(1,'POST','/api/widget/read',{type:'note',id}),e=>e.status===404);
+ assert.equal(r(2,'POST','/api/widget/read',{type:'note',id},()=>{throw Error('read must be allowed');}).item,null);assert.equal(r(2,'POST','/api/widget/read',{type:'note',id}).unreadCount,0);
+ assert.ok(r(2,'GET','/api/widget/notes').items[0].read_at);assert.equal(r(1,'GET','/api/widget/notes?box=sent').items.length,1);assert.equal(r(3,'GET','/api/widget/notes').items.length,0);
+ assert.throws(()=>r(1,'POST','/api/widget/notes',{text:' ' }),e=>e.status===400);assert.throws(()=>r(1,'POST','/api/widget/notes',{text:'x'.repeat(501)}),e=>e.status===400);
+ assert.throws(()=>r(1,'POST','/api/widget/notes',{text:'不写入'},()=>{throw Error('readonly');}),/readonly/);
+ f.db.prepare('DELETE FROM users WHERE id=2').run();assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM widget_notes').get().n,0);
+ }finally{f.close();}
+});
+test('卡片聊天摘要、最早未读推进、幂等、撤回及并发已读不能跳过未读',()=>{
+ const f=fixture();try{const add=(kind,text='',sender=1)=>Number(f.db.prepare('INSERT INTO chat_messages(ledger_id,sender,kind,text,created) VALUES(1,?,?,?,?)').run(sender,kind,text,f.tick()).lastInsertRowid),a=add('text','早上好'),b=add('image'),c=add('audio');const r=f.request;
+ assert.equal(r(2,'GET','/api/widget/state').item.text,'早上好');assert.equal(r(2,'GET','/api/widget/state').item.target,'chat');assert.throws(()=>r(2,'POST','/api/widget/read',{type:'chat',id:b}),e=>e.status===409);
+ assert.equal(r(2,'POST','/api/widget/read',{type:'chat',id:a}).item.text,'发来一张图片');r(2,'POST','/api/widget/read',{type:'chat',id:a});assert.equal(r(2,'GET','/api/widget/state').unreadCount,2);
+ f.db.prepare('UPDATE chat_messages SET retracted_at=1 WHERE id=?').run(b);assert.equal(r(2,'GET','/api/widget/state').item.text,'发来一条语音');assert.throws(()=>r(3,'POST','/api/widget/read',{type:'chat',id:c}),e=>e.status===404);
+ f.db.prepare('UPDATE chat_reads SET through_id=? WHERE user_id=2').run(c);assert.equal(r(2,'POST','/api/widget/read',{type:'chat',id:c}).item,null);
+ }finally{f.close();}
+});
+test('倒计时阳历农历、北京时间跨日、私密权限和删除提醒自动失效',()=>{
+ const f=fixture();try{const r=f.request;f.db.exec("INSERT INTO reminders(id,ledger_id,creator,title,base_day,kind,month,day) VALUES(1,1,1,'纪念日','2026-11-19','solar',11,19),(2,1,1,'农历生日','2026-02-17','lunar',1,1),(3,2,3,'别人的日子','2026-11-19','solar',11,19);");
+ assert.equal(r(1,'PUT','/api/widget/settings',{reminderId:1}).countdown.days,1);f.setTime('2026-11-18T16:00:01Z');assert.equal(r(1,'GET','/api/widget/state').countdown.days,0);assert.equal(r(2,'GET','/api/widget/state').countdown,null);
+ assert.throws(()=>r(1,'PUT','/api/widget/settings',{reminderId:3}),e=>e.status===400);f.db.exec('UPDATE reminders SET private_owner=2 WHERE id=1');assert.equal(r(1,'GET','/api/widget/state').countdown,null);
+ assert.ok(r(1,'PUT','/api/widget/settings',{reminderId:2}).countdown.day);f.db.exec('DELETE FROM reminders WHERE id=2');assert.equal(r(1,'GET','/api/widget/state').countdown,null);
+ }finally{f.close();}
+});
+test('留言历史按分页保留且发送速率受限',()=>{
+ const f=fixture();try{for(let i=0;i<25;i++)f.db.prepare('INSERT INTO widget_notes(ledger_id,sender,recipient,text,created) VALUES(1,1,2,?,?)').run('留言'+i,f.tick());const first=f.request(2,'GET','/api/widget/notes'),second=f.request(2,'GET','/api/widget/notes?before='+first.items.at(-1).id);assert.equal(first.items.length,20);assert.equal(first.more,true);assert.equal(second.items.length,5);assert.throws(()=>f.request(1,'POST','/api/widget/notes',{text:'稍后再写'}),e=>e.status===429);}finally{f.close();}
+});

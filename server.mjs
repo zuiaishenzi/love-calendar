@@ -1,3 +1,4 @@
+import {widgetService} from './widget.mjs';
 import {agreementService} from './agreements.mjs';
 import {createHolidaySync} from './holidays.mjs';
 import {notificationFeed} from './notifications.mjs';
@@ -33,6 +34,7 @@ const cleanup=setInterval(()=>{try{lifecycle.purge();}catch{console.error('账�
 const realtime=createRealtime(accounts.authenticate,lifecycle.status);
 const memos=memoService(db,memoOrganizer);
 const agreements=agreementService(db,user=>realtime.changed(user));
+const widgets=widgetService(db);
 const stickers=stickerService(db,stickerOptions);
 const chat=chatService(db,(user,type)=>{if(type==='memory')realtime.changed(user);else realtime.chat(user);},{speechRecognizer,stickers});
 const updateApp=appUpdates(process.env.APP_UPDATE_DIR||path.join(dataDir,'app-updates'));
@@ -69,6 +71,7 @@ const server=http.createServer(async(req,res)=>{
     }
     if(url.pathname.startsWith('/api/')) {
       if(!user) throw fail(401,'请先登录');
+      if(url.pathname.startsWith('/api/widget/'))return send(200,widgets.route(req,url,user,['POST','PUT'].includes(req.method)?await body(req,4096):{},ensureWritable));
       if(url.pathname==='/api/stickers'||url.pathname.startsWith('/api/stickers/')){const result=await stickers.route(req,res,url,user,req.method==='POST'?await body(req):{},ensureWritable);if(result!==null)return send(200,result);return;}
       if(url.pathname==='/api/agreements'||url.pathname.startsWith('/api/agreements/'))return send(200,agreements(req,url,user,req.method==='POST'?await body(req,16384):{},ensureWritable));
       const chatAttachment=url.pathname.match(/^\/api\/memory-chat-media\/([a-f0-9]{36})$/);
@@ -240,6 +243,7 @@ const server=http.createServer(async(req,res)=>{
     files['/agreements.js']=['agreements.js','text/javascript; charset=utf-8'];
     files['/calendar-agreements.js']=['calendar-agreements.js','text/javascript; charset=utf-8'];
     files['/agreement-plan-date.js']=['agreement-plan-date.js','text/javascript; charset=utf-8'];
+    files['/widget.js']=['widget.js','text/javascript; charset=utf-8'];
     files['/stickers.js']=['stickers.js','text/javascript; charset=utf-8'];
     files['/speech.js']=['speech.js','text/javascript; charset=utf-8'];
     const presetAsset=url.pathname.match(/^\/avatars\/pair-([1-5])\.png$/);

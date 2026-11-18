@@ -17,7 +17,7 @@ RUN set -eu; \
     if [ "$installed" != 1 ]; then echo 'All Alpine repositories failed. Check server HTTPS/DNS connectivity.' >&2; exit 1; fi
 RUN npm ci --omit=dev --include=optional && apk del .build-deps
 COPY server.mjs db.mjs encrypted-db.mjs accounts.mjs lifecycle.mjs memoir-export.mjs mail.mjs calendar.mjs reminders.mjs realtime.mjs memos.mjs chat.mjs media.mjs speech.mjs app-updates.mjs notifications.mjs agreements.mjs agreement-lines.mjs holidays.mjs ./
-COPY stickers.mjs sticker-images.mjs sticker-search.mjs ./
+COPY stickers.mjs sticker-images.mjs sticker-search.mjs widget.mjs ./
 COPY public ./public
 COPY scripts ./scripts
 COPY deploy/update.sh deploy/sync-app-updates.sh ./scripts/
@@ -29,7 +29,7 @@ CMD ["node", "server.mjs"]
 
 FROM base AS test
 COPY test.mjs test-v13.mjs test-encryption.mjs test-settings.mjs test-memos.mjs test-chat.mjs test-speech.mjs test-app-sync.mjs test-android-calendar.mjs test-agreements.mjs test-holidays.mjs ./
-COPY test-stickers.mjs ./
+COPY test-stickers.mjs test-widget.mjs ./
 COPY apps/android/app/src/main/assets/calendar-layout.js ./apps/android/app/src/main/assets/
 RUN npm run test:server
 
