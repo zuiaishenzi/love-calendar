@@ -55,6 +55,20 @@ function CommitAndPush([string]$Root, [string]$CommitMessage) {
     elseif ($LASTEXITCODE -ne 0) { throw '无法检查暂存区。' }
     Invoke-RepoGit $Root @('push', 'origin', 'main') | Out-Host
 }
+function Resolve-AppUploadPath([string]$Platform, [string]$RequestedPath, [string]$DefaultPath, [string]$ManifestPath, [string]$AllowedRoot) {
+    $candidate = if ($RequestedPath) { $RequestedPath } else { $DefaultPath }
+    if (-not $RequestedPath -and -not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+        if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) { throw "未找到 $Platform 安装包，且没有已发布清单；请先构建该平台，或选择只上传源码。" }
+        $published = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $packageId = if ($Platform -eq 'Android') { 'xyz.ourdays.mobile' } else { 'xyz.ourdays.desktop' }
+        if ($published.packageId -ne $packageId -or $published.versionCode -lt 1 -or $published.versionName -notmatch '^\d+\.\d+\.\d+$' -or $published.sha256 -notmatch '^[a-f0-9]{64}$' -or $published.size -lt 1) { throw "$Platform 已发布清单无效，停止上传。" }
+        Write-Host "本次未构建 $Platform，保留已发布版本 $($published.versionName)（$($published.versionCode)），不修改该平台清单。"
+        return $null
+    }
+    $resolved = (Resolve-Path -LiteralPath $candidate -ErrorAction Stop).Path
+    if (-not $resolved.StartsWith($AllowedRoot, [StringComparison]::OrdinalIgnoreCase)) { throw "$Platform 安装包必须位于仓库同级 love-app 目录。" }
+    return $resolved
+}
 if ($CodeOnly -and ($ApkPath -or $WindowsPath)) { throw 'CodeOnly 与 ApkPath 不可同时使用。' }
 if ((Invoke-RepoGit $sourceRoot @('remote', 'get-url', 'origin')) -ne 'https://github.com/zuiaishenzi/love-calendar.git') { throw '源码 origin 地址不符合约定。' }
 if ((Invoke-RepoGit $sourceRoot @('branch', '--show-current')) -ne 'main') { throw '请先切换到源码仓库的 main 分支；脚本不会自动切换或合并。' }
@@ -71,10 +85,10 @@ $gradle = Get-Content (Join-Path $sourceRoot 'apps/android/app/build.gradle') -R
 $build = [long][regex]::Match($gradle, 'versionCode\s+(\d+)').Groups[1].Value
 $version = [regex]::Match($gradle, "versionName\s+'([^']+)'").Groups[1].Value
 if (-not $CodeOnly) {
-    if (-not $ApkPath) { $ApkPath = Join-Path $sourceRoot "../love-app/OurDays-$version-Android-build$build.apk" }
-    $ApkPath = (Resolve-Path -LiteralPath $ApkPath).Path
     $allowedRoot = [IO.Path]::GetFullPath((Join-Path $sourceRoot '../love-app')) + [IO.Path]::DirectorySeparatorChar
-    if (-not $ApkPath.StartsWith($allowedRoot, [StringComparison]::OrdinalIgnoreCase)) { throw '安装包必须位于仓库同级 love-app 目录。' }
+    $ApkPath = Resolve-AppUploadPath 'Android' $ApkPath (Join-Path $sourceRoot "../love-app/OurDays-$version-Android-build$build.apk") (Join-Path $packageRoot 'latest.json') $allowedRoot
+}
+if (-not $CodeOnly -and $ApkPath) {
     $aapt = Join-Path $sourceRoot 'local-preview-data/android-tools/sdk/build-tools/35.0.0/aapt.exe'
     if ($env:ANDROID_HOME) { $aapt = Join-Path $env:ANDROID_HOME 'build-tools/35.0.0/aapt.exe' }
     if (-not (Test-Path $aapt)) { throw '需要 Android SDK Build Tools 35.0.0 校验 APK，请设置 ANDROID_HOME。' }
@@ -82,16 +96,19 @@ if (-not $CodeOnly) {
     if ($LASTEXITCODE -ne 0 -or -not ($badging -match "package: name='xyz.ourdays.mobile' versionCode='$build' versionName='$([regex]::Escape($version))'")) { throw 'APK 应用 ID、构建号或显示版本与源码不一致，请先重新构建。' }
 }
 $windowsBuild = (Get-Content (Join-Path $sourceRoot 'apps/windows/client-build.json') -Raw -Encoding UTF8 | ConvertFrom-Json).build
+$windowsSourceVersion = (Get-Content (Join-Path $sourceRoot 'apps/windows/package.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
 if (-not $CodeOnly) {
-    if (-not $WindowsPath) { $WindowsPath = Join-Path $sourceRoot "../love-app/OurDays-$version-Windows-build$windowsBuild-x64.exe" }
-    $WindowsPath = (Resolve-Path -LiteralPath $WindowsPath).Path
-    if (-not $WindowsPath.StartsWith($allowedRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Windows 安装包必须位于同级 love-app 目录。' }
+    $WindowsPath = Resolve-AppUploadPath 'Windows' $WindowsPath (Join-Path $sourceRoot "../love-app/OurDays-$windowsSourceVersion-Windows-build$windowsBuild-x64.exe") (Join-Path $packageRoot 'windows.json') $allowedRoot
+}
+if (-not $CodeOnly -and $WindowsPath) {
     $windowsVersion = (Get-Item -LiteralPath $WindowsPath).VersionInfo.FileVersion
-    if ($windowsVersion -ne "$version.$windowsBuild") { throw "Windows 安装包构建版本不符，预期 $version.$windowsBuild，实际 $windowsVersion，请重新构建。" }
+    if ($windowsVersion -ne "$windowsSourceVersion.$windowsBuild") { throw "Windows 安装包构建版本不符，预期 $windowsSourceVersion.$windowsBuild，实际 $windowsVersion，请重新构建。" }
 }
 if ($CheckOnly) { Write-Host '检查通过：源码目标公开、安装包目标私有；未提交、未推送。'; return }
 if (-not $CodeOnly) {
     Invoke-RepoGit $packageRoot @('pull', '--ff-only', 'origin', 'main') | Out-Host
+}
+if (-not $CodeOnly -and $ApkPath) {
     $manifest = Join-Path $packageRoot 'latest.json'
     $latest = if (Test-Path $manifest) { Get-Content $manifest -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
     if ($latest -and $latest.versionCode -eq $build) {
@@ -102,13 +119,13 @@ if (-not $CodeOnly) {
         if ($LASTEXITCODE -ne 0) { throw '安装包清单生成失败，未推送。' }
     }
 }
-if (-not $CodeOnly) {
+if (-not $CodeOnly -and $WindowsPath) {
     $windowsManifest = Join-Path $packageRoot 'windows.json'
     $windowsLatest = if (Test-Path $windowsManifest) { Get-Content $windowsManifest -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
     if ($windowsLatest -and $windowsLatest.versionCode -eq $windowsBuild) {
         if ($windowsLatest.sha256 -ne (Get-FileHash -LiteralPath $WindowsPath -Algorithm SHA256).Hash.ToLowerInvariant()) { throw '同一 Windows 构建号的安装包内容不同，请递增 client-build.json。' }
     } else {
-        & node (Join-Path $PSScriptRoot 'publish-app.mjs') $WindowsPath $packageRoot $windowsBuild $version $Notes windows private
+        & node (Join-Path $PSScriptRoot 'publish-app.mjs') $WindowsPath $packageRoot $windowsBuild $windowsSourceVersion $Notes windows private
         if ($LASTEXITCODE -ne 0) { throw 'Windows 发布清单生成失败，未推送。' }
     }
 }
@@ -129,6 +146,6 @@ $unsafe = $tracked | Where-Object { $_ -match '(?i)(\.(apk|aab|exe|hap|hsp|app|c
 if ($unsafe) { throw ('公开仓库检测到禁止上传的文件，未提交或推送：' + ($unsafe -join ', ')) }
 CommitAndPush $sourceRoot $Message
 if (-not $CodeOnly) {
-    CommitAndPush $packageRoot "Publish Android $build and Windows $windowsBuild"
+    CommitAndPush $packageRoot 'Publish available client updates'
 }
 Write-Host '上传完成：源码在公开 love-calendar，安装包在私有 love-app。服务器执行 update.sh 获取更新。'

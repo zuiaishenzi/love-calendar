@@ -2,13 +2,13 @@
 
 ## 1.9.0正式发布（2026-11-19）
 
-本次发布公开源码与Android构建10900，APK只进入私有 `zuiaishenzi/love-app` 的 `latest.json` 和对应哈希文件。正式APK位于 `E:/codex/love-app/OurDays-1.9.0-Android-build10900.apk`，Release调试关闭，签名与旧包相同。Windows及鸿蒙源码版本同步，已有安装包和各自私库清单保持原版本，本次不调用同时要求Windows新包的双端上传脚本。
+本次发布公开源码与Android构建10900，APK只进入私有 `zuiaishenzi/love-app` 的 `latest.json` 和对应哈希文件。正式APK位于 `E:/codex/love-app/OurDays-1.9.0-Android-build10900.apk`，Release调试关闭，签名与旧包相同。Windows及鸿蒙源码版本同步，已有安装包和各自私库清单保持原版本，上传脚本已支持各平台独立发布：没有新版Windows安装包时保留已发布Windows清单，Android可以单独更新。
 
 服务器更新仍使用 `sudo bash /opt/love-calendar/bin/update.sh --retry`，成功后App内检查版本更新即可。
 
 ## 本机上传
 
-推荐双击仓库根目录的 `上传更新到GitHub.bat`，选择上传源码与 APK、仅上传源码或只检查。窗口会保留执行结果，无需管理员权限。BAT 不会自动构建 APK 或连接服务器。
+推荐双击仓库根目录的 `上传更新到GitHub.bat`，选择上传源码与 APK、仅上传源码或只检查。窗口会保留执行结果，无需管理员权限。BAT 不会自动构建 APK 或连接服务器；没有本次构建文件的平台会沿用私库已发布版本。
 
 
 在 PowerShell 中执行：
@@ -20,7 +20,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\upload-github.ps1 
 
 脚本使用 Git Credential Manager 的现有 GitHub 登录，检查公开源码仓库与私有包仓库的可见性，运行测试，核对 APK 的应用 ID、构建号、版本，再分别提交推送。源码仓库必须为 main，安装包仓库必须干净。不会构建 APK、递增版本或自动合并分支；不保存或打印凭据。提交描述由 Message 指定。
 
-默认 APK 取自 `../love-app/OurDays-<versionName>-Android-build<versionCode>.apk`。本次自动找到构建 10801；APK 与已发布文件一致时只推送待上传的源码，不重复发布安装包。同构建号不同内容时会停止，需提高 versionCode 并重新构建。
+默认 APK 取自 `../love-app/OurDays-<versionName>-Android-build<versionCode>.apk`。当前Android正式构建为10900；APK 与已发布文件一致时只推送待上传的源码，不重复发布安装包。同构建号不同内容时会停止，需提高 versionCode 并重新构建。
 
 仅更新网页或服务器代码：
 
@@ -33,6 +33,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\upload-github.ps1 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\upload-github.ps1 -ApkPath E:\codex\love-app\新版.apk -Notes "修复说明" -Message "更新客户端"
 ```
+
+Android和Windows分别检查。默认路径没有新安装包，但私库已有有效发布清单时，打印保留旧版本提示，不修改该平台清单；如果明确使用 `-ApkPath` / `-WindowsPath` 指定了不存在的文件，仍会报错，防止路径拼错被静默忽略。默认包和已发布清单均不存在时，需先构建或选择只上传源码。
 
 只检查不提交：添加 `-CheckOnly`。脚本要求 Git、Node.js/npm，以及校验 APK 所需的 Android SDK Build Tools 35.0.0；本机已存在。其他电脑设置 ANDROID_HOME，并将私有仓库 clone 到 `../love-app/server-release`。
 
@@ -131,7 +133,7 @@ bash /opt/love-calendar/bin/sync-app-updates.sh
 后续继续执行 update.sh。Token 过期后用同样方式替换文件，无需重新创建应用容器。脚本只在拉取私库时读取 Token，不挂载进网站容器。
 
 
-Windows 应用内更新已接入。双击上传 BAT，选项1会同时校验并发布 APK 和 Windows EXE，选项2仍仅上传源码。默认 Windows 包为 `../love-app/OurDays-版本-Windows-build构建号-x64.exe`，构建号来自 `apps/windows/client-build.json`，EXE FileVersion 必须与源码一致。可用 `-WindowsPath` 指定同级 love-app 中的安装包。
+Windows 应用内更新已接入。双击上传 BAT，选项1会分别校验已有 APK 和 Windows EXE，缺少默认新包的平台保留既有发布版本，选项2仍仅上传源码。默认 Windows 包为 `../love-app/OurDays-版本-Windows-build构建号-x64.exe`，构建号来自 `apps/windows/client-build.json`，EXE FileVersion 必须与源码一致。可用 `-WindowsPath` 指定同级 love-app 中的安装包。
 
 Windows 清单为私有仓库中的 windows.json，超过90MiB的安装包自动拆为分片，服务器 importer 验证每片及整包 SHA256 后合并，最终 EXE 从自有服务器下载。服务器仍只需执行 `sudo bash /opt/love-calendar/bin/update.sh`，同时更新网站和双端安装包。
 

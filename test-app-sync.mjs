@@ -3,6 +3,34 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,writeFileSync,readFileSync,rmSync,mkdirSync,existsSync} from 'node:fs';
 import os from 'node:os';import path from 'node:path';import {createHash} from 'node:crypto';
 import {syncAppReleases,downloadReleaseFile,fileHash} from './scripts/sync-app-release.mjs';
+import {spawnSync} from 'node:child_process';
+
+test('Windows上传脚本允许平台独立发布，缺省包保留原清单，显式错误路径仍报错',{skip:process.platform!=='win32'},()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'love-upload-selection-')),allowed=path.join(dir,'love-app');mkdirSync(allowed);
+ try{
+  const manifest=path.join(allowed,'windows.json'),original=JSON.stringify({packageId:'xyz.ourdays.desktop',versionCode:10804,versionName:'1.8.0',filename:'OurDays-old.exe',sha256:'1'.repeat(64),size:100});writeFileSync(manifest,original);
+  const android=path.join(allowed,'android.apk'),windows=path.join(allowed,'windows.exe'),outside=path.join(dir,'outside.exe');for(const file of [android,windows,outside])writeFileSync(file,'fixture');
+  const quote=value=>"'"+value.replaceAll("'","''")+"'",script=`
+$ErrorActionPreference='Stop'
+$source=[IO.File]::ReadAllText(${quote(path.resolve('scripts/upload-github.ps1'))})
+$tokens=$null; $errors=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors)
+if($errors.Count){throw 'Upload script parse failed'}
+$function=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Resolve-AppUploadPath'},$true)
+Invoke-Expression $function.Extent.Text
+$root=${quote(allowed+path.sep)}
+$manifest=${quote(manifest)}
+$missing=${quote(path.join(allowed,'missing.exe'))}
+if($null -ne (Resolve-AppUploadPath 'Windows' '' $missing $manifest $root)){throw 'Missing default Windows package must be skipped'}
+if((Resolve-AppUploadPath 'Android' '' ${quote(android)} $manifest $root) -ne ${quote(android)}){throw 'Existing Android package was skipped'}
+if((Resolve-AppUploadPath 'Windows' ${quote(windows)} $missing $manifest $root) -ne ${quote(windows)}){throw 'Explicit Windows package was skipped'}
+$failed=$false;try{Resolve-AppUploadPath 'Windows' $missing $missing $manifest $root}catch{$failed=$true};if(-not $failed){throw 'Explicit missing path must fail'}
+$failed=$false;try{Resolve-AppUploadPath 'Windows' '' $missing ($manifest+'.missing') $root}catch{$failed=$true};if(-not $failed){throw 'Missing package and manifest must fail'}
+$failed=$false;try{Resolve-AppUploadPath 'Windows' ${quote(outside)} $missing $manifest $root}catch{$failed=$true};if(-not $failed){throw 'Outside package root must fail'}
+`;
+  const result=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{encoding:'utf8',timeout:30000});assert.equal(result.status,0,result.stderr||result.stdout);assert.equal(readFileSync(manifest,'utf8'),original,'Skipped Windows manifest must remain byte-identical');
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 function fixture(){
  const root=mkdtempSync(path.join(os.tmpdir(),'ourdays-sync-')),cache=path.join(root,'cache'),target=path.join(root,'published');mkdirSync(cache);mkdirSync(target);
