@@ -1,5 +1,11 @@
 # 上传与服务器更新
 
+## 1.9.0正式发布（2026-11-19）
+
+本次发布公开源码与Android构建10900，APK只进入私有 `zuiaishenzi/love-app` 的 `latest.json` 和对应哈希文件。正式APK位于 `E:/codex/love-app/OurDays-1.9.0-Android-build10900.apk`，Release调试关闭，签名与旧包相同。Windows及鸿蒙源码版本同步，已有安装包和各自私库清单保持原版本，本次不调用同时要求Windows新包的双端上传脚本。
+
+服务器更新仍使用 `sudo bash /opt/love-calendar/bin/update.sh --retry`，成功后App内检查版本更新即可。
+
 ## 本机上传
 
 推荐双击仓库根目录的 `上传更新到GitHub.bat`，选择上传源码与 APK、仅上传源码或只检查。窗口会保留执行结果，无需管理员权限。BAT 不会自动构建 APK 或连接服务器。

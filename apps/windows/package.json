@@ -1,6 +1,6 @@
 {
   "name": "our-days-desktop",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "private": true,
   "description": "朝夕 Windows 客户端",
   "author": "Our Days",
@@ -39,6 +39,6 @@
       "createDesktopShortcut": true,
       "shortcutName": "朝夕"
     },
-    "buildVersion": "1.8.0.10804"
+    "buildVersion": "1.9.0.10804"
   }
 }

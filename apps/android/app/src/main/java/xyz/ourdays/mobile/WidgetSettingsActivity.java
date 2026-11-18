@@ -24,15 +24,20 @@ public class WidgetSettingsActivity extends Activity {
     private static final java.util.concurrent.ExecutorService IMAGES=Executors.newSingleThreadExecutor();
     private int[] ids=new int[0];private Spinner chooser;private int selectedId;private Button choose;
     @Override public void onCreate(Bundle state){
-        super.onCreate(state);LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(28,40,28,24);root.setBackgroundColor(Color.rgb(250,244,247));setContentView(root);
+        super.onCreate(state);LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(28,40,28,24);root.setBackgroundColor(Color.rgb(250,244,247));android.widget.ScrollView scroll=new android.widget.ScrollView(this);scroll.setFillViewport(true);scroll.addView(root);setContentView(scroll);
         TextView title=new TextView(this);title.setText("桌面卡片背景");title.setTextSize(24);title.setTextColor(Color.rgb(119,72,94));root.addView(title);
         TextView hint=new TextView(this);hint.setText("选择一张属于你的图片，让等待也有温柔的底色。\n背景仅保存在这部手机，不会发给对方。\n添加卡片后可在这里分别设置。");hint.setTextSize(14);hint.setPadding(0,20,0,24);root.addView(hint);
         chooser=new Spinner(this);root.addView(chooser);choose=button(root,"选择背景图片");choose.setOnClickListener(v->{if(WidgetStore.owner(this)==0){toast("请先在 App 中登录");return;}selectedId=selected();Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);try{startActivityForResult(i,31);}catch(Exception e){toast("无法打开系统图片选择器");}});
-        button(root,"恢复默认背景").setOnClickListener(v->{if(ids.length==0)return;WidgetStore.background(this,selected()).delete();OurDaysWidget.render(this);toast("已恢复默认背景");});
+        for(String[] preset:new String[][]{{"rose","柔雾"},{"dawn","晨光"},{"hills","山野"},{"moon","晚风"}})button(root,"内置背景 · "+preset[1]).setOnClickListener(v->{if(applyPreset(this,preset[0],ids.length>0?selected():-1))toast("已换上「"+preset[1]+"」");else toast("请先在 App 中登录");});
         button(root,"添加到桌面").setOnClickListener(v->pin(this));button(root,"返回朝夕").setOnClickListener(v->finish());refreshIds();
     }
     private Button button(LinearLayout root,String text){Button b=new Button(this);b.setText(text);root.addView(b,new LinearLayout.LayoutParams(-1,-2));return b;}
     private int selected(){return ids[Math.max(0,Math.min(ids.length-1,chooser.getSelectedItemPosition()))];}
+    static boolean applyPreset(android.content.Context c,String code,int target){
+        if(code==null||!code.matches("rose|dawn|hills|moon"))return false;
+        synchronized(WidgetStore.LOCK){if(WidgetStore.owner(c)==0)return false;android.content.SharedPreferences.Editor edit=WidgetStore.prefs(c).edit();if(target<0)edit.putString("default-preset",code);for(int id:AppWidgetManager.getInstance(c).getAppWidgetIds(new ComponentName(c,OurDaysWidget.class))){if(target>=0&&id!=target)continue;WidgetStore.background(c,id).delete();edit.putString("background-preset-"+id,code);}edit.apply();}OurDaysWidget.render(c);return true;
+    }
+    static String currentPreset(android.content.Context c){int[] widgets=AppWidgetManager.getInstance(c).getAppWidgetIds(new ComponentName(c,OurDaysWidget.class));if(widgets.length>0){if(WidgetStore.background(c,widgets[0]).exists())return "custom";return WidgetStore.prefs(c).getString("background-preset-"+widgets[0],WidgetStore.prefs(c).getString("default-preset","rose"));}return WidgetStore.prefs(c).getString("default-preset","rose");}
     private void refreshIds(){ids=AppWidgetManager.getInstance(this).getAppWidgetIds(new ComponentName(this,OurDaysWidget.class));String[] labels=new String[ids.length];for(int n=0;n<ids.length;n++)labels[n]="桌面卡片 "+(n+1);chooser.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,labels));choose.setEnabled(ids.length>0);}
     @Override protected void onResume(){super.onResume();if(chooser!=null)refreshIds();}
     static void pin(Activity a){AppWidgetManager manager=AppWidgetManager.getInstance(a);if(manager.isRequestPinAppWidgetSupported())manager.requestPinAppWidget(new ComponentName(a,OurDaysWidget.class),null,null);else Toast.makeText(a,"请长按桌面空白处，在小组件中添加朝夕",Toast.LENGTH_LONG).show();}

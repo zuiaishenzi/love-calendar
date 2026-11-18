@@ -40,3 +40,9 @@ test('倒计时阳历农历、北京时间跨日、私密权限和删除提醒�
 test('留言历史按分页保留且发送速率受限',()=>{
  const f=fixture();try{for(let i=0;i<25;i++)f.db.prepare('INSERT INTO widget_notes(ledger_id,sender,recipient,text,created) VALUES(1,1,2,?,?)').run('留言'+i,f.tick());const first=f.request(2,'GET','/api/widget/notes'),second=f.request(2,'GET','/api/widget/notes?before='+first.items.at(-1).id);assert.equal(first.items.length,20);assert.equal(first.more,true);assert.equal(second.items.length,5);assert.throws(()=>f.request(1,'POST','/api/widget/notes',{text:'稍后再写'}),e=>e.status===429);}finally{f.close();}
 });
+test('自定义任意日期与标题仅本人可见，可与纪念日互换，过去日期显示已过天数',()=>{
+ const f=fixture();try{const r=f.request;let state=r(1,'PUT','/api/widget/settings',{title:'一起去看海',customDay:'2026-11-20'});assert.equal(state.countdown.days,2);assert.equal(state.countdown.source,'custom');assert.equal(state.settings.customDay,'2026-11-20');assert.equal(r(2,'GET','/api/widget/state').countdown,null);
+ f.setTime('2026-11-21T02:00:00Z');assert.equal(r(1,'GET','/api/widget/state').countdown.days,-1);assert.throws(()=>r(1,'PUT','/api/widget/settings',{title:'测试',customDay:'2026-02-30'}),e=>e.status===400);assert.throws(()=>r(1,'PUT','/api/widget/settings',{title:' ',customDay:'2026-11-20'}),e=>e.status===400);
+ f.db.exec("INSERT INTO reminders(id,ledger_id,creator,title,base_day,kind,month,day) VALUES(1,1,1,'纪念日','2026-11-22','solar',11,22)");state=r(1,'PUT','/api/widget/settings',{reminderId:1});assert.equal(state.countdown.id,1);assert.equal(state.settings.customDay,null);assert.equal(r(1,'PUT','/api/widget/settings',{reminderId:null}).countdown,null);
+ }finally{f.close();}
+});

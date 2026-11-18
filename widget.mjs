@@ -1,5 +1,5 @@
 import {fail} from './accounts.mjs';
-import {nextOccurrence,shanghaiClock} from './calendar.mjs';
+import {nextOccurrence,shanghaiClock,validDay} from './calendar.mjs';
 
 export function widgetService(db,{now=Date.now}={}){
  const through=user=>db.prepare('SELECT through_id FROM chat_reads WHERE user_id=?').get(user.id)?.through_id||0;
@@ -11,9 +11,10 @@ export function widgetService(db,{now=Date.now}={}){
   const noteCount=db.prepare('SELECT COUNT(*) AS n FROM widget_notes WHERE ledger_id=? AND recipient=? AND read_at IS NULL').get(user.ledger_id,user.id).n;
   const chatCount=db.prepare('SELECT COUNT(*) AS n FROM chat_messages WHERE ledger_id=? AND sender<>? AND id>? AND retracted_at IS NULL').get(user.ledger_id,user.id,through(user)).n;
   const pick=note&&(!chat||note.created<=chat.created)?{...note,type:'note',target:'notes'}:chat?{id:chat.id,type:'chat',target:'chat',created:chat.created,text:chat.kind==='text'?chat.text:chat.kind==='image'?'发来一张图片':'发来一条语音'}:null;
-  const setting=db.prepare('SELECT reminder_id FROM widget_settings WHERE user_id=?').get(user.id);let countdown=null;
+  const setting=db.prepare('SELECT * FROM widget_settings WHERE user_id=?').get(user.id);let countdown=null;
   if(setting?.reminder_id){const r=visibleReminder(user,setting.reminder_id),today=shanghaiClock(new Date(now())).day,next=r&&nextOccurrence(r,today);if(next)countdown={id:r.id,title:r.title,day:next,days:Math.round((Date.parse(next)-Date.parse(today))/86400000)};}
-  return {owner:user.id,peer,unreadCount:noteCount+chatCount,item:pick,countdown,updatedAt:now()};
+  if(setting?.custom_day){const today=shanghaiClock(new Date(now())).day;countdown={title:setting.title,day:setting.custom_day,days:Math.round((Date.parse(setting.custom_day)-Date.parse(today))/86400000),source:'custom'};}
+  return {owner:user.id,peer,unreadCount:noteCount+chatCount,item:pick,countdown,settings:{reminderId:setting?.reminder_id||null,customDay:setting?.custom_day||null,title:setting?.title||''},updatedAt:now()};
  }
  function route(req,url,user,input,ensureWritable){
   const p=url.pathname;
@@ -37,8 +38,10 @@ export function widgetService(db,{now=Date.now}={}){
    })();return state(user);
   }
   if(p==='/api/widget/settings'&&req.method==='PUT'){
-   ensureWritable();if(input.reminderId!==null&&(!Number.isSafeInteger(input.reminderId)||!visibleReminder(user,input.reminderId)))throw fail(400,'请选择自己可以查看的纪念日');
-   db.prepare('INSERT INTO widget_settings(user_id,reminder_id) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET reminder_id=excluded.reminder_id').run(user.id,input.reminderId);return state(user);
+   ensureWritable();
+   if(input.customDay!==undefined){if(!validDay(input.customDay)||typeof input.title!=='string'||!input.title.trim()||input.title.trim().length>60)throw fail(400,'请填写60字以内的名称，并选择有效日期');db.prepare("INSERT INTO widget_settings(user_id,reminder_id,custom_day,title) VALUES(?,NULL,?,?) ON CONFLICT(user_id) DO UPDATE SET reminder_id=NULL,custom_day=excluded.custom_day,title=excluded.title").run(user.id,input.customDay,input.title.trim());}
+   else {if(input.reminderId!==null&&(!Number.isSafeInteger(input.reminderId)||!visibleReminder(user,input.reminderId)))throw fail(400,'请选择自己可以查看的纪念日');db.prepare("INSERT INTO widget_settings(user_id,reminder_id,custom_day,title) VALUES(?,?,NULL,'') ON CONFLICT(user_id) DO UPDATE SET reminder_id=excluded.reminder_id,custom_day=NULL,title=''").run(user.id,input.reminderId);}
+   return state(user);
   }
   throw fail(404,'卡片功能不存在');
  }

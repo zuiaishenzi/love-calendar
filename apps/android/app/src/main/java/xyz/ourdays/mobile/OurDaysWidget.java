@@ -22,16 +22,17 @@ public class OurDaysWidget extends AppWidgetProvider {
         for(int id:manager.getAppWidgetIds(new ComponentName(c,OurDaysWidget.class))){RemoteViews view=new RemoteViews(c.getPackageName(),R.layout.ourdays_widget);boolean logged=owner>0,hasItem=logged&&item!=null;String title,body,caption;
             if(!logged){title="朝夕 · 桌面留言";body="打开 App，登录后接收对方的心意";caption="轻触打开桌面留言";}
             else if(hasItem){title=(peer==null?"对方":peer.optString("name","对方"))+" · "+("chat".equals(item.optString("type"))?"聊天消息":"桌面留言");body=item.optString("text");caption=state.optInt("unreadCount")>1?"还有 "+state.optInt("unreadCount")+" 条未读":"留给你的一点想念";}
-            else if(countdown!=null){title=countdown.optString("title");int days=countdown.optInt("days");body=days==0?"就是今天 ♡":"还有 "+days+" 天";caption=countdown.optString("day").replace('-','.');}
+            else if(countdown!=null){title=countdown.optString("title");int days=countdown.optInt("days");body=days==0?"就是今天 ♡":days>0?"还有 "+days+" 天":"已经 "+Math.abs(days)+" 天";caption=countdown.optString("day").replace('-','.');}
             else {title="朝夕 · 桌面留言";body="把下一个期待，放在这里";caption="轻触，给对方留一句想念";}
             if(logged&&WidgetStore.prefs(c).getBoolean("offline",false))caption="暂未同步 · 点击 ↻ 重试";
             view.setTextViewText(R.id.widget_title,title);view.setTextViewText(R.id.widget_body,body);view.setTextViewText(R.id.widget_caption,caption);view.setViewVisibility(R.id.widget_read,hasItem?View.VISIBLE:View.GONE);
             view.setOnClickPendingIntent(R.id.widget_content,open(c,id,owner,hasItem?item.optString("target","notes"):"notes"));view.setOnClickPendingIntent(R.id.widget_refresh,action(c,id,REFRESH,owner,null));if(hasItem)view.setOnClickPendingIntent(R.id.widget_read,action(c,id,READ,owner,item));
             Bitmap background=logged?BitmapFactory.decodeFile(WidgetStore.background(c,id).getAbsolutePath()):null;
-            if(background!=null)view.setImageViewBitmap(R.id.widget_background,background);else view.setImageViewResource(R.id.widget_background,R.drawable.widget_background);
-            manager.updateAppWidget(id,view);
+            if(background!=null)view.setImageViewBitmap(R.id.widget_background,background);else view.setImageViewResource(R.id.widget_background,backgroundResource(WidgetStore.prefs(c).getString("background-preset-"+id,WidgetStore.prefs(c).getString("default-preset","rose"))));
+            view.setInt(R.id.widget_overlay,"setBackgroundColor",background!=null?0xC7FFFAFC:0x26FFFAFC);manager.updateAppWidget(id,view);
         }
     }
+    static int backgroundResource(String code){if("dawn".equals(code))return R.drawable.widget_dawn;if("hills".equals(code))return R.drawable.widget_hills;if("moon".equals(code))return R.drawable.widget_moon;return R.drawable.widget_background;}
     @Override public void onUpdate(Context c,AppWidgetManager manager,int[] ids){render(c);WidgetSyncService.schedule(c);WidgetSyncService.refresh(c);}
     @Override public void onDeleted(Context c,int[] ids){for(int id:ids)WidgetStore.background(c,id).delete();WidgetSyncService.schedule(c);}
     @Override public void onDisabled(Context c){WidgetSyncService.schedule(c);}

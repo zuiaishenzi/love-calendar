@@ -121,6 +121,8 @@ public class MainActivity extends Activity {
                     else if("refresh".equals(action))WidgetSyncService.refresh(MainActivity.this);
                     else if("pin".equals(action))WidgetSettingsActivity.pin(MainActivity.this);
                     else if("settings".equals(action))startActivity(new Intent(MainActivity.this,WidgetSettingsActivity.class));
+                    else if("background".equals(action))WidgetSettingsActivity.applyPreset(MainActivity.this,defaultValue,-1);
+                    else if("background-current".equals(action)){result.confirm(WidgetSettingsActivity.currentPreset(MainActivity.this));return true;}
                     result.confirm("");return true;
                 }
                 return super.onJsPrompt(view,url,message,defaultValue,result);
@@ -273,7 +275,7 @@ public class MainActivity extends Activity {
         if(fileCallback!=null){finishFilePicker(null);filePickerReturnedAt=android.os.SystemClock.elapsedRealtime();return;}
         if(android.os.SystemClock.elapsedRealtime()-filePickerReturnedAt<700)return;
         if (fullScreen != null) { hideFullScreen(); return; }
-        web.evaluateJavascript("(()=>{const d=document.querySelector('dialog[open]');if(!d){if(typeof view!=='undefined'&&view!=='calendar'&&typeof switchView==='function'){switchView('calendar');return true;}return false;}if(d.requestClose)d.requestClose();else{const e=new Event('cancel',{cancelable:true});if(d.dispatchEvent(e))d.close();}return true;})()", value -> {
+        web.evaluateJavascript("(()=>{const d=document.querySelector('dialog[open]');if(!d){if(typeof closeWidgetDate==='function'&&closeWidgetDate())return true;if(typeof view!=='undefined'&&view!=='calendar'&&typeof switchView==='function'){switchView('calendar');return true;}return false;}if(d.requestClose)d.requestClose();else{const e=new Event('cancel',{cancelable:true});if(d.dispatchEvent(e))d.close();}return true;})()", value -> {
             if (!"true".equals(value)) { if (web.canGoBack()) web.goBack(); else super.onBackPressed(); }
         });
     }
