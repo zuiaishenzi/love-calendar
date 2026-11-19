@@ -1,5 +1,11 @@
 # 上传与服务器更新
 
+## Android修复正式版：1.9.0 / 10901（2026-11-19）
+
+修复桌面卡片后台联网任务缺少 `ACCESS_NETWORK_STATE` 导致Android 14及以上可能闪退的问题。显示版本保持1.9.0，Android构建号递增至10901，签名与10900一致，可覆盖安装。新APK为 `E:/codex/love-app/OurDays-1.9.0-Android-build10901.apk`，50334字节，SHA256 `1b3f93e95fa4288ea1df0e58589dba3eda8aa6b5a86b51d350e977e9b5d25e2e`。Release构建、Lint和签名校验通过，APK内确认包含新权限；尚未真机复测。
+
+本次仅发布Android修复源码及私有库中的APK和 `latest.json`，Windows及鸿蒙安装包与清单保持原状。服务器执行 `sudo bash /opt/love-calendar/bin/update.sh --retry` 后，App右上角「版本更新」即可获取覆盖升级包；仅部署网页不能修复旧APK。
+
 ## 1.9.0正式发布（2026-11-19）
 
 本次发布公开源码与Android构建10900，APK只进入私有 `zuiaishenzi/love-app` 的 `latest.json` 和对应哈希文件。正式APK位于 `E:/codex/love-app/OurDays-1.9.0-Android-build10900.apk`，Release调试关闭，签名与旧包相同。Windows及鸿蒙源码版本同步，已有安装包和各自私库清单保持原版本，上传脚本已支持各平台独立发布：没有新版Windows安装包时保留已发布Windows清单，Android可以单独更新。
@@ -20,7 +26,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\upload-github.ps1 
 
 脚本使用 Git Credential Manager 的现有 GitHub 登录，检查公开源码仓库与私有包仓库的可见性，运行测试，核对 APK 的应用 ID、构建号、版本，再分别提交推送。源码仓库必须为 main，安装包仓库必须干净。不会构建 APK、递增版本或自动合并分支；不保存或打印凭据。提交描述由 Message 指定。
 
-默认 APK 取自 `../love-app/OurDays-<versionName>-Android-build<versionCode>.apk`。当前Android正式构建为10900；APK 与已发布文件一致时只推送待上传的源码，不重复发布安装包。同构建号不同内容时会停止，需提高 versionCode 并重新构建。
+默认 APK 取自 `../love-app/OurDays-<versionName>-Android-build<versionCode>.apk`。当前Android正式构建为10901；APK 与已发布文件一致时只推送待上传的源码，不重复发布安装包。同构建号不同内容时会停止，需提高 versionCode 并重新构建。
 
 仅更新网页或服务器代码：
 
