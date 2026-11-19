@@ -1,8 +1,10 @@
+const widgetHarmony=Number(/OurDaysHarmony\/(\d+)/.exec(navigator.userAgent)?.[1]||0)>=10901;
 const widgetAndroid=Number(/OurDaysAndroid\/(\d+)/.exec(navigator.userAgent)?.[1]||0)>=10810;
+const widgetNative=widgetHarmony||widgetAndroid;
 let widgetBox='received',widgetNotes=[],widgetMore=false,widgetRequest=0,widgetBusy=false,widgetHistoryOwner=null;
-function nativeWidget(command,value=''){if(widgetAndroid)return window.prompt('ourdays-widget:'+command,String(value));}
+function nativeWidget(command,value=''){if(widgetNative)return window.prompt('ourdays-widget:'+command,String(value));}
 function widgetSessionChanged(){nativeWidget('session',currentUser?.id||0);if(currentUser)openWidgetLink();}
-function stopWidget(){widgetSettingsRequest++;widgetSettingsBusy=false;widgetReminderRows=[];widgetReminderId=null;$('#widget-date-title').value='';$('#widget-custom-day').value='';$('#widget-date-value').textContent='选一个想一起度过的日子';$('#widget-reminder-options').replaceChildren();paintWidgetCountdownPreview(null);widgetRequest++;widgetHistoryOwner=null;widgetNotes=[];$('#widget-notes-dialog').close();closeWidgetDate();$('#widget-notes-list').replaceChildren();$('#widget-note-form').reset();nativeWidget('session',0);}
+function stopWidget(){widgetSettingsRequest++;widgetSettingsBusy=false;widgetReminderRows=[];widgetReminderId=null;$('#widget-date-title').value='';$('#widget-custom-day').value='';$('#widget-date-value').textContent='选一个想一起度过的日子';$('#widget-reminder-options').replaceChildren();paintWidgetCountdownPreview(null);widgetRequest++;widgetHistoryOwner=null;widgetNotes=[];closeWidgetDate();$('#widget-notes-list').replaceChildren();$('#widget-note-form').reset();clearWidgetPhoto();nativeWidget('session',0);}
 function paintWidgetNotes(){
  const list=$('#widget-notes-list');list.replaceChildren();$('#widget-note-total').textContent=widgetBox==='received'?'留给你的心意，都在这里。':'你写下的牵挂，也被好好收藏。';
  for(const b of document.querySelectorAll('[data-widget-box]'))b.setAttribute('aria-selected',String(b.dataset.widgetBox===widgetBox));
@@ -16,14 +18,14 @@ function paintWidgetNotes(){
 }
 async function loadWidgetNotes(append=false){
  const owner=currentUser?.id,request=++widgetRequest;if(!owner)return;$('#widget-note-status').textContent='';
- try{const data=await api('/api/widget/notes?'+new URLSearchParams({box:widgetBox,...(append&&widgetNotes.length?{before:widgetNotes.at(-1).id}:{})}));if(owner!==currentUser?.id||request!==widgetRequest||!$('#widget-notes-dialog').open)return;widgetHistoryOwner=owner;widgetNotes=append?[...widgetNotes,...data.items]:data.items;widgetMore=data.more;paintWidgetNotes();}catch(e){if(owner===currentUser?.id)$('#widget-note-status').textContent=e.message;}
+ try{const data=await api('/api/widget/notes?'+new URLSearchParams({box:widgetBox,...(append&&widgetNotes.length?{before:widgetNotes.at(-1).id}:{})}));if(owner!==currentUser?.id||request!==widgetRequest||view!=='notes')return;widgetHistoryOwner=owner;widgetNotes=append?[...widgetNotes,...data.items]:data.items;widgetMore=data.more;paintWidgetNotes();}catch(e){if(owner===currentUser?.id&&view==='notes')$('#widget-note-status').textContent=e.message;}
 }
-async function openWidgetNotes(){if(!currentUser)return;menuOpen(false);widgetHistoryOwner=currentUser.id;widgetNotes=[];widgetMore=false;$('#widget-note-search').value='';if(!$('#widget-notes-dialog').open)$('#widget-notes-dialog').showModal();paintWidgetNotes();await loadWidgetNotes();}
-$('#widget-notes-open').onclick=openWidgetNotes;$('#widget-notes-close').onclick=()=>$('#widget-notes-dialog').close();$('#widget-note-search').oninput=paintWidgetNotes;
+function openWidgetNotes(){if(!currentUser)return;menuOpen(false);widgetHistoryOwner=currentUser.id;widgetNotes=[];widgetMore=false;$('#widget-note-search').value='';paintWidgetNotes();return switchView('notes');}
+$('#widget-notes-open').onclick=openWidgetNotes;$('#widget-notes-close').onclick=()=>switchView('calendar');$('#widget-note-search').oninput=paintWidgetNotes;
 for(const b of document.querySelectorAll('[data-widget-box]'))b.onclick=()=>{widgetBox=b.dataset.widgetBox;widgetNotes=[];paintWidgetNotes();loadWidgetNotes();};
 $('#widget-notes-more').onclick=()=>loadWidgetNotes(true);
 $('#widget-note-form').onsubmit=async event=>{event.preventDefault();if(widgetBusy)return;const owner=currentUser?.id,text=event.target.elements.text.value;widgetBusy=true;paintWidgetNotes();try{await api('/api/widget/notes','POST',{text});if(owner!==currentUser?.id)return;event.target.reset();widgetBox='sent';await loadWidgetNotes();$('#widget-note-status').textContent='已经把这份心意送给对方。';nativeWidget('refresh');}catch(e){if(owner===currentUser?.id)$('#widget-note-status').textContent=e.message;}finally{widgetBusy=false;if(owner===currentUser?.id)paintWidgetNotes();}};
-$('#widget-notes-dialog').addEventListener('close',()=>{widgetRequest++;});
+function leaveWidgetNotes(){widgetRequest++;}
 async function setWidgetCountdown(id){try{await api('/api/widget/settings','PUT',{reminderId:id});$('#reminders-error').textContent='已设为你的桌面倒计时';nativeWidget('refresh');}catch(e){$('#reminders-error').textContent=e.message;}}
 function openWidgetLink(detail=null){
  const url=new URL(location.href),target=detail?.target||url.searchParams.get('widget'),owner=Number(detail?.owner||url.searchParams.get('widgetOwner'));if(!target||!currentUser)return;
@@ -41,12 +43,12 @@ function paintWidgetCountdownPreview(countdown){$('#widget-preview-title').textC
 function paintWidgetReminder(){const selected=widgetReminderRows.find(r=>r.id===widgetReminderId);$('#widget-reminder-value').textContent=selected?selected.title+' · '+selected.label:'选择已记录的纪念日';const list=$('#widget-reminder-options');list.replaceChildren();if(!widgetReminderRows.length)list.append(el('p','日历里还没有年度提醒，可以先选择任意日期。','hint'));for(const r of widgetReminderRows){const b=el('button'),name=el('span',r.title),date=el('small',r.label);b.type='button';b.setAttribute('role','option');b.setAttribute('aria-selected',String(r.id===widgetReminderId));b.append(name,date);b.onclick=()=>{widgetReminderId=r.id;paintWidgetReminder();closeWidgetDate();};list.append(b);}}
 async function loadWidgetSettings(){
  if(!currentUser)return;const owner=currentUser.id,request=++widgetSettingsRequest;$('#widget-settings-status').textContent='正在打开这份小期待…';widgetSettingsBusy=true;paintWidgetCountdownMode();
- try{const [state,reminders]=await Promise.all([api('/api/widget/state'),api('/api/reminders')]);if(owner!==currentUser?.id||view!=='widget'||request!==widgetSettingsRequest)return;widgetReminderRows=reminders;widgetReminderId=state.settings?.reminderId||state.countdown?.id||null;widgetCountdownMode=state.settings?.customDay?'custom':widgetReminderId?'reminder':'custom';$('#widget-date-title').value=state.settings?.title||'';$('#widget-custom-day').value=state.settings?.customDay||'';$('#widget-date-value').textContent=state.settings?.customDay?.replaceAll('-','.')||'选一个想一起度过的日子';widgetDateMonth=($('#widget-custom-day').value||localDay()).slice(0,7);paintWidgetReminder();paintWidgetCountdownPreview(state.countdown);$('#widget-settings-status').textContent='';paintWidgetBackground(nativeWidget('background-current')||'rose');}
+ try{const [state,reminders]=await Promise.all([api('/api/widget/state'),api('/api/reminders')]);if(owner!==currentUser?.id||view!=='widget'||request!==widgetSettingsRequest)return;widgetReminderRows=reminders;widgetReminderId=state.settings?.reminderId||state.countdown?.id||null;widgetCountdownMode=state.settings?.customDay?'custom':widgetReminderId?'reminder':'custom';$('#widget-date-title').value=state.settings?.title||'';$('#widget-custom-day').value=state.settings?.customDay||'';$('#widget-date-value').textContent=state.settings?.customDay?.replaceAll('-','.')||'选一个想一起度过的日子';widgetDateMonth=($('#widget-custom-day').value||localDay()).slice(0,7);paintWidgetReminder();paintWidgetCountdownPreview(state.countdown);$('#widget-settings-status').textContent='';paintWidgetBackground(nativeWidget('background-current')||'rose');loadWidgetAppearance();}
  catch(e){if(owner===currentUser?.id&&view==='widget')$('#widget-settings-status').textContent=e.message;}
  finally{if(owner===currentUser?.id&&request===widgetSettingsRequest){widgetSettingsBusy=false;paintWidgetCountdownMode();}}
 }
 function openWidgetSettings(){if(!currentUser)return;menuOpen(false);document.querySelectorAll('dialog[open]').forEach(d=>d.close());return switchView('widget');}
-$('#widget-settings-open').hidden=!widgetAndroid;$('#widget-settings-open').onclick=openWidgetSettings;$('#widget-settings-close').onclick=()=>switchView('calendar');
+$('#widget-settings-open').hidden=!widgetNative;$('#widget-settings-open').onclick=openWidgetSettings;$('#widget-settings-close').onclick=()=>switchView('calendar');
 for(const b of document.querySelectorAll('[data-widget-countdown]'))b.onclick=()=>{widgetCountdownMode=b.dataset.widgetCountdown;paintWidgetCountdownMode();};
 function renderWidgetDate(){
  const [year,m]=widgetDateMonth.split('-').map(Number),chosen=$('#widget-custom-day').value,list=$('#widget-date-days'),offset=(new Date(Date.UTC(year,m-1,1)).getUTCDay()+6)%7,days=new Date(Date.UTC(year,m,0)).getUTCDate();$('#widget-date-year').value=String(year);$('#widget-date-month').textContent=m+'月';$('#widget-date-prev').disabled=widgetDateMonth==='2000-01';$('#widget-date-next').disabled=widgetDateMonth==='9999-12';list.replaceChildren();for(let i=0;i<offset;i++)list.append(el('span'));
@@ -61,7 +63,34 @@ $('#widget-date-form').onsubmit=async event=>{
  event.preventDefault();if(widgetSettingsBusy)return;const owner=currentUser?.id;let input={reminderId:null};if(widgetCountdownMode==='custom'){const day=$('#widget-custom-day').value,title=$('#widget-date-title').value.trim();if(!day||!title){$('#widget-settings-status').textContent='给这份期待起个名字，再选一个日期吧。';return;}input={customDay:day,title};}else if(widgetCountdownMode==='reminder'){if(!widgetReminderId){$('#widget-settings-status').textContent='请选择一个纪念日';return;}input={reminderId:widgetReminderId};}
  widgetSettingsBusy=true;paintWidgetCountdownMode();try{const state=await api('/api/widget/settings','PUT',input);if(owner!==currentUser?.id||view!=='widget')return;paintWidgetCountdownPreview(state.countdown);$('#widget-settings-status').textContent='这份期待，已经放到卡片上了。';nativeWidget('refresh');}catch(e){if(owner===currentUser?.id)$('#widget-settings-status').textContent=e.message;}finally{if(owner===currentUser?.id){widgetSettingsBusy=false;paintWidgetCountdownMode();}}
 };
-function paintWidgetBackground(preset){const preview=$('#widget-setting-preview');preview.className='widget-setting-preview widget-bg-'+(widgetPresetNames[preset]?preset:'rose');for(const b of document.querySelectorAll('[data-widget-background]'))b.setAttribute('aria-pressed',String(b.dataset.widgetBackground===preset));}
-for(const [code,name] of Object.entries(widgetPresetNames)){const b=el('button'),image=el('span',undefined,'widget-background-thumb widget-bg-'+code);b.type='button';b.dataset.widgetBackground=code;b.setAttribute('aria-pressed','false');b.append(image,el('span',name));b.onclick=()=>{if(Number(/OurDaysAndroid\/(\d+)/.exec(navigator.userAgent)?.[1]||0)<10811){$('#widget-background-status').textContent='内置背景需要安装新的10811版客户端。';return;}nativeWidget('background',code);paintWidgetBackground(code);$('#widget-background-status').textContent='已换上「'+name+'」，也可以继续挑一张自己的照片。';};$('#widget-background-presets').append(b);}
+function paintWidgetBackground(preset){const preview=$('#widget-setting-preview');preview.className='widget-setting-preview widget-bg-'+(widgetPresetNames[preset]?preset:'rose');for(const b of document.querySelectorAll('[data-widget-background]'))b.setAttribute('aria-pressed',String(b.dataset.widgetBackground===preset));if(preset!=='custom')clearWidgetPhoto();}
+for(const [code,name] of Object.entries(widgetPresetNames)){const b=el('button'),image=el('span',undefined,'widget-background-thumb widget-bg-'+code);b.type='button';b.dataset.widgetBackground=code;b.setAttribute('aria-pressed','false');b.append(image,el('span',name));b.onclick=()=>{if(!widgetHarmony&&Number(/OurDaysAndroid\/(\d+)/.exec(navigator.userAgent)?.[1]||0)<10811){$('#widget-background-status').textContent='内置背景需要更新客户端。';return;}nativeWidget('background',code);paintWidgetBackground(code);$('#widget-background-status').textContent='已换上「'+name+'」，也可以继续挑一张自己的照片。';};$('#widget-background-presets').append(b);}
+if(widgetHarmony){$('#widget-pin').textContent='如何添加到桌面';$('.widget-page-footnote').textContent='消息优先展示；鸿蒙系统约30分钟检查，点击卡片刷新可立即同步。';}
 $('#widget-pin').onclick=()=>nativeWidget('pin');$('#widget-background').onclick=()=>nativeWidget('settings');
 window.addEventListener('widget-open',event=>openWidgetLink(event.detail));if(currentUser)widgetSessionChanged();
+
+const widgetAppearanceCapable=Number(/OurDaysHarmony\/(\d+)/.exec(navigator.userAgent)?.[1]||0)>=10902||(!widgetHarmony&&Number(/OurDaysAndroid\/(\d+)/.exec(navigator.userAgent)?.[1]||0)>=10903);
+let widgetPhotoUrl=null,widgetPhotoPixels=null,widgetPhotoGeneration=0;
+function clearWidgetPhoto(){widgetPhotoGeneration++;if(widgetPhotoUrl)URL.revokeObjectURL(widgetPhotoUrl);widgetPhotoUrl=null;widgetPhotoPixels=null;$('#widget-setting-preview').style.removeProperty('--widget-preview-image');}
+function widgetTextColor(pixels,overlay){
+ let luminance=0,count=0;for(let i=0;i<pixels.length;i+=4){let value=0;for(let c=0;c<3;c++){const a=overlay/100+(1-overlay/100)*(1-(pixels[i+3]??255)/255),s=(pixels[i+c]*(1-a)+255*a)/255;value+=(c===0?.2126:c===1?.7152:.0722)*(s<=.04045?s/12.92:((s+.055)/1.055)**2.4);}luminance+=value;count++;}
+ const light=count?luminance/count:.8;return (light+.05)/.0713>1.05/(light+.05)?'#30252C':'#FFFFFF';
+}
+function paintWidgetAppearance(){
+ const overlay=Number($('#widget-overlay').value),custom=$('[name="widget-text-mode"][value="custom"]').checked;
+ $('#widget-overlay-value').textContent=overlay+'%';$('#widget-text-color').disabled=!custom;
+ const color=custom?$('#widget-text-color').value:widgetTextColor(widgetPhotoPixels||[240,225,235,255],overlay),preview=$('#widget-setting-preview');
+ preview.style.setProperty('--widget-overlay',String(overlay/100));preview.style.setProperty('--widget-text',color);
+}
+function loadWidgetAppearance(){
+ $('#widget-appearance-controls').disabled=!widgetAppearanceCapable;
+ if(!widgetAppearanceCapable){$('#widget-appearance-status').textContent='更新客户端后，可以调整照片遮罩与文字颜色。';return;}
+ let style;try{style=JSON.parse(nativeWidget('appearance-current')||'null');}catch{return;}if(!style)return;
+ $('#widget-overlay').value=String(Math.max(0,Math.min(70,Number(style.overlay)||0)));for(const radio of document.querySelectorAll('[name="widget-text-mode"]'))radio.checked=radio.value===(style.mode==='custom'?'custom':'auto');$('#widget-text-color').value=/^#[\da-f]{6}$/i.test(style.color)?style.color:'#704457';
+ clearWidgetPhoto();const generation=widgetPhotoGeneration,owner=currentUser?.id;
+ if(style.preview&&style.preview.length<400000){try{const bytes=Uint8Array.from(atob(style.preview),x=>x.charCodeAt(0));widgetPhotoUrl=URL.createObjectURL(new Blob([bytes],{type:'image/jpeg'}));$('#widget-setting-preview').style.setProperty('--widget-preview-image','url("'+widgetPhotoUrl+'")');const image=new Image();image.onload=()=>{if(generation!==widgetPhotoGeneration||owner!==currentUser?.id)return;const canvas=document.createElement('canvas');canvas.width=canvas.height=16;const context=canvas.getContext('2d');context.drawImage(image,0,0,16,16);widgetPhotoPixels=context.getImageData(0,0,16,16).data;paintWidgetAppearance();};image.src=widgetPhotoUrl;}catch{clearWidgetPhoto();}}
+ paintWidgetAppearance();$('#widget-appearance-status').textContent='';
+}
+$('#widget-overlay').oninput=paintWidgetAppearance;$('#widget-text-color').oninput=paintWidgetAppearance;for(const radio of document.querySelectorAll('[name="widget-text-mode"]'))radio.onchange=paintWidgetAppearance;
+$('#widget-appearance-save').onclick=()=>{const style={overlay:Number($('#widget-overlay').value),mode:$('[name="widget-text-mode"][value="custom"]').checked?'custom':'auto',color:$('#widget-text-color').value};try{const saved=JSON.parse(nativeWidget('appearance',JSON.stringify(style))||'null');$('#widget-appearance-status').textContent=saved?'卡片外观已保存。':'未能保存，请确认已登录并重试。';}catch{$('#widget-appearance-status').textContent='外观未保存，请重试。';}};
+window.addEventListener('widget-style-changed',()=>{if(view==='widget')loadWidgetAppearance();});

@@ -1,1 +1,20 @@
-{"string":[{"name":"module_desc","value":"两个人的恋爱日历"},{"name":"microphone_reason","value":"用于按住说话，发送语音或转成文字。"}]}
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "两个人的恋爱日历"
+    },
+    {
+      "name": "microphone_reason",
+      "value": "用于按住说话，发送语音或转成文字。"
+    },
+    {
+      "name": "widget_name",
+      "value": "朝夕 · 留言与倒计时"
+    },
+    {
+      "name": "widget_description",
+      "value": "对方的心意，和下一个值得期待的日子"
+    }
+  ]
+}

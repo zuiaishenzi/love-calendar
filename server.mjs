@@ -245,6 +245,8 @@ const server=http.createServer(async(req,res)=>{
     files['/agreement-plan-date.js']=['agreement-plan-date.js','text/javascript; charset=utf-8'];
     files['/widget-ui.css']=['widget-ui.css','text/css; charset=utf-8'];
     files['/widget.js']=['widget.js','text/javascript; charset=utf-8'];
+    files['/utility-pages.css']=['utility-pages.css','text/css; charset=utf-8'];
+    files['/page-scrollbars.js']=['page-scrollbars.js','text/javascript; charset=utf-8'];
     files['/stickers.js']=['stickers.js','text/javascript; charset=utf-8'];
     files['/speech.js']=['speech.js','text/javascript; charset=utf-8'];
     const presetAsset=url.pathname.match(/^\/avatars\/pair-([1-5])\.png$/);

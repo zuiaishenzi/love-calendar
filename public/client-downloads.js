@@ -22,4 +22,4 @@ async function refreshClientDownloads(){
   }catch{if(generation===clientDownloadsGeneration)status.textContent='暂时无法获取，请重新打开设置';}
  }));
 }
-$('#system-open').onclick=()=>{menuOpen(false);$('#system-dialog').showModal();if(!hideClientDownloads)refreshClientDownloads();};
+$('#system-open').onclick=()=>{menuOpen(false);return switchView('system');};

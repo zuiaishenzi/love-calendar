@@ -1,10 +1,18 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
+import {Script} from 'node:vm';
+import {stripTypeScriptTypes} from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import {openDatabase} from './db.mjs';
 import {widgetService} from './widget.mjs';
+
+test('卡片配色在深浅照片与遮罩变化时保持对比度，网页与鸿蒙算法一致',()=>{
+ const web=readFileSync('public/widget.js','utf8'),source=web.slice(web.indexOf('function widgetTextColor('),web.indexOf('function paintWidgetAppearance(')),choose=new Script(source+';widgetTextColor;').runInNewContext({});
+ const model=stripTypeScriptTypes(readFileSync('apps/harmony/entry/src/main/ets/common/WidgetModel.ets','utf8'),{mode:'transform'}).replaceAll('export ',''),native=new Script(model+';widgetTextColor;').runInNewContext({});
+ for(const [pixels,overlay,expected] of [[[0,0,0,255],0,'#FFFFFF'],[[255,255,255,255],0,'#30252C'],[[0,0,0,255],70,'#30252C'],[[20,30,40,0],0,'#30252C']]){assert.equal(choose(pixels,overlay),expected);assert.equal(native(pixels,overlay),expected);}
+});
 function fixture(){
  const dir=mkdtempSync(path.join(os.tmpdir(),'love-widget-')),db=openDatabase(dir);db.exec("INSERT INTO ledgers(id,code) VALUES(1,'WIDGET01'),(2,'WIDGET02');");
  for(const [id,ledger,seat] of [[1,1,1],[2,1,2],[3,2,1]])db.prepare('INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(?,?,?,?,?,?)').run(id,'widget'+id,'hash','salt',ledger,seat);

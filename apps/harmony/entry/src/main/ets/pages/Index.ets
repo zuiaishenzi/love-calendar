@@ -6,6 +6,7 @@ import { SERVER_URL, VERSION_CODE, VERSION_NAME, trusted, commandPath } from '..
 import { NativeVoiceRecorder, VoiceResult } from '../common/NativeVoiceRecorder';
 import { NativeDownloads } from '../common/NativeDownloads';
 import { HARMONY_BOOTSTRAP, HARMONY_APPEARANCE, HARMONY_STYLE_PATH } from '../common/PageBootstrap';
+import { HarmonyWidget } from '../common/HarmonyWidget';
 
 @Entry
 @Component
@@ -25,6 +26,8 @@ struct Index {
   private viewportHeight: number = 0;
   @State private failed: boolean = false;
   @StorageLink('ourdaysForeground') @Watch('foregroundChanged') private foreground: boolean = true;
+  @StorageLink('ourdaysWidgetRoute') @Watch('widgetRouteChanged') private widgetRoute: string = '';
+  private widgetSessionGeneration: number = 0;
 
   private context(): common.UIAbilityContext { return this.getUIContext().getHostContext() as common.UIAbilityContext; }
   private isTrusted(): boolean {
@@ -62,6 +65,50 @@ struct Index {
   private foregroundChanged(): void {
     this.downloads?.setForeground(this.foreground);
     if (!this.foreground) { this.voice?.background(); webview.WebCookieManager.saveCookieAsync(); }
+    else { HarmonyWidget.refresh(this.context()); this.widgetRouteChanged(); this.script('window.dispatchEvent(new Event("widget-style-changed"));'); }
+  }
+  private async widgetRouteChanged(): Promise<void> {
+    if (!this.widgetRoute || !this.foreground || !this.isTrusted()) return;
+    const route: string = this.widgetRoute;
+    const result: string = await this.script('(()=>{if(typeof currentUser==="undefined"||!currentUser||typeof openWidgetLink!=="function")return false;openWidgetLink(' + route + ');return true;})()');
+    if (result === 'true' && this.widgetRoute === route) AppStorage.set('ourdaysWidgetRoute', '');
+  }
+  private widgetPrompt(event: OnPromptEvent): boolean {
+    if (!event.message.startsWith('ourdays-widget:') || !trusted(event.url) || !this.isTrusted()) return false;
+    const command: string = event.message.slice('ourdays-widget:'.length);
+    let result: string = '';
+    if (command === 'session') {
+      const generation: number = ++this.widgetSessionGeneration, owner: number = Number(event.value);
+      if (!Number.isSafeInteger(owner) || owner <= 0) HarmonyWidget.session(this.context(), 0, '');
+      else webview.WebCookieManager.fetchCookie(SERVER_URL).then((cookie: string) => {
+        if (generation !== this.widgetSessionGeneration || !this.alive) return;
+        HarmonyWidget.session(this.context(), owner, cookie); this.widgetRouteChanged();
+      }).catch(() => { if (generation === this.widgetSessionGeneration) HarmonyWidget.session(this.context(), 0, ''); });
+    } else if (command === 'refresh') HarmonyWidget.refresh(this.context(), undefined, true);
+    else if (command === 'appearance-current') result = HarmonyWidget.snapshot(this.context());
+    else if (command === 'appearance') result = HarmonyWidget.saveAppearance(this.context(), event.value) ? HarmonyWidget.snapshot(this.context()) : '';
+    else if (command === 'background-current') result = HarmonyWidget.currentPreset(this.context());
+    else if (this.foreground) {
+      if (command === 'background') result = HarmonyWidget.preset(this.context(), event.value) ? 'saved' : 'login';
+      else if (command === 'settings') this.selectWidgetPhoto();
+      else if (command === 'pin') {
+        this.getUIContext().getPromptAction().showDialog({ title: '添加朝夕服务卡片', message: '回到手机桌面，长按朝夕图标，选择「服务卡片」，找到「朝夕 · 留言与倒计时」，再点击添加到桌面。也可以在桌面的卡片管理中搜索朝夕。', buttons: [{ text: '知道了', color: '#A16986' }] });
+      }
+    }
+    event.result.handlePromptConfirm(result); return true;
+  }
+  private async selectWidgetPhoto(): Promise<void> {
+    if (HarmonyWidget.auth(this.context()).owner <= 0) { this.toast('请先登录'); return; }
+    const generation: number = this.pageGeneration;
+    this.script('window.dispatchEvent(new CustomEvent("app-file-picker-state",{detail:{active:true}}));');
+    try {
+      const options: photoAccessHelper.PhotoSelectOptions = new photoAccessHelper.PhotoSelectOptions(); options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE; options.maxSelectNumber = 1;
+      const files: photoAccessHelper.PhotoSelectResult = await new photoAccessHelper.PhotoViewPicker().select(options);
+      if (!files.photoUris.length || !this.alive || generation !== this.pageGeneration) return;
+      await HarmonyWidget.savePhoto(this.context(), files.photoUris[0]); this.toast('桌面卡片背景已更新');
+      this.script('if(typeof paintWidgetBackground==="function")paintWidgetBackground("custom");if(typeof loadWidgetAppearance==="function")loadWidgetAppearance();');
+    } catch { this.toast('图片未保存，请选择20MB以内的照片并确认已登录'); }
+    finally { this.pickerReturned = Date.now(); this.script('window.dispatchEvent(new CustomEvent("app-file-picker-state",{detail:{active:false}}));'); }
   }
   aboutToAppear(): void { webview.WebviewController.setWebDebuggingAccess(false); }
   aboutToDisappear(): void {
@@ -74,7 +121,7 @@ struct Index {
   private attached(): void {
     // Older deployed pages recognize only the Android voice/layout protocol.
     // Retain the real Harmony marker and advertise that compatibility protocol.
-    this.controller.setCustomUserAgent(this.controller.getUserAgent() + ' OurDaysHarmony/' + VERSION_CODE + ' OurDaysAndroid/10808');
+    this.controller.setCustomUserAgent(this.controller.getUserAgent() + ' OurDaysHarmony/' + VERSION_CODE + ' OurDaysAndroid/10811');
     webview.WebCookieManager.putAcceptCookieEnabled(true);
     webview.WebCookieManager.putAcceptThirdPartyCookieEnabled(false);
     this.voice = new NativeVoiceRecorder(this.context(), (result: VoiceResult) => this.deliver(result), () => this.foreground);
@@ -120,6 +167,8 @@ struct Index {
       apply(position);for(const radio of settings.querySelectorAll('input[name="nav-position"]'))radio.onchange=()=>{if(!radio.checked)return;apply(radio.value);try{localStorage.setItem('ourdays.navigation-position',radio.value);}catch{}};
       for(const id of ['client-downloads','android-update-entry']){const node=document.getElementById(id);if(node){node.hidden=true;node.style.setProperty('display','none','important');}}
       const description=document.querySelector('#system-menu-description');if(description)description.textContent='个性设置';
+      const hint=document.querySelector('.widget-page-footnote');if(hint)hint.textContent='消息优先展示；鸿蒙系统约30分钟检查，点击卡片刷新可立即同步。';
+      const pin=document.querySelector('#widget-pin');if(pin)pin.textContent='如何添加到桌面';
       const system=document.querySelector('#system-dialog');if(system){let label=document.querySelector('#harmony-client-version');if(!label){label=document.createElement('p');label.id='harmony-client-version';label.className='hint';system.append(label);}label.textContent=${JSON.stringify('鸿蒙客户端 v' + VERSION_NAME + ' · 构建 ' + VERSION_CODE)};}
     })()`);
   }
@@ -193,7 +242,7 @@ struct Index {
     if (this.fileResult) { this.finishPicker([]); return true; }
     if (Date.now() - this.pickerReturned < 700) return true;
     if (this.fullScreen) { this.fullScreen.exitFullScreen(); this.fullScreen = undefined; return true; }
-    this.script('(()=>{const d=document.querySelector("dialog[open]");if(d){if(d.requestClose)d.requestClose();else{const e=new Event("cancel",{cancelable:true});if(d.dispatchEvent(e))d.close();}return true;}if(typeof view!=="undefined"&&view!=="calendar"&&typeof switchView==="function"){switchView("calendar");return true;}return false;})()')
+    this.script('(()=>{const d=document.querySelector("dialog[open]");if(d){if(d.requestClose)d.requestClose();else{const e=new Event("cancel",{cancelable:true});if(d.dispatchEvent(e))d.close();}return true;}if(typeof closeWidgetDate==="function"&&closeWidgetDate())return true;if(typeof view!=="undefined"&&view!=="calendar"&&typeof switchView==="function"){switchView("calendar");return true;}return false;})()')
       .then(result => {
         if (result === 'true' || !this.alive) return;
         if (this.controller.accessBackward()) this.controller.backward();
@@ -237,6 +286,7 @@ struct Index {
         .onSslErrorEventReceive(event => { event?.handler.handleCancel(); this.failed = true; })
         .onPermissionRequest(event => { if (event) this.grantWebMicrophone(event.request); })
         .onShowFileSelector(event => { if (event) this.selectFiles(event.fileSelector, event.result); return true; })
+        .onPrompt(event => this.widgetPrompt(event))
         .onFullScreenEnter(event => { this.fullScreen = event.handler; })
         .onFullScreenExit(() => { this.fullScreen = undefined; })
       if (this.failed) {

@@ -11,6 +11,58 @@ import os from 'node:os';
 import {appUpdates} from './app-updates.mjs';
 import {releaseDefinition,validateRelease} from './scripts/app-release-manifest.mjs';
 
+function harmonyWidgetFixture(){
+ const model=stripTypeScriptTypes(readFileSync('apps/harmony/entry/src/main/ets/common/WidgetModel.ets','utf8'),{mode:'transform'}).replaceAll('export ',''),source=stripTypeScriptTypes(readFileSync('apps/harmony/entry/src/main/ets/common/HarmonyWidget.ets','utf8').replace(/^import .*;\r?\n/gm,''),{mode:'transform'}).replaceAll('export ','');
+ const files=new Map(),handles=new Map(),pushed=[],requests=[];let fd=0,fetcher=async()=>({owner:1,item:{type:'note',id:1,text:'给你的一点想念',target:'notes'},peer:{name:'对方'},countdown:null,unreadCount:1,updatedAt:1});
+ const context={filesDir:'/private'};let updater=async()=>{};
+ const fs={readTextSync(p){if(!files.has(p))throw Error('missing');return files.get(p);},openSync(p){handles.set(++fd,p);return {fd};},writeSync(fd,value){files.set(handles.get(fd),value);},closeSync(){},renameSync(a,b){files.set(b,files.get(a));files.delete(a);},unlinkSync(p){files.delete(p);},OpenMode:{READ_ONLY:0,READ_WRITE:2,CREATE:64,TRUNC:512}};
+ const rcp={Request:class{constructor(url){this.url=url;}},createSession:()=>({fetch:async request=>{requests.push(request);const state=await fetcher(request);return {statusCode:state.status||200,toString:()=>JSON.stringify(state)};},close(){}})};
+ const actions=new Script(model+'\n'+source+';({HarmonyWidget,widgetView,validWidgetTarget});').runInNewContext({fs,rcp,SERVER_URL:'https://love.example/',formProvider:{updateForm:async(id,data)=>{pushed.push({id,data:JSON.parse(JSON.stringify(data))});await updater(id,data);}},formBindingData:{createFormBindingData:value=>value}});
+ return {...actions,context,files,pushed,requests,setFetch:fn=>fetcher=fn,setUpdate:fn=>updater=fn};
+}
+test('鸿蒙卡片展示只绑定正文与跳转，未知账号不显示缓存，任意日期支持已过天数',()=>{
+ const f=harmonyWidgetFixture(),state={owner:1,item:{id:4,type:'chat',target:'notes',text:'消息'},peer:{name:'对方'},countdown:null,unreadCount:2};
+ const chat=f.widgetView(state,1,'moon',false);assert.equal(chat.target,'chat');assert.equal(chat.itemType,'chat');assert.equal(chat.hasItem,true);assert.equal(chat.preset,'moon');assert.equal(chat.caption,'还有 2 条未读');
+ assert.notEqual(f.widgetView(state,2,'rose',false).body,'消息');assert.equal(f.widgetView(state,0,'moon',false).owner,0);assert.equal(f.validWidgetTarget('https://evil.example'),'notes');
+ state.item=null;state.countdown={title:'相见的日子',day:'2026-11-18',days:-1};assert.equal(f.widgetView(state,1,'rose',false).body,'已经 1 天');assert.equal(f.widgetView(state,1,'rose',false).target,'notes');assert.equal(JSON.stringify(chat).includes('cookie'),false);
+});
+test('鸿蒙卡片后台请求禁重定向，已读校验账号，退出清认证与背景，旧响应不回写',async()=>{
+ const f=harmonyWidgetFixture(),service=f.HarmonyWidget,c=f.context;service.add(c,'123');service.session(c,1,'session='+'a'.repeat(64));await service.refresh(c);
+ assert.equal(service.currentView(c).body,'给你的一点想念');assert.equal(f.requests[0].configuration.transfer.autoRedirect,false);assert.ok(f.pushed.every(row=>!JSON.stringify(row.data).includes('session=')));
+ const before=f.requests.length;await service.refresh(c,{action:'read',type:'note',id:'1',owner:'2'});assert.equal(f.requests.length,before);
+ await service.refresh(c,{action:'read',type:'note',id:'1',owner:'1'});assert.equal(f.requests.at(-1).method,'POST');assert.deepEqual(JSON.parse(f.requests.at(-1).content),{type:'note',id:1});
+ let release;const wait=new Promise(resolve=>release=resolve);f.setFetch(async()=>{await wait;return {owner:1,item:{id:9,type:'note',text:'旧正文'},peer:null,unreadCount:1,updatedAt:20};});const task=service.refresh(c);await new Promise(resolve=>setImmediate(resolve));const point=f.pushed.length;service.session(c,0,'');release();await task;
+ assert.equal(service.auth(c).owner,0);assert.equal(service.currentView(c).owner,0);assert.ok(f.pushed.slice(point).every(row=>row.data.body!=='旧正文'));assert.equal(service.auth(c).cookie,'');
+});
+test('鸿蒙卡片401清理会话，网络错误保留本人缓存并标示未同步，无卡片不轮询',async()=>{
+ const f=harmonyWidgetFixture(),service=f.HarmonyWidget,c=f.context;service.session(c,1,'session='+'b'.repeat(64));await service.refresh(c);assert.equal(f.requests.length,0);
+ service.add(c,'8');await service.refresh(c);f.setFetch(async()=>({status:302}));await service.refresh(c);assert.equal(service.currentView(c).body,'给你的一点想念');assert.match(service.currentView(c).caption,/暂未同步/);
+ f.setFetch(async()=>({status:401}));await service.refresh(c);assert.equal(service.auth(c).owner,0);assert.equal(service.currentView(c).hasItem,false);
+});
+test('鸿蒙手动刷新立即显示进度、合并同账号请求，外观保存及退出隔离',async()=>{
+ const f=harmonyWidgetFixture(),service=f.HarmonyWidget,c=f.context;service.add(c,'12');service.session(c,1,'session='+'a'.repeat(64));await service.refresh(c);
+ let release;const before=f.requests.length;f.setFetch(()=>new Promise(resolve=>{release=()=>resolve({owner:1,item:null,peer:null,countdown:null,unreadCount:0,updatedAt:5});}));
+ const first=service.refresh(c,undefined,true);await new Promise(resolve=>setImmediate(resolve));assert.equal(service.currentView(c).refreshing,true);assert.match(service.currentView(c).caption,/正在刷新/);
+ const second=service.refresh(c,undefined,true);assert.equal(f.requests.length,before+1);release();await Promise.all([first,second]);assert.equal(service.currentView(c).refreshing,false);
+ assert.equal(service.saveAppearance(c,JSON.stringify({overlay:0,mode:'custom',color:'#123456'})),true);assert.equal(service.currentView(c).textColor,'#123456');assert.equal(service.currentView(c).overlayColor,'#00FFFFFF');
+ assert.equal(service.saveAppearance(c,JSON.stringify({overlay:90,mode:'custom',color:'bad'})),false);assert.equal(service.preset(c,'moon'),true);assert.equal(service.currentView(c).textColor,'#123456');
+ service.session(c,0,'');assert.equal(service.currentView(c).textColor,'#30252C');assert.equal(JSON.parse(service.snapshot(c)).mode,'auto');
+});
+
+test('鸿蒙刷新完成发布期间再次点击仍会发起下一次刷新，不遗留加载状态',async()=>{
+ const f=harmonyWidgetFixture(),service=f.HarmonyWidget,c=f.context;service.add(c,'15');service.session(c,1,'session='+'a'.repeat(64));await service.refresh(c);
+ let releaseUi,blocked=false;f.setUpdate(async(_id,data)=>{if(!data.refreshing&&!blocked){blocked=true;await new Promise(resolve=>releaseUi=resolve);}});
+ const before=f.requests.length,first=service.refresh(c,undefined,true);for(let n=0;!releaseUi&&n<10;n++)await new Promise(resolve=>setImmediate(resolve));assert.ok(releaseUi);
+ const second=service.refresh(c,undefined,true);releaseUi();await Promise.all([first,second]);assert.equal(f.requests.length,before+2);assert.equal(service.currentView(c).refreshing,false);
+});
+
+test('鸿蒙卡片冷启动和热启动从系统params字符串取路由，不接受外站目标',()=>{
+ const source=stripTypeScriptTypes(readFileSync('apps/harmony/entry/src/main/ets/entryability/EntryAbility.ets','utf8').replace(/^import .*;\r?\n/gm,''),{mode:'transform'}).replaceAll('export default ','');const values=new Map();const Entry=new Script(source+';EntryAbility;').runInNewContext({UIAbility:class{},AppStorage:{setOrCreate:(k,v)=>values.set(k,v)}}),ability=new Entry();
+ ability.onCreate({parameters:{params:JSON.stringify({widgetTarget:'chat',widgetOwner:'2'})}});let route=JSON.parse(values.get('ourdaysWidgetRoute'));assert.equal(route.target,'chat');assert.equal(route.owner,2);
+ ability.onNewWant({parameters:{params:JSON.stringify({widgetTarget:'notes',widgetOwner:'2'})}});route=JSON.parse(values.get('ourdaysWidgetRoute'));assert.equal(route.target,'notes');
+ const before=values.get('ourdaysWidgetRoute');ability.onNewWant({parameters:{params:JSON.stringify({widgetTarget:'https://evil.example',widgetOwner:'2'})}});assert.equal(values.get('ourdaysWidgetRoute'),before);
+});
+
 test('鸿蒙 HAP 清单与 Android 隔离，发布、导入和下载保留哈希及旧包',async()=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),'ourdays-harmony-'));
  const source=path.join(dir,'source'),target=path.join(dir,'target'),file=path.join(dir,'fixture.hap');
@@ -41,7 +93,7 @@ test('鸿蒙 HAP 清单与 Android 隔离，发布、导入和下载保留哈希
 
 test('鸿蒙客户端隐藏客户端下载，网页和旧客户端行为保持原状',()=>{
  const source=readFileSync('public/client-downloads.js','utf8');
- for(const [ua,hidden] of [['Mozilla/5.0 OurDaysHarmony/10801',true],['OurDaysAndroid/10808',true],['OurDaysWindows/10804',true],['Mozilla/5.0 OpenHarmony Phone',false]]){
+ for(const [ua,hidden] of [['Mozilla/5.0 OurDaysHarmony/10801',true],['OurDaysAndroid/10811',true],['OurDaysWindows/10804',true],['Mozilla/5.0 OpenHarmony Phone',false]]){
   const nodes=new Map();const $=name=>{if(!nodes.has(name))nodes.set(name,{});return nodes.get(name);};
   new Script(source).runInNewContext({navigator:{userAgent:ua},$});assert.equal(nodes.get('#client-downloads').hidden,hidden);
  }
@@ -53,8 +105,8 @@ test('鸿蒙文档启动适配兼容旧网页，但不影响外站和子框架',
  for(const [origin,main,enabled] of [['https://love.11215739.xyz:11961',true,true],['https://evil.example',true,false],['https://love.11215739.xyz:11961',false,false]]){
   const styles=[],navigator={userAgent:'Mozilla/5.0 OpenHarmony'},window={};window.top=main?window:{};
   new Script(bootstrap).runInNewContext({location:{origin},window,navigator,MutationObserver:class{observe(){}},document:{querySelectorAll:()=>[],getElementById:()=>null,createElement:()=>({}),documentElement:{append:style=>styles.push(style)},addEventListener:()=>{}}});
-  assert.equal(navigator.userAgent.includes('OurDaysHarmony/10814'),enabled);assert.equal(styles.length,enabled?1:0);
-  if(enabled){assert.match(navigator.userAgent,/OurDaysAndroid\/10808/);assert.equal(styles[0].rel,'stylesheet');assert.equal(styles[0].href,'https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10814');}
+  assert.equal(navigator.userAgent.includes('OurDaysHarmony/10903'),enabled);assert.equal(styles.length,enabled?1:0);
+  if(enabled){assert.match(navigator.userAgent,/OurDaysAndroid\/10811/);assert.equal(styles[0].rel,'stylesheet');assert.equal(styles[0].href,'https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10903');}
  }
 });
 
@@ -68,7 +120,7 @@ test('鸿蒙内置CSS仅拦截指定同源GET子资源，遵守服务器style-sr
  class Response{setResponseData(value){this.body=value;}setResponseMimeType(value){this.mime=value;}setResponseEncoding(value){this.encoding=value;}setResponseCode(value){this.status=value;}setReasonMessage(){}setResponseHeader(value){this.headers=value;}}
  const Harness=new Script(code).runInNewContext({...constants,commandPath,WebResourceResponse:Response});
  for(const [url,verb,main,allowed] of [
-  ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10814','GET',false,true],
+  ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10903','GET',false,true],
   ['https://evil.example/__ourdays_harmony__/appearance.css','GET',false,false],
   ['https://love.11215739.xyz:11961/style.css','GET',false,false],
   ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css','POST',false,false],
@@ -83,9 +135,9 @@ test('鸿蒙加载后补注入复用已安装适配，丢失样式可恢复',()=
  const bootstrap=new Script(source+';HARMONY_BOOTSTRAP;').runInNewContext({});
  let style=null,appends=0,observers=0,refreshes=0;
  const window={dispatchEvent:()=>refreshes++};window.top=window;
- const context=createContext({location:{origin:'https://love.11215739.xyz:11961'},window,navigator:{userAgent:'OurDaysHarmony/10814'},Event:class{},MutationObserver:class{constructor(){observers++;}observe(){}},document:{getElementById:()=>style,createElement:()=>({}),documentElement:{append:node=>{style=node;appends++;}},querySelectorAll:()=>[],addEventListener:()=>{}}});
+ const context=createContext({location:{origin:'https://love.11215739.xyz:11961'},window,navigator:{userAgent:'OurDaysHarmony/10903'},Event:class{},MutationObserver:class{constructor(){observers++;}observe(){}},document:{getElementById:()=>style,createElement:()=>({}),documentElement:{append:node=>{style=node;appends++;}},querySelectorAll:()=>[],addEventListener:()=>{}}});
  const run=()=>new Script(bootstrap).runInContext(context);
- run();assert.equal(window.__ourdaysHarmonyBootstrap,'10814');assert.equal(appends,1);const initialObservers=observers;
+ run();assert.equal(window.__ourdaysHarmonyBootstrap,'10903');assert.equal(appends,1);const initialObservers=observers;
  run();assert.equal(appends,1);assert.equal(observers,initialObservers);assert.equal(refreshes,1);
  style=null;run();assert.equal(appends,2);assert.equal(observers,initialObservers);
 });
@@ -118,7 +170,7 @@ test('鸿蒙日历随原生可用高度、导航高度和月份行数重新分�
 test('鸿蒙个性设置可切换并保存导航位置，兼容标记不会显示更新选项',()=>{
  const source=readFileSync('public/settings.js','utf8'),code=source.slice(source.indexOf('const harmonyClient=')),nodes=new Map(),radios=[{value:'top'},{value:'bottom'}];let bottom=false,saved='bottom';
  const $=id=>{if(!nodes.has(id))nodes.set(id,{hidden:false,classList:{toggle:(_name,value)=>bottom=value},showModal:()=>{}});return nodes.get(id);};
- new Script(code).runInNewContext({navigator:{userAgent:'OurDaysHarmony/10802 OurDaysAndroid/10808'},$,menuOpen:()=>{},document:{querySelectorAll:()=>radios},localStorage:{getItem:()=>saved,setItem:(_key,value)=>saved=value}});
+ new Script(code).runInNewContext({navigator:{userAgent:'OurDaysHarmony/10802 OurDaysAndroid/10811'},$,menuOpen:()=>{},document:{querySelectorAll:()=>radios},localStorage:{getItem:()=>saved,setItem:(_key,value)=>saved=value}});
  assert.equal($('#system-personalization').hidden,false);assert.equal($('#android-update-entry').hidden,true);assert.equal($('#system-menu-description').textContent,'个性设置');assert.equal(bottom,true);
  radios[0].checked=true;radios[0].onchange();assert.equal(bottom,false);assert.equal(saved,'top');
 });

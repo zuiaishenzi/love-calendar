@@ -27,10 +27,10 @@ function refreshSettings(){
  for(const b of document.querySelectorAll('#avatar-options button'))b.disabled=pending;
  if($('#lifecycle-dialog').open)renderLifecycleProgress();
 }
-async function freshUser(){currentUser=await api('/api/me');refreshSettings();return currentUser;}
-$('#personal-open').onclick=async()=>{
- menuOpen(false);try{
-  await freshUser();$('#personal-name').textContent=currentUser.name;$('#personal-email').textContent=currentUser.email||'尚未绑定，请到安全设置添加邮箱';
+async function freshUser(){const owner=currentUser?.id,user=await api('/api/me');if(currentUser?.id!==owner)throw Error('账号状态已改变，请重新打开设置');currentUser=user;refreshSettings();return currentUser;}
+async function loadPersonalSettings(){
+ try{
+  await freshUser();if(view!=='personal')return;$('#personal-name').textContent=currentUser.name;$('#personal-email').textContent=currentUser.email||'尚未绑定，请到安全设置添加邮箱';
   $('#personal-mail-enabled').checked=currentUser.email_enabled;
   $('#profile-ledger').textContent='账本号 · '+currentUser.ledger_code;
   $('#profile-members').textContent=`已加入 ${currentUser.members.length}/2 人 · `+currentUser.members.map(m=>m.name).join('、');
@@ -40,9 +40,10 @@ $('#personal-open').onclick=async()=>{
    const group=el('div',undefined,'avatar-group');group.append(el('small',names[pair-1]));
    for(let side=1;side<=2;side++){const preset=`pair-${pair}-${side}`,b=el('button');b.type='button';b.className='avatar-choice';b.dataset.preset=preset;b.setAttribute('aria-label',`${names[pair-1]} · 头像${side}`);b.setAttribute('aria-pressed',String(!currentUser.avatar_uploaded&&currentUser.avatar===preset));const face=el('span',undefined,'avatar');drawAvatar(face,currentUser,preset);b.append(face);b.onclick=()=>saveAvatar({preset});group.append(b);}box.append(group);
   }
-  refreshSettings();$('#profile-dialog').showModal();
+  refreshSettings();
  }catch(e){$('#status').textContent=e.message;}
-};
+}
+$('#personal-open').onclick=()=>{menuOpen(false);return switchView('personal');};
 async function saveAvatar(input){
  const box=$('#avatar-options');box.setAttribute('aria-busy','true');$('#personal-error').textContent='正在保存头像…';
  try{currentUser=await api('/api/avatar','POST',input);avatarRevision=Date.now();refreshSettings();for(const b of box.querySelectorAll('button'))b.setAttribute('aria-pressed',String(!currentUser.avatar_uploaded&&b.dataset.preset===currentUser.avatar));$('#personal-error').textContent='新的模样，已经替你珍藏。';}
@@ -54,7 +55,8 @@ $('#avatar-upload').onchange=async event=>{
  try{const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(Error('图片读取失败'));reader.readAsDataURL(file);});await saveAvatar({data});}catch(e){$('#personal-error').textContent=e.message;}finally{event.target.value='';}
 };
 $('#personal-save-mail').onclick=async()=>{try{currentUser=await api('/api/profile','POST',{email:currentUser.email,email_enabled:$('#personal-mail-enabled').checked});$('#personal-error').textContent='提醒偏好已保存';}catch(e){$('#personal-error').textContent=e.message;}};
-$('#security-open').onclick=async()=>{menuOpen(false);try{await freshUser();$('#security-error').textContent='';$('#security-dialog').showModal();}catch(e){$('#status').textContent=e.message;}};
+async function loadSecuritySettings(){try{await freshUser();if(view==='security')$('#security-error').textContent='';}catch(e){$('#status').textContent=e.message;}}
+$('#security-open').onclick=()=>{menuOpen(false);return switchView('security');};
 $('#change-email').onclick=()=>{if(currentUser.lifecycle?.readonly)return;openEmailSettings();};
 $('#reset-password').onclick=()=>{if(!currentUser.email){$('#security-error').textContent='请先绑定邮箱';return;}openPasswordReset(true);};
 function renderLifecycleProgress(){
@@ -84,7 +86,7 @@ $('#lifecycle-form').onsubmit=async event=>{event.preventDefault();const b=$('#l
  const state=await api('/api/lifecycle/confirm','POST',{purpose:lifecyclePurpose,code:event.target.elements.code.value});currentUser.lifecycle=state;
  if(state.kind==='account'){showLogin();$('#login-error').textContent='账号已进入30天保留期。若想回来，使用原密码登录即可恢复。';return;}
  const completed=lifecyclePurpose==='ledger-cancel'?!state.readonly:state.readonly;
- if(completed){$('#lifecycle-dialog').close();$('#security-dialog').close();}
+ if(completed){$('#lifecycle-dialog').close();if(view==='security')switchView('calendar');}
  else $('#lifecycle-error').textContent='你的心意已确认，正在等对方。';refreshSettings();
  }catch(e){$('#lifecycle-error').textContent=e.message;}finally{b.disabled=false;renderLifecycleProgress();}};
 setInterval(()=>{if(currentUser&&$('#lifecycle-dialog').open)renderLifecycleProgress();},1000);
@@ -107,7 +109,7 @@ applyNavigationPosition(savedNavigationPosition);
 $('#system-personalization').hidden=!mobilePersonalization;
 if(mobilePersonalization)$('#system-menu-description').textContent=navigator.userAgent.includes('OurDaysHarmony/')?'个性设置':'版本更新 · 个性设置';
 else $('#system-personalization').remove?.();
-$('#system-open').onclick=()=>{menuOpen(false);$('#system-dialog').showModal();};
+$('#system-open').onclick=()=>{menuOpen(false);return switchView('system');};
 for(const radio of document.querySelectorAll('input[name="nav-position"]'))radio.onchange=()=>{
  if(!mobilePersonalization||!radio.checked)return;
  applyNavigationPosition(radio.value);

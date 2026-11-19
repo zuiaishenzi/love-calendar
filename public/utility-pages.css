@@ -1,0 +1,14 @@
+#app:is([data-main-view="personal"],[data-main-view="security"],[data-main-view="system"],[data-main-view="notes"]){height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+#app:is([data-main-view="personal"],[data-main-view="security"],[data-main-view="system"],[data-main-view="notes"])>:is(.intro,.bottom){display:none}
+.utility-page{flex:1 1 0;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;padding:14px 10px 28px 0;scrollbar-width:thin;scrollbar-color:#d8bdcb transparent}
+#app>.utility-page{width:100%;max-width:none;max-height:none;margin:0;padding:14px 10px 28px 0;border:0;background:transparent;border-radius:0;box-shadow:none}
+.utility-panel{width:100%;max-width:860px;margin:0 auto;padding:26px;border:1px solid #eddee6;border-radius:23px;background:#fffbfd;color:#70515f}
+.utility-page .dialog-heading{margin-bottom:22px}.utility-page .dialog-heading h2{font-size:27px;color:#865b71}.utility-page .dialog-heading>button{font-size:12px;padding:8px 14px;border-radius:12px;color:#a0768e}
+#widget-notes-dialog.utility-page{width:auto;max-width:none;max-height:none;margin:0;padding:14px 10px 28px 0;border:0;border-radius:0;background:transparent;box-shadow:none}
+#widget-notes-dialog.utility-page .utility-panel{background:#faf4f7}
+html.page-scrollbars-ready,html.page-scrollbars-ready [data-page-scroll]{scrollbar-width:none!important}
+html.page-scrollbars-ready::-webkit-scrollbar,html.page-scrollbars-ready [data-page-scroll]::-webkit-scrollbar{display:none!important;width:0!important}
+.page-scrollbar{position:fixed;width:5px;z-index:30;border-radius:8px;background:#f5e3df;pointer-events:none}
+.page-scrollbar>i{display:block;position:absolute;left:0;width:5px;min-height:28px;border:1px solid #fff6f0;border-radius:8px;background:linear-gradient(#e7a9b2,#b96787);box-shadow:0 1px 3px #99566a30;pointer-events:auto;touch-action:none;cursor:grab}
+.page-scrollbar>i:active{cursor:grabbing}
+@media(max-width:760px){.utility-page,#widget-notes-dialog.utility-page{padding:12px 10px 20px 0}.utility-panel{padding:20px 17px;border-radius:20px}.utility-page .dialog-heading h2{font-size:25px}body.android-app #app.nav-bottom:is([data-main-view="personal"],[data-main-view="security"],[data-main-view="system"],[data-main-view="notes"]){padding-bottom:calc(69px + env(safe-area-inset-bottom,0px))}}

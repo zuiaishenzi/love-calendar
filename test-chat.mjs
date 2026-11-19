@@ -377,7 +377,7 @@ test('系统设置中的导航偏好只在移动App生效，保存并恢复且�
  function boot(agent,saved,storageFails=false){
   const radios=[{value:'top'},{value:'bottom'}],nodes=new Map(),writes=[];let bottom=false,opened=0,closed=0;
   const get=id=>{if(!nodes.has(id))nodes.set(id,{classList:{toggle:(name,value)=>bottom=value},showModal:()=>opened++});return nodes.get(id);};
-  runInNewContext(code,{navigator:{userAgent:agent},$:get,document:{querySelectorAll:()=>radios},localStorage:{getItem:()=>{if(storageFails)throw Error();return saved;},setItem:(key,value)=>{if(storageFails)throw Error();writes.push(value);}},menuOpen:()=>closed++});
+  runInNewContext(code,{navigator:{userAgent:agent},$:get,switchView:name=>{assert.equal(name,'system');opened++;},document:{querySelectorAll:()=>radios},localStorage:{getItem:()=>{if(storageFails)throw Error();return saved;},setItem:(key,value)=>{if(storageFails)throw Error();writes.push(value);}},menuOpen:()=>closed++});
   return {radios,nodes,writes,get,bottom:()=>bottom,opened:()=>opened,closed:()=>closed};
  }
  for(const agent of ['OurDaysAndroid/10808','OurDaysHarmony/10801']){
@@ -445,7 +445,7 @@ test('Android、鸿蒙与Windows系统设置隐藏客户端下载且不请求包
  const source=readFileSync(new URL('./public/client-downloads.js',import.meta.url),'utf8');
  for(const agent of ['OurDaysAndroid/10808','OurDaysHarmony/10801','OurDaysWindows/1.8.0','browser']){
   const nodes=new Map();let opened=0;const get=id=>{if(!nodes.has(id))nodes.set(id,{showModal:()=>opened++});return nodes.get(id);};
-  runInNewContext(source,{navigator:{userAgent:agent},$:get,menuOpen:()=>{},api:()=>{throw Error('Native client must not request downloads');}});
+  runInNewContext(source,{navigator:{userAgent:agent},$:get,switchView:name=>{assert.equal(name,'system');opened++;},menuOpen:()=>{},api:()=>{throw Error('Native client must not request downloads');}});
   const native=agent!=='browser';assert.equal(get('#client-downloads').hidden,native);if(native){get('#system-open').onclick();assert.equal(opened,1);}
  }
 });
@@ -473,6 +473,16 @@ test('未读提示只在未读跨度超过聊天区域时显示，点击后定�
  f.jumpToUnreadChat();assert.equal(f.list.scrollTop,188);assert.equal(f.button.hidden,true);f.updateChatRead();assert.equal(f.button.hidden,true);
  f.add(7,300);f.updateChatRead();assert.equal(f.button.hidden,true);f.add(8,400);f.add(9,500);f.updateChatRead();assert.equal(f.button.hidden,false);
  for(const row of f.context.chatRows)f.context.chatReadSeen.add(row.id);f.updateChatRead();assert.equal(f.button.hidden,true);
+});
+
+test('初始化聊天不发送空闲录音取消导航，等待授权时退出仍取消录音',()=>{
+ const source=readFileSync('public/chat.js','utf8'),leave=source.slice(source.indexOf('function leaveChatView()')).split('\n')[0],command=source.slice(source.indexOf('function nativeVoiceCommand('),source.indexOf('function finishHeldVoice('));
+ for(const pending of [false,true]){
+  let released=0;const nodes=new Map(),node=id=>{if(!nodes.has(id))nodes.set(id,{hidden:false,close(){},querySelectorAll:()=>[]});return nodes.get(id);};
+  const context={window:{location:{}},$:node,chatStatus(){},chatReadFrame:null,chatReadSaving:false,chatGeneration:0,chatBusy:false,chatTimer:null,chatOwner:null,voiceHoldTimer:null,voiceHold:null,voiceHeld:false,voiceHoldAction:'send',nativeVoiceBuild:10902,nativeVoicePending:pending,nativeVoiceActive:false,chatSelecting:false,chatSelected:new Set(),chatSelection(){},closeChatMenu(){},releaseRecording(){released++;},clearTimeout(){}};
+  runInNewContext(leave+'\n'+command+'\nleaveChatView();',context);
+  assert.equal(context.window.location.href,pending?'/app/cancel-voice':undefined);assert.equal(context.nativeVoicePending,false);assert.equal(released,1);
+ }
 });
 
 test('只有连续读到的消息推进已读位置，不能跳过屏外未读或在后台标记已读',async()=>{

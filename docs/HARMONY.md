@@ -1,8 +1,14 @@
 # 朝夕鸿蒙客户端
 
-使用 ArkTS Stage 模型和 ArkWeb 加载现有 HTTPS 网站，独立应用 ID `xyz.ourdays.harmony`，显示版本保持 `1.8.0`，当前鸿蒙构建号 `10814`。用户目标系统为鸿蒙 7.0.0。最低兼容 API 12，不使用安卓兼容环境。
+使用 ArkTS Stage 模型和 ArkWeb 加载现有 HTTPS 网站，独立应用 ID `xyz.ourdays.harmony`，显示版本 `1.9.0`，当前鸿蒙构建号 `10901`。用户目标系统为鸿蒙 7.0.0。最低兼容 API 12，不使用安卓兼容环境。
 
 ## 当前验证状态
+
+2026年11月19日：新增原生2×2桌面服务卡片，复用现有桌面留言、聊天未读和倒计时接口。正文按消息类型进入聊天或桌面留言；无消息时显示倒计时，点击进入留言。支持逐条已读、手动刷新、打开App同步、温馨预设背景与本机照片。退出、切换账号或登录失效时清除旧账号卡片内容；认证信息只保存在应用沙箱，不进入卡片绑定数据或跳转参数。
+
+在App右上角菜单进入「桌面卡片」设置；添加方式为长按桌面应用图标，选择「服务卡片」，找到朝夕并添加。设置页的添加按钮提供操作指引，实际名称可能随系统桌面版本不同。鸿蒙系统定时刷新以30分钟为单位，本实现配置一个周期，省电策略可能延迟；不保证即时接收。后台调度和真实桌面交互尚未真机验证。
+
+按用户选择交付源码及**未签名编译验证包**：`E:\codex\love-app\OurDays-1.9.0-Harmony-build10901-unsigned.hap`，231797字节，SHA256 `daa7abc618df612033a737a12b8aeae5d779825f63f1ec0042f08edba1fadaab`。真实ArkTS、资源编译及HAP打包通过；完整134项测试、设置页320/390/1280px检查、真实生产CSP样式及滚动检查通过。旧开发证书于2026年10月29日到期，签名步骤失败；unsigned包不能直接安装，需在DevEco更新原工程签名后重新构建。未安装、未发布、未更改私库安装包清单；所有旧包保留。下方均为历史构建记录。
 
 2026年10月22日：10814将回忆录纵向滚条移至内容框右侧外部，保留原滚动与拖动逻辑；窄边距时限制在屏幕内，其他阅读区及弹窗保留内部滚条。新包 `E:\codex\love-app\OurDays-1.8.0-Harmony-build10814.hap`，162712字节，SHA256 `7f4ddc6e890c5d4eba5b9b742ea2b24bef1ec180013192b1e2ed09b39b0e22d7`。真实构建、验签通过，签名身份与10813一致，旧包保留。完整91项测试及生产CSP页面检查通过，本轮未进行真机安装验证。安装10814后鸿蒙调整生效，无需先部署网站。Android暖粉圆角滚条属于网页样式，部署网站后生效，不需要新APK。
 
@@ -124,3 +130,6 @@ node scripts/publish-app.mjs 'E:\codex\love-app\OurDays-1.8.0-Harmony-build10801
 网页系统设置的客户端下载已增加“鸿蒙测试版”，未发布时不生成下载链接；存在清单后显示版本、大小和设备签名安装要求。网站托管/下载不等于获得普通用户分发及点击安装能力，当前调试包仍仅支持Profile覆盖的设备，通过DevEco/HDC安装。两人使用应先把两台设备加入调试Profile；沿用有效签名的后续编译无需连接手机，真机测试及HDC安装需要连接，新增设备/证书到期时须重新配置签名。网页样式和业务逻辑修改只部署服务器即可，原生录音、选择器、返回键等变更才需要新HAP。必须部署鸿蒙网页适配后才会启用原生录音入口。
 
 参考：[华为 ArkWeb](https://developer.huawei.com/consumer/cn/doc/doccenter-dev-faq/faqs-arkweb-174)、[AVRecorder 音频录制](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/using-avrecorder-for-recording)、[安装调试与签名错误](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides-v5/bm-tool-V5)、[工程构建配置](https://developer.huawei.com/consumer/cn/doc/doccenter-deveco-studio/ide-hmos-hvigor-set-options)。
+
+
+双端本地构建10903：设置改为主页面，卡片背景遮罩/文字配色可调，刷新即时反馈。安装包、验证范围与发布边界见 [桌面卡片说明](ANDROID-WIDGET.md#双端设置与卡片外观本地构建10903)。本轮未发布。

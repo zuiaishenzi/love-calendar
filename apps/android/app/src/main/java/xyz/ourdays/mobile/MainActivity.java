@@ -118,7 +118,9 @@ public class MainActivity extends Activity {
                 if(message!=null&&message.startsWith("ourdays-widget:")&&trusted(Uri.parse(url))&&trusted(Uri.parse(view.getUrl()))){
                     String action=message.substring("ourdays-widget:".length());
                     if("session".equals(action)){try{WidgetStore.session(MainActivity.this,Long.parseLong(defaultValue));}catch(NumberFormatException ignored){}}
-                    else if("refresh".equals(action))WidgetSyncService.refresh(MainActivity.this);
+                    else if("refresh".equals(action))WidgetSyncService.manualRefresh(MainActivity.this);
+                    else if("appearance-current".equals(action)){result.confirm(WidgetAppearance.snapshot(MainActivity.this));return true;}
+                    else if("appearance".equals(action)){try{result.confirm(WidgetAppearance.save(MainActivity.this,new org.json.JSONObject(defaultValue))?WidgetAppearance.snapshot(MainActivity.this):"");}catch(Exception error){result.confirm("");}return true;}
                     else if("pin".equals(action))WidgetSettingsActivity.pin(MainActivity.this);
                     else if("settings".equals(action))startActivity(new Intent(MainActivity.this,WidgetSettingsActivity.class));
                     else if("background".equals(action))WidgetSettingsActivity.applyPreset(MainActivity.this,defaultValue,-1);
@@ -269,7 +271,7 @@ public class MainActivity extends Activity {
         else pending.deny();
     }
     @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(focused&&nativeVoicePending&&checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED)root.postDelayed(this::startNativeVoice,350);}
-    @Override protected void onResume(){super.onResume();activityResumed=true;if(root!=null)root.post(this::completeAudioPermission);WidgetSyncService.schedule(this);WidgetSyncService.refresh(this);}
+    @Override protected void onResume(){super.onResume();activityResumed=true;if(root!=null)root.post(this::completeAudioPermission);WidgetSyncService.schedule(this);WidgetSyncService.refresh(this);if(web!=null&&web.getUrl()!=null&&trusted(Uri.parse(web.getUrl())))web.evaluateJavascript("window.dispatchEvent(new Event('widget-style-changed'));",null);}
 
     @Override public void onBackPressed() {
         if(fileCallback!=null){finishFilePicker(null);filePickerReturnedAt=android.os.SystemClock.elapsedRealtime();return;}

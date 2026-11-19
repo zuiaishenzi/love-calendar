@@ -28,7 +28,8 @@ html.harmony-shell,body.harmony-app,body.harmony-app *{overscroll-behavior:none!
  body.harmony-app #app>#status:empty{display:none}
  body.harmony-app #app:not([data-harmony-view="calendar"])>.intro,body.harmony-app #app:not([data-harmony-view="calendar"])>.bottom{display:none}
  body.harmony-app #app[data-harmony-view="memos"] #memos-dialog.main-view,body.harmony-app #app[data-harmony-view="memoir"] #memoir{flex:1 1 0!important;min-height:0!important;height:0;overflow-x:hidden;overflow-y:auto!important;touch-action:pan-y pinch-zoom;-webkit-overflow-scrolling:touch;overscroll-behavior:none;width:100%;margin-top:0;margin-bottom:0;border-radius:16px;clip-path:inset(0 round 16px)}
- body.harmony-app #app[data-harmony-view="chat"] #chat-dialog.main-view{flex:1 1 0!important;min-height:0!important;height:0;margin-bottom:0}
+ body.harmony-app #app[data-harmony-view="widget"] #widget-settings-page,body.harmony-app #app[data-harmony-view="utility"]>.utility-page{flex:1 1 0!important;min-height:0!important;height:0;overflow-x:hidden;overflow-y:auto!important}
+body.harmony-app #app[data-harmony-view="chat"] #chat-dialog.main-view{flex:1 1 0!important;min-height:0!important;height:0;margin-bottom:0}
 }
 @media(max-width:760px) and (max-height:680px){
  body.harmony-app #app[data-harmony-view="calendar"]>.intro{padding:5px 2px!important}
@@ -117,10 +118,9 @@ export const HARMONY_SCROLLBARS: string = `(()=>{
   const length=Math.min(span,Math.max(28,span*client/total)),offset=Math.min(max,Math.max(0,vertical?node.scrollTop:Math.abs(node.scrollLeft)));
   bar.max=max;bar.travel=span-length;
   const origin=bar.layer.getBoundingClientRect();
-  // Keep the memoir rail in the page gutter, outside its rounded content frame.
-  // Other scrollers (including dialogs) retain their inset rails.
-  const outsideMemoir=vertical&&node.id==='memoir';
-  const right=outsideMemoir?Math.min(viewport().width-7,bounds.right+4):bounds.right-9;
+  // Page rails sit outside their frames; nested controls and dialogs stay inset.
+  const outsidePage=vertical&&(node.id==='memoir'||node.hasAttribute?.('data-page-scroll'));
+  const right=outsidePage?Math.min(viewport().width-7,bounds.right+4):bounds.right-9;
   const left=(vertical?right:bounds.left+8)-origin.left,top=(vertical?bounds.top+8:bounds.bottom-9)-origin.top;
   bar.rail.style.cssText='left:'+left+'px;top:'+top+'px;width:'+(vertical?5:span)+'px;height:'+(vertical?span:5)+'px;';
   bar.thumb.style.cssText='left:'+(vertical?0:bar.travel*offset/max)+'px;top:'+(vertical?bar.travel*offset/max:0)+'px;width:'+(vertical?5:length)+'px;height:'+(vertical?length:5)+'px;';
@@ -167,7 +167,7 @@ export const HARMONY_LAYOUT: string = `(()=>{
   const attribute=(node,name,value)=>{if(node.getAttribute(name)!==value)node.setAttribute(name,value);};
   attribute(root,'data-harmony-logged-in',String(!app.hidden));
   const view=app.querySelector('#calendar-view')?.getAttribute('aria-pressed')==='true'?'calendar':
-   app.querySelector('#memos-dialog')?.hidden===false?'memos':app.querySelector('#memoir')?.hidden===false?'memoir':'chat';
+   app.querySelector('#widget-settings-page')?.hidden===false?'widget':app.querySelector('.utility-page:not([hidden])')?'utility':app.querySelector('#memos-dialog')?.hidden===false?'memos':app.querySelector('#memoir')?.hidden===false?'memoir':'chat';
   attribute(app,'data-harmony-view',view);
   if(window.innerWidth<=760&&!app.hidden){
    // Discard an outer scroll offset left by the legacy page before adaptation.
@@ -218,17 +218,17 @@ export const HARMONY_LAYOUT: string = `(()=>{
 // This compatibility marker describes the shared UI/voice protocol, not the OS.
 export const HARMONY_BOOTSTRAP: string = `(()=>{
   if(location.origin!=='https://love.11215739.xyz:11961'||window!==window.top)return;
-  if(window.__ourdaysHarmonyBootstrap==='10814'){window.__ourdaysHarmonyRefresh?.();return;}
+  if(window.__ourdaysHarmonyBootstrap==='10903'){window.__ourdaysHarmonyRefresh?.();return;}
   let agent=navigator.userAgent;
-  if(!agent.includes('OurDaysHarmony/'))agent+=' OurDaysHarmony/10814';
-  if(!agent.includes('OurDaysAndroid/'))agent+=' OurDaysAndroid/10808';
+  if(!agent.includes('OurDaysHarmony/'))agent+=' OurDaysHarmony/10903';
+  if(!agent.includes('OurDaysAndroid/'))agent+=' OurDaysAndroid/10811';
   try{Object.defineProperty(navigator,'userAgent',{value:agent,configurable:true});}catch{}
   const hide=()=>{
     document.documentElement?.classList?.add('harmony-shell');
     document.body?.classList.add('harmony-app');
     if(document.getElementById('ourdays-harmony-style'))return;
     const style=document.createElement('link');style.id='ourdays-harmony-style';style.rel='stylesheet';
-    style.href=location.origin+${JSON.stringify(HARMONY_STYLE_PATH)}+'?build=10814';
+    style.href=location.origin+${JSON.stringify(HARMONY_STYLE_PATH)}+'?build=10903';
     if(document.documentElement)document.documentElement.append(style);
   };
   const selector='#chat-native-record,#chat-native-cancel',commands=new WeakMap();
@@ -255,5 +255,5 @@ export const HARMONY_BOOTSTRAP: string = `(()=>{
   ${HARMONY_LAYOUT};
   ${HARMONY_SCROLLBARS};
   window.__ourdaysHarmonyRefresh=()=>{hide();protect();window.dispatchEvent(new Event('ourdays-viewport'));};
-  window.__ourdaysHarmonyBootstrap='10814';
+  window.__ourdaysHarmonyBootstrap='10903';
 })()`;
