@@ -18,6 +18,13 @@ apps/**
 !apps/android/app/src/main/
 !apps/android/app/src/main/assets/
 !apps/android/app/src/main/assets/calendar-layout.js
+!apps/harmony/
+!apps/harmony/entry/
+!apps/harmony/entry/src/
+!apps/harmony/entry/src/main/
+!apps/harmony/entry/src/main/ets/
+!apps/harmony/entry/src/main/ets/common/
+!apps/harmony/entry/src/main/ets/common/WidgetModel.ets
 .github/
 
 **/*.apk
