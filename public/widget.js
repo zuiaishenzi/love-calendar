@@ -4,7 +4,7 @@ const widgetNative=widgetHarmony||widgetAndroid;
 let widgetBox='received',widgetNotes=[],widgetMore=false,widgetRequest=0,widgetBusy=false,widgetHistoryOwner=null;
 function nativeWidget(command,value=''){if(widgetNative)return window.prompt('ourdays-widget:'+command,String(value));}
 function widgetSessionChanged(){nativeWidget('session',currentUser?.id||0);if(currentUser)openWidgetLink();}
-function stopWidget(){widgetSettingsRequest++;widgetSettingsBusy=false;widgetReminderRows=[];widgetReminderId=null;$('#widget-date-title').value='';$('#widget-custom-day').value='';$('#widget-date-value').textContent='选一个想一起度过的日子';$('#widget-reminder-options').replaceChildren();paintWidgetCountdownPreview(null);widgetRequest++;widgetHistoryOwner=null;widgetNotes=[];closeWidgetDate();$('#widget-notes-list').replaceChildren();$('#widget-note-form').reset();clearWidgetPhoto();nativeWidget('session',0);}
+function stopWidget(){closeWidgetColorPicker();widgetSettingsRequest++;widgetSettingsBusy=false;widgetReminderRows=[];widgetReminderId=null;$('#widget-date-title').value='';$('#widget-custom-day').value='';$('#widget-date-value').textContent='选一个想一起度过的日子';$('#widget-reminder-options').replaceChildren();paintWidgetCountdownPreview(null);widgetRequest++;widgetHistoryOwner=null;widgetNotes=[];closeWidgetDate();$('#widget-notes-list').replaceChildren();$('#widget-note-form').reset();clearWidgetPhoto();nativeWidget('session',0);}
 function paintWidgetNotes(){
  const list=$('#widget-notes-list');list.replaceChildren();$('#widget-note-total').textContent=widgetBox==='received'?'留给你的心意，都在这里。':'你写下的牵挂，也被好好收藏。';
  for(const b of document.querySelectorAll('[data-widget-box]'))b.setAttribute('aria-selected',String(b.dataset.widgetBox===widgetBox));
@@ -88,6 +88,7 @@ function paintWidgetAppearance(){
  preview.style.setProperty('--widget-overlay',String(overlay/100));preview.style.setProperty('--widget-text',color);
  preview.style.setProperty('--widget-title',widgetRegionalCapable?(custom?$('#widget-title-color').value:widgetTextColor(widgetPhotoPixels||[240,225,235,255],overlay,'title')):color);
  preview.style.setProperty('--widget-caption',widgetRegionalCapable?(custom?$('#widget-caption-color').value:widgetTextColor(widgetPhotoPixels||[240,225,235,255],overlay,'caption')):color);
+ for(const [id,variable] of [['widget-title-color','--widget-title'],['widget-text-color','--widget-text'],['widget-caption-color','--widget-caption']]){const button=$('[data-widget-color="'+id+'"]'),value=preview.style.getPropertyValue(variable);button.disabled=!widgetAppearanceCapable||id!=='widget-text-color'&&!widgetRegionalCapable;button.style.setProperty('--swatch',value);button.dataset.color=value;button.querySelector('span').textContent=value.toUpperCase();}
 }
 function loadWidgetAppearance(){
  if(widgetAppearanceTimer!==null)return;
@@ -111,3 +112,38 @@ for(const id of ['widget-overlay','widget-text-color','widget-title-color','widg
 for(const input of [$('#widget-overlay'),$('#widget-text-color'),$('#widget-title-color'),$('#widget-caption-color'),...document.querySelectorAll('[name="widget-text-mode"]')])input.onchange=()=>{paintWidgetAppearance();saveWidgetAppearance();};
 $('#widget-appearance-save').onclick=saveWidgetAppearance;
 window.addEventListener('widget-style-changed',()=>{if(view==='widget')loadWidgetAppearance();});
+
+let widgetColorTarget=null,widgetColorOwner=null;
+function widgetHexToHsl(hex){
+ const rgb=hex.slice(1).match(/../g).map(x=>parseInt(x,16)/255),max=Math.max(...rgb),min=Math.min(...rgb),delta=max-min,l=(max+min)/2;
+ let h=0,s=0;if(delta){s=delta/(1-Math.abs(2*l-1));h=max===rgb[0]?((rgb[1]-rgb[2])/delta+6)%6:max===rgb[1]?(rgb[2]-rgb[0])/delta+2:(rgb[0]-rgb[1])/delta+4;}
+ return [Math.round(h*60)%360,Math.round(s*100),Math.round(l*100)];
+}
+function widgetHslToHex(h,s,l){
+ h=((h%360)+360)%360/60;s=Math.max(0,Math.min(100,s))/100;l=Math.max(0,Math.min(100,l))/100;
+ const c=(1-Math.abs(2*l-1))*s,x=c*(1-Math.abs(h%2-1)),m=l-c/2,rgb=h<1?[c,x,0]:h<2?[x,c,0]:h<3?[0,c,x]:h<4?[0,x,c]:h<5?[x,0,c]:[c,0,x];
+ return '#'+rgb.map(value=>Math.round((value+m)*255).toString(16).padStart(2,'0')).join('');
+}
+function paintWidgetColorPicker(color,keepSliders=false){
+ $('#widget-color-hex').value=color.toUpperCase();$('#widget-color-sample').style.backgroundColor=color;$('#widget-color-error').textContent='';
+ const values=keepSliders?['hue','saturation','lightness'].map(key=>Number($('#widget-color-'+key).value)):widgetHexToHsl(color);['hue','saturation','lightness'].forEach((key,i)=>{$('#widget-color-'+key).value=String(values[i]);$('#widget-color-'+key+'-value').textContent=values[i]+(i?'%':'°');});
+ for(const button of document.querySelectorAll('[data-widget-swatch]'))button.setAttribute('aria-pressed',String(button.dataset.widgetSwatch.toLowerCase()===color.toLowerCase()));
+}
+function chooseWidgetColor(color,keepSliders=false){
+ if(!/^#[\da-f]{6}$/i.test(color))return;
+ if(!widgetColorTarget||!currentUser||widgetColorOwner!==currentUser.id||view!=='widget'){closeWidgetColorPicker();return;}
+ if($('[name="widget-text-mode"][value="auto"]').checked){const preview=$('#widget-setting-preview');for(const [id,key] of [['widget-title-color','--widget-title'],['widget-text-color','--widget-text'],['widget-caption-color','--widget-caption']])$('#'+id).value=preview.style.getPropertyValue(key);$('[name="widget-text-mode"][value="auto"]').checked=false;$('[name="widget-text-mode"][value="custom"]').checked=true;}
+ $('#'+widgetColorTarget).value=color;paintWidgetColorPicker(color,keepSliders);queueWidgetAppearance();
+}
+function closeWidgetColorPicker(){if($('#widget-color-dialog').open)$('#widget-color-dialog').close();widgetColorTarget=null;widgetColorOwner=null;}
+for(const button of document.querySelectorAll('[data-widget-color]'))button.onclick=()=>{
+ if(!currentUser||!widgetAppearanceCapable)return;widgetColorTarget=button.dataset.widgetColor;widgetColorOwner=currentUser.id;
+ $('#widget-color-heading').textContent=({ 'widget-title-color':'标题颜色','widget-text-color':'正文颜色','widget-caption-color':'底部颜色' })[widgetColorTarget];paintWidgetColorPicker(button.dataset.color||$('#'+widgetColorTarget).value);$('#widget-color-dialog').showModal();
+};
+const widgetSwatches=['#FFFFFF','#FFE6F0','#F7D49B','#DDF6EC','#D4ECFF','#E4D9FA','#F38FB0','#D99754','#7CBDA6','#76ABD5','#A58BC5','#B34B76','#63364E','#264A40','#154B56','#30252C','#666666','#000000'];
+for(const color of widgetSwatches){const button=el('button');button.type='button';button.dataset.widgetSwatch=color;button.style.setProperty('--swatch',color);button.setAttribute('aria-label','选择颜色 '+color);button.setAttribute('aria-pressed','false');button.onclick=()=>{chooseWidgetColor(color);saveWidgetAppearance();};$('#widget-color-swatches').append(button);}
+for(const key of ['hue','saturation','lightness']){const input=$('#widget-color-'+key);input.oninput=()=>chooseWidgetColor(widgetHslToHex(Number($('#widget-color-hue').value),Number($('#widget-color-saturation').value),Number($('#widget-color-lightness').value)),true);input.onchange=saveWidgetAppearance;}
+$('#widget-color-hex').oninput=event=>{const value=event.target.value.trim();if(/^#[\da-f]{6}$/i.test(value))chooseWidgetColor(value);else $('#widget-color-error').textContent='请输入六位色号，例如 #A16986。';};
+$('#widget-color-done').onclick=()=>{if(widgetAppearanceTimer!==null)saveWidgetAppearance();closeWidgetColorPicker();};
+$('#widget-color-dialog').addEventListener('close',()=>{widgetColorTarget=null;widgetColorOwner=null;});
+$('#widget-color-dialog').addEventListener('click',event=>{if(event.target!==event.currentTarget)return;const r=event.currentTarget.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeWidgetColorPicker();});

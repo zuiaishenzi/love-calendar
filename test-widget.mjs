@@ -17,6 +17,12 @@ test('卡片配色在深浅照片与遮罩变化时保持对比度，网页与�
  const light=color=>{const rgb=color.match(/[a-f0-9]{2}/gi).map(x=>parseInt(x,16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;};
  for(let grey=0;grey<=255;grey+=5)for(const region of ['title','body','caption']){const pixels=[grey,grey,grey,255],color=choose(pixels,0,region);assert.equal(color,native(pixels,0,region));const background=light('#'+grey.toString(16).padStart(2,'0').repeat(3)),foreground=light(color);assert.ok((Math.max(background,foreground)+.05)/(Math.min(background,foreground)+.05)>=4.5,region+' contrast');}
 });
+test('应用内调色板的色号和滑块支持全色域、灰阶及往返转换',()=>{
+ const web=readFileSync('public/widget.js','utf8'),source=web.slice(web.indexOf('function widgetHexToHsl('),web.indexOf('function paintWidgetColorPicker('));
+ const {toHsl,toHex}=new Script(source+';({toHsl:widgetHexToHsl,toHex:widgetHslToHex});').runInNewContext({});
+ for(const [h,s,l,color] of [[0,100,50,'#ff0000'],[120,100,50,'#00ff00'],[240,100,50,'#0000ff'],[300,100,50,'#ff00ff'],[60,100,50,'#ffff00'],[180,100,50,'#00ffff'],[359,0,0,'#000000'],[359,0,100,'#ffffff']])assert.equal(toHex(h,s,l),color);
+ for(const color of ['#a16986','#154b56','#d99754','#7cbda6','#ffffff','#000000','#888888']){const actual=toHex(...toHsl(color));for(let i=1;i<7;i+=2)assert.ok(Math.abs(parseInt(actual.slice(i,i+2),16)-parseInt(color.slice(i,i+2),16))<=3);}
+});
 function fixture(){
  const dir=mkdtempSync(path.join(os.tmpdir(),'love-widget-')),db=openDatabase(dir);db.exec("INSERT INTO ledgers(id,code) VALUES(1,'WIDGET01'),(2,'WIDGET02');");
  for(const [id,ledger,seat] of [[1,1,1],[2,1,2],[3,2,1]])db.prepare('INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(?,?,?,?,?,?)').run(id,'widget'+id,'hash','salt',ledger,seat);
