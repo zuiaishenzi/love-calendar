@@ -18,11 +18,19 @@ struct OurDaysCard {
   @LocalStorageProp('compact') compact: boolean = false;
   @LocalStorageProp('overlayColor') overlayColor: string = '#1FFFFFFF';
   @LocalStorageProp('refreshing') refreshing: boolean = false;
+  @LocalStorageProp('reading') reading: boolean = false;
+  @LocalStorageProp('readFailed') readFailed: boolean = false;
   @State refreshAngle: number = 0;
 
   private refreshCard(): void {
     this.refreshAngle += 360;
-    postCardAction(this, { action: 'message', params: { action: 'refresh' } });
+    postCardAction(this, { action: 'message', params: { widgetAction: 'refresh' } });
+  }
+
+  private readCard(): void {
+    if (!this.hasItem || this.reading) return;
+    console.info('Widget read button tapped');
+    postCardAction(this, { action: 'message', params: { widgetAction: 'read', type: this.itemType, id: String(this.itemId), owner: String(this.owner) } });
   }
 
   build() {
@@ -40,15 +48,17 @@ struct OurDaysCard {
         Column() {
           Text(this.title).fontSize(11).fontColor(this.titleColor).maxLines(2).width('100%')
           Text(this.body).fontSize(17).minFontSize(10).maxFontSize(17).fontColor(this.textColor).maxLines(12).textOverflow({ overflow: TextOverflow.Clip }).layoutWeight(1).width('100%').padding({ top: 2, bottom: 2 })
-          if (!this.compact || this.refreshing) { Text(this.caption).fontSize(9).fontColor(this.captionColor).maxLines(1).width('100%') }
+          if (!this.compact || this.refreshing || this.reading || this.readFailed) { Text(this.caption).fontSize(9).fontColor(this.captionColor).maxLines(1).width('100%') }
         }.alignItems(HorizontalAlign.Start).layoutWeight(1).width('100%')
         .onClick(() => {
           postCardAction(this, { action: 'router', abilityName: 'EntryAbility', params: { widgetTarget: this.target, widgetOwner: String(this.owner) } });
         })
         Row() {
           if (this.hasItem) {
-            Text('✓ 已读').fontSize(11).fontColor(this.captionColor).layoutWeight(1).height(30).onClick(() => {
-              postCardAction(this, { action: 'message', params: { action: 'read', type: this.itemType, id: String(this.itemId), owner: String(this.owner) } });
+            Button({ type: ButtonType.Normal }) {
+              Text(this.reading ? '标记中…' : this.readFailed ? '↻ 重试' : '✓ 已读').fontSize(11).fontColor(this.captionColor).width('100%').textAlign(TextAlign.Start)
+            }.padding(0).backgroundColor(Color.Transparent).borderRadius(0).layoutWeight(1).height(32).enabled(!this.reading).onClick(() => {
+              this.readCard();
             })
           } else { Blank().layoutWeight(1) }
           Stack() {

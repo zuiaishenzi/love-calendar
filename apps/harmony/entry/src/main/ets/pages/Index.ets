@@ -1,5 +1,8 @@
 import { webview } from '@kit.ArkWeb';
 import { abilityAccessCtrl, common } from '@kit.AbilityKit';
+import { image } from '@kit.ImageKit';
+import { fileIo as fs } from '@kit.CoreFileKit';
+import { WidgetCrop, WidgetCropRegion } from '../common/WidgetCrop';
 import { picker } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { SERVER_URL, VERSION_CODE, VERSION_NAME, trusted, commandPath } from '../common/ClientConfig';
@@ -28,6 +31,24 @@ struct Index {
   @StorageLink('ourdaysForeground') @Watch('foregroundChanged') private foreground: boolean = true;
   @StorageLink('ourdaysWidgetRoute') @Watch('widgetRouteChanged') private widgetRoute: string = '';
   private widgetSessionGeneration: number = 0;
+  @State private cropPhoto: image.PixelMap | undefined = undefined;
+  private cropUri: string = '';
+  private cropEpoch: string = '';
+  private cropSelected: string = '';
+  private cropWidth: number = 1;
+  private cropHeight: number = 1;
+  @State private cropSaving: boolean = false;
+  private closeCrop(): void { const photo: image.PixelMap | undefined = this.cropPhoto; this.cropPhoto = undefined; this.cropUri = ''; photo?.release(); }
+  private async saveCrop(region: WidgetCropRegion): Promise<void> {
+    if (this.cropSaving || !this.cropUri) return; this.cropSaving = true;
+    try {
+      if (HarmonyWidget.auth(this.context()).epoch !== this.cropEpoch) throw new Error('登录状态已变化');
+      await HarmonyWidget.savePhoto(this.context(), this.cropUri, region, this.cropSelected);
+      this.closeCrop(); this.toast('新的底色，已经换好了');
+      this.script('if(typeof paintWidgetBackground==="function")paintWidgetBackground("custom");if(typeof loadWidgetAppearance==="function")loadWidgetAppearance();');
+    } catch { this.toast('图片未保存，请确认已登录并重试'); }
+    finally { this.cropSaving = false; }
+  }
 
   private context(): common.UIAbilityContext { return this.getUIContext().getHostContext() as common.UIAbilityContext; }
   private isTrusted(): boolean {
@@ -85,6 +106,10 @@ struct Index {
         HarmonyWidget.session(this.context(), owner, cookie); this.widgetRouteChanged();
       }).catch(() => { if (generation === this.widgetSessionGeneration) HarmonyWidget.session(this.context(), 0, ''); });
     } else if (command === 'refresh') HarmonyWidget.refresh(this.context(), undefined, true);
+    else if (command === 'settings-current') result = HarmonyWidget.settings(this.context());
+    else if (command === 'settings-save') result = HarmonyWidget.saveSettings(this.context(), event.value) ? 'saved' : '';
+    else if (command === 'cards') result = HarmonyWidget.cards(this.context());
+    else if (command === 'card-select') result = HarmonyWidget.select(this.context(), event.value) ? 'selected' : '';
     else if (command === 'appearance-current') result = HarmonyWidget.snapshot(this.context());
     else if (command === 'appearance') {
       HarmonyWidget.saveAppearance(this.context(), event.value).then((saved: boolean) => { event.result.handlePromptConfirm(saved ? HarmonyWidget.snapshot(this.context()) : ''); }).catch(() => { event.result.handlePromptConfirm(''); });
@@ -102,19 +127,27 @@ struct Index {
   }
   private async selectWidgetPhoto(): Promise<void> {
     if (HarmonyWidget.auth(this.context()).owner <= 0) { this.toast('请先登录'); return; }
-    const generation: number = this.pageGeneration;
+    const generation: number = this.pageGeneration, epoch: string = HarmonyWidget.auth(this.context()).epoch, selected: string = HarmonyWidget.selected(this.context());
     this.script('window.dispatchEvent(new CustomEvent("app-file-picker-state",{detail:{active:true}}));');
     try {
       const options: photoAccessHelper.PhotoSelectOptions = new photoAccessHelper.PhotoSelectOptions(); options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE; options.maxSelectNumber = 1;
       const files: photoAccessHelper.PhotoSelectResult = await new photoAccessHelper.PhotoViewPicker().select(options);
       if (!files.photoUris.length || !this.alive || generation !== this.pageGeneration) return;
-      await HarmonyWidget.savePhoto(this.context(), files.photoUris[0]); this.toast('桌面卡片背景已更新');
-      this.script('if(typeof paintWidgetBackground==="function")paintWidgetBackground("custom");if(typeof loadWidgetAppearance==="function")loadWidgetAppearance();');
+      const file: fs.File = fs.openSync(files.photoUris[0], fs.OpenMode.READ_ONLY);
+      let source: image.ImageSource | undefined = undefined;
+      try {
+        if (fs.statSync(file.fd).size > 20 * 1024 * 1024) throw new Error('照片过大');
+        source = image.createImageSource(file.fd); const info: image.ImageInfo = await source.getImageInfo(), scale: number = Math.min(1, 1536 / Math.max(info.size.width, info.size.height));
+        const photo: image.PixelMap = await source.createPixelMap({ desiredSize: { width: Math.max(1, Math.round(info.size.width * scale)), height: Math.max(1, Math.round(info.size.height * scale)) } });
+        if (!this.alive || generation !== this.pageGeneration || HarmonyWidget.auth(this.context()).epoch !== epoch) { await photo.release(); return; }
+        const preview: image.ImageInfo = await photo.getImageInfo(); this.cropWidth = preview.size.width; this.cropHeight = preview.size.height; this.cropEpoch = epoch; this.cropSelected = selected; this.cropUri = files.photoUris[0]; this.cropPhoto = photo;
+      } finally { source?.release(); fs.closeSync(file); }
     } catch { this.toast('图片未保存，请选择20MB以内的照片并确认已登录'); }
     finally { this.pickerReturned = Date.now(); this.script('window.dispatchEvent(new CustomEvent("app-file-picker-state",{detail:{active:false}}));'); }
   }
   aboutToAppear(): void { webview.WebviewController.setWebDebuggingAccess(false); }
   aboutToDisappear(): void {
+    this.closeCrop();
     this.voice?.cancel();
     this.cancelWebPermission();
     this.downloads?.dispose();
@@ -242,6 +275,7 @@ struct Index {
     }
   }
   onBackPress(): boolean {
+    if (this.cropPhoto) { if (!this.cropSaving) this.closeCrop(); return true; }
     if (this.fileResult) { this.finishPicker([]); return true; }
     if (Date.now() - this.pickerReturned < 700) return true;
     if (this.fullScreen) { this.fullScreen.exitFullScreen(); this.fullScreen = undefined; return true; }
@@ -292,6 +326,10 @@ struct Index {
         .onPrompt(event => this.widgetPrompt(event))
         .onFullScreenEnter(event => { this.fullScreen = event.handler; })
         .onFullScreenExit(() => { this.fullScreen = undefined; })
+      if (this.cropPhoto) {
+        WidgetCrop({ photo: this.cropPhoto, imageWidth: this.cropWidth, imageHeight: this.cropHeight, onSave: (region: WidgetCropRegion) => this.saveCrop(region), onCancel: () => this.closeCrop() }).enabled(!this.cropSaving)
+        if (this.cropSaving) { LoadingProgress().width(40).height(40).color('#93435F') }
+      }
       if (this.failed) {
         Column({ space: 20 }) {
           Text('暂时无法连接我们的日历\n请检查网络或服务器状态').fontSize(19).textAlign(TextAlign.Center)

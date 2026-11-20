@@ -17,6 +17,7 @@ final class WidgetStore {
     static File background(Context c,int id){return new File(c.getFilesDir(),"widget-background-"+id+".jpg");}
     static void clear(Context c){
         prefs(c).edit().clear().apply();
+        WidgetProfiles.photo(c,-1).delete();
         File[] files=c.getFilesDir().listFiles();if(files!=null)for(File f:files)if(f.getName().matches("widget-background-[0-9]+\\.jpg(?:\\.tmp)?"))f.delete();
     }
     static void session(Context c,long owner){

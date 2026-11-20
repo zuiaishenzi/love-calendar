@@ -2,21 +2,30 @@ import { Want } from '@kit.AbilityKit';
 import { FormExtensionAbility, formBindingData, formInfo } from '@kit.FormKit';
 import { HarmonyWidget, WidgetAction } from '../common/HarmonyWidget';
 
+interface WidgetEvent {
+  widgetAction?: string; action?: string; type?: string; id?: string; owner?: string; params?: WidgetEvent;
+}
+
 export default class OurDaysFormAbility extends FormExtensionAbility {
   onAddForm(want: Want): formBindingData.FormBindingData {
     const id: string = String(want.parameters?.[formInfo.FormParam.IDENTITY_KEY] || '');
     HarmonyWidget.add(this.context, id);
     HarmonyWidget.refresh(this.context);
-    return formBindingData.createFormBindingData(HarmonyWidget.currentView(this.context));
+    return formBindingData.createFormBindingData(HarmonyWidget.currentView(this.context, id));
   }
-  onUpdateForm(_id: string): void { HarmonyWidget.refresh(this.context); }
+  onUpdateForm(id: string): void { HarmonyWidget.add(this.context, id); HarmonyWidget.refresh(this.context); }
   onFormEvent(id: string, message: string): void {
+    HarmonyWidget.add(this.context, id);
     if (!HarmonyWidget.forms(this.context).includes(id)) return;
     try {
-      const action: WidgetAction = JSON.parse(message) as WidgetAction;
-      if (action.action === 'refresh') HarmonyWidget.refresh(this.context, undefined, true);
-      else if (action.action === 'read') HarmonyWidget.refresh(this.context, action);
-    } catch {}
+      const event: WidgetEvent = JSON.parse(message) as WidgetEvent;
+      // The system reserves outer action='message' and keeps the original params nested.
+      const payload: WidgetEvent = !event.widgetAction && event.action === 'message' && event.params ? event.params : event;
+      const action: WidgetAction = { action: payload.widgetAction || payload.action || '', type: payload.type, id: payload.id, owner: payload.owner };
+      if (action.action === 'refresh') { console.info('Widget refresh event received'); HarmonyWidget.refresh(this.context, undefined, true); }
+      else if (action.action === 'read') { console.info('Widget read event received'); HarmonyWidget.refresh(this.context, action); }
+      else console.warn('Widget event ignored: unsupported operation');
+    } catch { console.error('Widget event could not be handled'); }
   }
   onRemoveForm(id: string): void { HarmonyWidget.remove(this.context, id); }
   onAcquireFormState(_want: Want): formInfo.FormState { return formInfo.FormState.READY; }

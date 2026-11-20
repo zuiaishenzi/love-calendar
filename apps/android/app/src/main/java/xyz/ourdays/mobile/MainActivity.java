@@ -119,11 +119,15 @@ public class MainActivity extends Activity {
                     String action=message.substring("ourdays-widget:".length());
                     if("session".equals(action)){try{WidgetStore.session(MainActivity.this,Long.parseLong(defaultValue));}catch(NumberFormatException ignored){}}
                     else if("refresh".equals(action))WidgetSyncService.manualRefresh(MainActivity.this);
+                    else if("settings-current".equals(action)){result.confirm(WidgetProfiles.settings(MainActivity.this));return true;}
+                    else if("settings-save".equals(action)){result.confirm(WidgetProfiles.saveSettings(MainActivity.this,defaultValue));return true;}
+                    else if("cards".equals(action)){result.confirm(WidgetProfiles.cards(MainActivity.this));return true;}
+                    else if("card-select".equals(action)){result.confirm(WidgetProfiles.select(MainActivity.this,defaultValue));return true;}
                     else if("appearance-current".equals(action)){result.confirm(WidgetAppearance.snapshot(MainActivity.this));return true;}
                     else if("appearance".equals(action)){try{result.confirm(WidgetAppearance.save(MainActivity.this,new org.json.JSONObject(defaultValue))?WidgetAppearance.snapshot(MainActivity.this):"");}catch(Exception error){result.confirm("");}return true;}
                     else if("pin".equals(action))WidgetSettingsActivity.pin(MainActivity.this);
                     else if("settings".equals(action))startActivity(new Intent(MainActivity.this,WidgetSettingsActivity.class));
-                    else if("background".equals(action))WidgetSettingsActivity.applyPreset(MainActivity.this,defaultValue,-1);
+                    else if("background".equals(action))WidgetSettingsActivity.applyPreset(MainActivity.this,defaultValue,WidgetProfiles.selected(MainActivity.this));
                     else if("background-current".equals(action)){result.confirm(WidgetSettingsActivity.currentPreset(MainActivity.this));return true;}
                     result.confirm("");return true;
                 }

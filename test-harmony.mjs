@@ -10,20 +10,65 @@ import path from 'node:path';
 import os from 'node:os';
 import {appUpdates} from './app-updates.mjs';
 import {releaseDefinition,validateRelease} from './scripts/app-release-manifest.mjs';
+import {openDatabase} from './db.mjs';
+import {widgetService} from './widget.mjs';
+
+// Match FormManagerDelegate::ParseAction: preserve params and overwrite outer action.
+function deliveredFormMessage(event){return JSON.stringify({...event.params,params:{...event.params},action:event.action});}
 
 function harmonyWidgetFixture(){
  const model=stripTypeScriptTypes(readFileSync('apps/harmony/entry/src/main/ets/common/WidgetModel.ets','utf8'),{mode:'transform'}).replaceAll('export ',''),source=stripTypeScriptTypes(readFileSync('apps/harmony/entry/src/main/ets/common/HarmonyWidget.ets','utf8').replace(/^import .*;\r?\n/gm,''),{mode:'transform'}).replaceAll('export ','');
  const files=new Map(),handles=new Map(),pushed=[],requests=[];let fd=0,fetcher=async()=>({owner:1,item:{type:'note',id:1,text:'给你的一点想念',target:'notes'},peer:{name:'对方'},countdown:null,unreadCount:1,updatedAt:1});
+ const imageOps=[];
+ const image={createImageSource:fd=>({getImageInfo:async()=>({size:{width:2000,height:1000}}),createPixelMap:async options=>{let size={...(options?.desiredSize||{width:2000,height:1000})};return {getImageInfo:async()=>({size}),crop:async rect=>{imageOps.push({crop:rect});size={...rect.size};},scale:async(x,y)=>{size={width:Math.round(size.width*x),height:Math.round(size.height*y)};},readPixelsToBuffer:async buffer=>new Uint8Array(buffer).fill(255),release:async()=>{}};},release(){}}),createImagePacker:()=>({packing:async(pixels,options)=>{imageOps.push({packed:(await pixels.getImageInfo()).size,quality:options.quality});return new ArrayBuffer(100);},release:async()=>{}})};
  const context={filesDir:'/private'};let updater=async()=>{};
- const fs={readTextSync(p){if(!files.has(p))throw Error('missing');return files.get(p);},openSync(p){handles.set(++fd,p);return {fd};},writeSync(fd,value){files.set(handles.get(fd),value);},closeSync(){},renameSync(a,b){files.set(b,files.get(a));files.delete(a);},unlinkSync(p){files.delete(p);},OpenMode:{READ_ONLY:0,READ_WRITE:2,CREATE:64,TRUNC:512}};
+ const fs={listFileSync(dir){return [...files.keys()].filter(p=>p.startsWith(dir+'/')).map(p=>p.slice(dir.length+1));},readTextSync(p){if(!files.has(p))throw Error('missing');return files.get(p);},openSync(p){handles.set(++fd,p);return {fd};},writeSync(fd,value){files.set(handles.get(fd),value);},statSync(fd){return {size:files.get(handles.get(fd))?.byteLength||100};},readSync(fd,buffer){return buffer.byteLength;},closeSync(){},renameSync(a,b){files.set(b,files.get(a));files.delete(a);},unlinkSync(p){files.delete(p);},OpenMode:{READ_ONLY:0,READ_WRITE:2,CREATE:64,TRUNC:512}};
  const rcp={Request:class{constructor(url){this.url=url;}},createSession:()=>({fetch:async request=>{requests.push(request);const state=await fetcher(request);return {statusCode:state.status||200,toString:()=>JSON.stringify(state)};},close(){}})};
- const actions=new Script(model+'\n'+source+';({HarmonyWidget,widgetView,validWidgetTarget});').runInNewContext({fs,rcp,SERVER_URL:'https://love.example/',formProvider:{updateForm:async(id,data)=>{pushed.push({id,data:JSON.parse(JSON.stringify(data))});await updater(id,data);}},formBindingData:{createFormBindingData:value=>value}});
- return {...actions,context,files,pushed,requests,setFetch:fn=>fetcher=fn,setUpdate:fn=>updater=fn};
+ const actions=new Script(model+'\n'+source+';({HarmonyWidget,widgetView,validWidgetTarget});').runInNewContext({fs,image,util:{Base64Helper:class{encodeToStringSync(bytes){return Buffer.from(bytes).toString("base64");}}},rcp,SERVER_URL:'https://love.example/',formProvider:{updateForm:async(id,data)=>{pushed.push({id,data:JSON.parse(JSON.stringify(data))});await updater(id,data);}},formBindingData:{createFormBindingData:value=>value}});
+ return {...actions,context,files,pushed,requests,imageOps,setFetch:fn=>fetcher=fn,setUpdate:fn=>updater=fn};
 }
 test('鸿蒙卡片点击刷新先改变本地旋转状态，再发送事件，不依赖网络回传',()=>{
  const source=readFileSync('apps/harmony/entry/src/main/ets/widget/OurDaysCard.ets','utf8'),method=source.slice(source.indexOf('  private refreshCard('),source.indexOf('  build()'));
  const events=[],Harness=new Script(stripTypeScriptTypes('class Harness {refreshAngle=0;'+method+'};Harness;',{mode:'transform'})).runInNewContext({postCardAction:(card,event)=>events.push({angle:card.refreshAngle,event})}),card=new Harness();
- card.refreshCard();card.refreshCard();assert.deepEqual(events.map(row=>row.angle),[360,720]);assert.equal(events[0].event.action,'message');assert.equal(events[0].event.params.action,'refresh');
+ card.refreshCard();card.refreshCard();assert.deepEqual(events.map(row=>row.angle),[360,720]);assert.equal(events[0].event.action,'message');assert.equal(events[0].event.params.widgetAction,'refresh');
+});
+
+test('鸿蒙已有卡片在回调时补登记，不因升级后本机登记缺失忽略已读',async()=>{
+ const source=stripTypeScriptTypes(readFileSync('apps/harmony/entry/src/main/ets/widget/OurDaysFormAbility.ets','utf8').replace(/^import .*;\r?\n/gm,''),{mode:'transform'}).replaceAll('export default ',''),registered=new Set(),calls=[];
+ const Ability=new Script(source+';OurDaysFormAbility;').runInNewContext({FormExtensionAbility:class{context={};},HarmonyWidget:{forms:()=>[...registered],add:(_c,id)=>{if(/^[0-9]+$/.test(id))registered.add(id);},remove:(_c,id)=>registered.delete(id),refresh:async(...args)=>calls.push(args)},formInfo:{FormState:{READY:0}},formBindingData:{createFormBindingData:x=>x},console:{warn(){},error(){},info(){}}}),ability=new Ability();
+ ability.onFormEvent('123',JSON.stringify({action:'read',type:'note',id:'8',owner:'1'}));await new Promise(resolve=>setImmediate(resolve));assert.equal(calls.length,1);assert.ok(registered.has('123'));assert.equal(calls[0][1].action,'read');assert.equal(calls[0][1].id,'8');
+ ability.onUpdateForm('456');assert.ok(registered.has('456'));const before=calls.length;ability.onFormEvent('bad',JSON.stringify({action:'read'}));assert.equal(calls.length,before);
+});
+
+test('鸿蒙系统将action改为message后，仍能分发已读与刷新并兼容旧卡片参数',()=>{
+ const source=stripTypeScriptTypes(readFileSync('apps/harmony/entry/src/main/ets/widget/OurDaysFormAbility.ets','utf8').replace(/^import .*;\r?\n/gm,''),{mode:'transform'}).replaceAll('export default ',''),ids=new Set(),calls=[];
+ const Ability=new Script(source+';OurDaysFormAbility;').runInNewContext({FormExtensionAbility:class{context={};},HarmonyWidget:{forms:()=>[...ids],add:(_c,id)=>ids.add(id),refresh:(...args)=>calls.push(args)},console:{info(){},warn(){},error(){}}}),ability=new Ability();
+ for(const params of [{widgetAction:'read',type:'note',id:'5',owner:'1'},{action:'read',type:'note',id:'5',owner:'1'}])ability.onFormEvent('123',deliveredFormMessage({action:'message',params}));
+ assert.equal(calls.length,2);for(const call of calls){assert.equal(call[1].action,'read');assert.equal(call[1].id,'5');assert.equal(call[1].owner,'1');}
+ ability.onFormEvent('123',deliveredFormMessage({action:'message',params:{widgetAction:'refresh'}}));assert.equal(calls.length,3);assert.equal(calls[2][1],undefined);assert.equal(calls[2][2],true);
+ ability.onFormEvent('123',deliveredFormMessage({action:'message',params:{widgetAction:'other'}}));assert.equal(calls.length,3);
+});
+
+test('鸿蒙卡片已读与刷新经系统包装、原生请求及真实数据库推进状态',async()=>{
+ const dir=mkdtempSync(path.join(os.tmpdir(),'harmony-read-')),db=openDatabase(dir);let clock=100;
+ try{
+  db.exec("INSERT INTO ledgers(id,code) VALUES(1,'HARMONYREAD');INSERT INTO users(id,name,hash,salt,ledger_id,seat) VALUES(1,'sender','h','s',1,1),(2,'reader','h','s',1,2);");
+  const backend=widgetService(db,{now:()=>clock++}),user=id=>db.prepare('SELECT * FROM users WHERE id=?').get(id),id=backend.route({method:'POST'},new URL('https://love.example/api/widget/notes'),user(1),{text:'已读链路测试'},()=>{}).id;
+  const f=harmonyWidgetFixture(),service=f.HarmonyWidget,c=f.context;service.add(c,'121');let releaseRead;
+  f.setFetch(async request=>{if(request.method==='POST')await new Promise(resolve=>releaseRead=resolve);return backend.route({method:request.method},new URL(request.url),user(2),request.content?JSON.parse(request.content):{},()=>{});});service.session(c,2,'session='+'a'.repeat(64));await service.refresh(c);
+  const tasks=[],refresh=service.refresh.bind(service);service.refresh=(...args)=>{const task=refresh(...args);tasks.push(task);return task;};
+  const form=stripTypeScriptTypes(readFileSync('apps/harmony/entry/src/main/ets/widget/OurDaysFormAbility.ets','utf8').replace(/^import .*;\r?\n/gm,''),{mode:'transform'}).replaceAll('export default ',''),Ability=new Script(form+';OurDaysFormAbility;').runInNewContext({FormExtensionAbility:class{context=c;},HarmonyWidget:service,console:{info(){},error(){}}}),ability=new Ability();
+  const cardSource=readFileSync('apps/harmony/entry/src/main/ets/widget/OurDaysCard.ets','utf8'),method=cardSource.slice(cardSource.indexOf('  private refreshCard('),cardSource.indexOf('  build()')),Card=new Script(stripTypeScriptTypes('class Card {refreshAngle=0;hasItem=true;reading=false;owner=2;itemType="note";itemId='+id+';'+method+'};Card;',{mode:'transform'})).runInNewContext({postCardAction:(_card,event)=>ability.onFormEvent('121',deliveredFormMessage(event)),console:{info(){}}}),card=new Card();
+  card.readCard();for(let i=0;!releaseRead&&i<20;i++)await new Promise(resolve=>setImmediate(resolve));assert.ok(releaseRead);assert.equal(service.currentView(c).reading,true);assert.equal(service.currentView(c).hasItem,true);assert.equal(db.prepare('SELECT read_at FROM widget_notes WHERE id=?').get(id).read_at,null);
+  card.reading=true;card.readCard();assert.equal(tasks.length,1);assert.deepEqual(JSON.parse(f.requests.at(-1).content),{type:'note',id});releaseRead();await tasks[0];assert.ok(db.prepare('SELECT read_at FROM widget_notes WHERE id=?').get(id).read_at);assert.equal(service.currentView(c).reading,false);assert.equal(service.currentView(c).hasItem,false);assert.equal(f.pushed.at(-1).data.hasItem,false);
+  const next=backend.route({method:'POST'},new URL('https://love.example/api/widget/notes'),user(1),{text:'刷新之后的新留言'},()=>{}).id;card.refreshCard();assert.equal(card.refreshAngle,360);assert.equal(tasks.length,2);await tasks[1];assert.equal(f.requests.at(-1).method,'GET');assert.equal(service.currentView(c).itemId,next);assert.equal(f.pushed.at(-1).data.body,'刷新之后的新留言');
+ }finally{db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('鸿蒙已读请求失败保留消息、显示重试并结束忙碌状态',async()=>{
+ const f=harmonyWidgetFixture(),service=f.HarmonyWidget,c=f.context;service.add(c,'122');service.session(c,1,'session='+'a'.repeat(64));await service.refresh(c);
+ f.setFetch(async()=>({status:403}));await service.refresh(c,{action:'read',type:'note',id:'1',owner:'1'});assert.equal(service.currentView(c).hasItem,true);assert.equal(service.currentView(c).reading,false);assert.equal(service.currentView(c).readFailed,true);assert.match(service.currentView(c).caption,/重试/);
+ f.setFetch(async()=>({owner:1,item:null,peer:null,countdown:null,unreadCount:0,updatedAt:20}));await service.refresh(c,{action:'read',type:'note',id:'1',owner:'1'});assert.equal(service.currentView(c).hasItem,false);assert.equal(service.currentView(c).readFailed,false);assert.equal(service.currentView(c).reading,false);
 });
 
 test('鸿蒙卡片展示只绑定正文与跳转，未知账号不显示缓存，任意日期支持已过天数',()=>{
@@ -63,18 +108,18 @@ test('鸿蒙外观等待宿主确认，旧发布不会覆盖后选颜色，更�
  await new Promise(resolve=>setImmediate(resolve));assert.equal(finished,false);release();await old;assert.equal(await saved,true);assert.equal(f.pushed.at(-1).data.textColor,'#19bfe3');assert.equal(f.pushed.at(-1).data.overlayColor,'#00FFFFFF');
  f.setUpdate(async()=>{throw Error('host unavailable');});assert.equal(await service.saveAppearance(c,JSON.stringify({overlay:10,mode:'custom',color:'#123456'})),false);
  f.setUpdate(async()=>{});assert.equal(await service.saveAppearance(c,JSON.stringify({overlay:10,mode:'custom',color:'#123456'})),true);assert.equal(f.pushed.at(-1).data.textColor,'#123456');
- const style=JSON.parse(f.files.get('/private/widget-appearance.json'));style.photoOwner=1;style.samplesCropped=true;style.samples=[0,0,0,255];f.files.set('/private/widget-appearance.json',JSON.stringify(style));
+ const style=JSON.parse(f.files.get('/private/widget-appearance-18.json'));style.photoOwner=1;style.samplesCropped=true;style.samples=[0,0,0,255];f.files.set('/private/widget-appearance-18.json',JSON.stringify(style));
  assert.equal(await service.saveAppearance(c,JSON.stringify({overlay:0,mode:'auto',color:'#123456'})),true);assert.equal(f.pushed.at(-1).data.textColor,'#FFFFFF');
- style.samples=[255,255,255,255];f.files.set('/private/widget-appearance.json',JSON.stringify(style));assert.equal(await service.saveAppearance(c,JSON.stringify({overlay:0,mode:'auto',color:'#123456'})),true);assert.equal(f.pushed.at(-1).data.textColor,'#30252C');
+ style.samples=[255,255,255,255];f.files.set('/private/widget-appearance-18.json',JSON.stringify(style));assert.equal(await service.saveAppearance(c,JSON.stringify({overlay:0,mode:'auto',color:'#123456'})),true);assert.equal(f.pushed.at(-1).data.textColor,'#30252C');
 });
 
 test('鸿蒙标题正文底部分区配色，旧单色配置兼容且长消息不预截断',async()=>{
  const f=harmonyWidgetFixture(),service=f.HarmonyWidget,c=f.context;service.add(c,'19');service.session(c,1,'session='+'a'.repeat(64));await service.refresh(c);
- f.files.set('/private/widget-appearance.json',JSON.stringify({mode:'custom',color:'#123456',overlay:12}));assert.equal(service.currentView(c).titleColor,'#123456');assert.equal(service.currentView(c).captionColor,'#123456');
+ f.files.set('/private/widget-appearance-19.json',JSON.stringify({mode:'custom',color:'#123456',overlay:12}));assert.equal(service.currentView(c).titleColor,'#123456');assert.equal(service.currentView(c).captionColor,'#123456');
  const colors={overlay:0,mode:'custom',color:'#FFFFFF',titleColor:'#FFD0DF',captionColor:'#D2F3DF'};
  assert.equal(await service.saveAppearance(c,JSON.stringify(colors)),true);const pushed=f.pushed.at(-1).data;assert.deepEqual([pushed.titleColor,pushed.textColor,pushed.captionColor],['#FFD0DF','#FFFFFF','#D2F3DF']);
  assert.equal(JSON.parse(service.snapshot(c)).titleColor,'#FFD0DF');assert.equal(await service.saveAppearance(c,JSON.stringify({...colors,titleColor:'invalid'})),false);assert.equal(service.currentView(c).titleColor,'#FFD0DF');
- const style=JSON.parse(f.files.get('/private/widget-appearance.json'));style.mode='auto';style.photoOwner=1;style.samplesCropped=true;style.samples=Array.from({length:256},(_,i)=>Math.floor(i/16)<4||Math.floor(i/16)>=12?[255,255,255,255]:[0,0,0,255]).flat();f.files.set('/private/widget-appearance.json',JSON.stringify(style));
+ const style=JSON.parse(f.files.get('/private/widget-appearance-19.json'));style.mode='auto';style.photoOwner=1;style.samplesCropped=true;style.samples=Array.from({length:256},(_,i)=>Math.floor(i/16)<4||Math.floor(i/16)>=12?[255,255,255,255]:[0,0,0,255]).flat();f.files.set('/private/widget-appearance-19.json',JSON.stringify(style));
  assert.deepEqual([service.currentView(c).titleColor,service.currentView(c).textColor,service.currentView(c).captionColor],['#63364E','#FFFFFF','#264A40']);
  const text='一起慢慢走，'.repeat(100)+'最后一句也要保留';f.setFetch(async()=>({owner:1,item:{id:23,type:'note',text,target:'notes'},peer:null,countdown:null,unreadCount:1,updatedAt:88}));await service.refresh(c);assert.equal(service.currentView(c).body,text);assert.equal(service.currentView(c).compact,true);
  service.session(c,0,'');assert.equal(service.currentView(c).compact,false);assert.notEqual(service.currentView(c).titleColor,colors.titleColor);
@@ -136,8 +181,8 @@ test('鸿蒙文档启动适配兼容旧网页，但不影响外站和子框架',
  for(const [origin,main,enabled] of [['https://love.11215739.xyz:11961',true,true],['https://evil.example',true,false],['https://love.11215739.xyz:11961',false,false]]){
   const styles=[],navigator={userAgent:'Mozilla/5.0 OpenHarmony'},window={};window.top=main?window:{};
   new Script(bootstrap).runInNewContext({location:{origin},window,navigator,MutationObserver:class{observe(){}},document:{querySelectorAll:()=>[],getElementById:()=>null,createElement:()=>({}),documentElement:{append:style=>styles.push(style)},addEventListener:()=>{}}});
-  assert.equal(navigator.userAgent.includes('OurDaysHarmony/10906'),enabled);assert.equal(styles.length,enabled?1:0);
-  if(enabled){assert.match(navigator.userAgent,/OurDaysAndroid\/10811/);assert.equal(styles[0].rel,'stylesheet');assert.equal(styles[0].href,'https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10906');}
+  assert.equal(navigator.userAgent.includes('OurDaysHarmony/10911'),enabled);assert.equal(styles.length,enabled?1:0);
+  if(enabled){assert.match(navigator.userAgent,/OurDaysAndroid\/10811/);assert.equal(styles[0].rel,'stylesheet');assert.equal(styles[0].href,'https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10911');}
  }
 });
 
@@ -151,7 +196,7 @@ test('鸿蒙内置CSS仅拦截指定同源GET子资源，遵守服务器style-sr
  class Response{setResponseData(value){this.body=value;}setResponseMimeType(value){this.mime=value;}setResponseEncoding(value){this.encoding=value;}setResponseCode(value){this.status=value;}setReasonMessage(){}setResponseHeader(value){this.headers=value;}}
  const Harness=new Script(code).runInNewContext({...constants,commandPath,WebResourceResponse:Response});
  for(const [url,verb,main,allowed] of [
-  ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10906','GET',false,true],
+  ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10911','GET',false,true],
   ['https://evil.example/__ourdays_harmony__/appearance.css','GET',false,false],
   ['https://love.11215739.xyz:11961/style.css','GET',false,false],
   ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css','POST',false,false],
@@ -166,9 +211,9 @@ test('鸿蒙加载后补注入复用已安装适配，丢失样式可恢复',()=
  const bootstrap=new Script(source+';HARMONY_BOOTSTRAP;').runInNewContext({});
  let style=null,appends=0,observers=0,refreshes=0;
  const window={dispatchEvent:()=>refreshes++};window.top=window;
- const context=createContext({location:{origin:'https://love.11215739.xyz:11961'},window,navigator:{userAgent:'OurDaysHarmony/10906'},Event:class{},MutationObserver:class{constructor(){observers++;}observe(){}},document:{getElementById:()=>style,createElement:()=>({}),documentElement:{append:node=>{style=node;appends++;}},querySelectorAll:()=>[],addEventListener:()=>{}}});
+ const context=createContext({location:{origin:'https://love.11215739.xyz:11961'},window,navigator:{userAgent:'OurDaysHarmony/10911'},Event:class{},MutationObserver:class{constructor(){observers++;}observe(){}},document:{getElementById:()=>style,createElement:()=>({}),documentElement:{append:node=>{style=node;appends++;}},querySelectorAll:()=>[],addEventListener:()=>{}}});
  const run=()=>new Script(bootstrap).runInContext(context);
- run();assert.equal(window.__ourdaysHarmonyBootstrap,'10906');assert.equal(appends,1);const initialObservers=observers;
+ run();assert.equal(window.__ourdaysHarmonyBootstrap,'10911');assert.equal(appends,1);const initialObservers=observers;
  run();assert.equal(appends,1);assert.equal(observers,initialObservers);assert.equal(refreshes,1);
  style=null;run();assert.equal(appends,2);assert.equal(observers,initialObservers);
 });
@@ -291,4 +336,21 @@ test('鸿蒙回忆录滚条位于框外右侧，窄边距不越界，弹窗仍�
   assert.equal(bar.rail.hidden,false);assert.ok(bar.travel>0);assert.equal(bar.max,1000);
   node.scrollHeight=500;run(node,entry,'y',{top:100,bottom:600,left:20,right});assert.equal(bar.rail.hidden,true);
  }
+});
+
+
+test('鸿蒙多张卡片的配色、倒计时与下一张模板互不覆盖',async()=>{
+ const f=harmonyWidgetFixture(),s=f.HarmonyWidget,c=f.context;s.session(c,1,'session='+'a'.repeat(64));s.add(c,'501');s.add(c,'502');f.setFetch(async()=>({owner:1,item:null,peer:null,countdown:null,unreadCount:0,updatedAt:1}));await s.refresh(c);
+ assert.equal(s.select(c,'501'),true);await s.saveAppearance(c,JSON.stringify({overlay:0,mode:'custom',color:'#112233'}));assert.equal(s.saveSettings(c,JSON.stringify({customDay:'2030-01-01',title:'一起看海'})),true);
+ s.select(c,'502');await s.saveAppearance(c,JSON.stringify({overlay:20,mode:'custom',color:'#DDCCBB'}));s.saveSettings(c,JSON.stringify({customDay:'2031-01-01',title:'一起看雪'}));
+ assert.equal(s.currentView(c,'501').textColor,'#112233');assert.equal(s.currentView(c,'502').textColor,'#DDCCBB');assert.equal(s.currentView(c,'501').title,'一起看海');assert.equal(s.currentView(c,'502').title,'一起看雪');
+ s.select(c,'new');s.preset(c,'moon');s.saveSettings(c,JSON.stringify({customDay:'2032-01-01',title:'新的期待'}));s.add(c,'503');assert.equal(s.currentPreset(c,'503'),'moon');assert.equal(s.currentView(c,'503').title,'新的期待');assert.notEqual(s.currentPreset(c,'501'),'moon');assert.equal(s.select(c,'unknown'),false);
+ s.session(c,2,'session='+'b'.repeat(64));assert.equal(s.settings(c,'501'),'');assert.notEqual(s.currentView(c,'501').title,'一起看海');assert.notEqual(s.currentView(c,'501').textColor,'#112233');
+});
+
+test('鸿蒙连续换图使用不同图片绑定，裁剪范围按原图比例保存且缩略图不降低卡片清晰度',async()=>{
+ const f=harmonyWidgetFixture(),s=f.HarmonyWidget,c=f.context;s.session(c,1,'session='+'a'.repeat(64));s.add(c,'601');s.select(c,'601');await s.refresh(c);
+ await s.savePhoto(c,'/selected/one',{x:.5,y:0,side:1},'601');const first=f.pushed.at(-1).data.photo;
+ assert.match(first,/^memory:\/\/background-/);assert.ok(f.imageOps.some(row=>row.crop?.x===1000&&row.crop?.size.width===1000));assert.ok(f.imageOps.some(row=>row.packed?.width===768&&row.quality===96));assert.ok(f.imageOps.some(row=>row.packed?.width===256&&row.quality===85));
+ await s.savePhoto(c,'/selected/two',{x:0,y:.25,side:.5},'601');const second=f.pushed.at(-1).data.photo;assert.notEqual(first,second);assert.ok(f.imageOps.some(row=>row.crop?.x===0&&row.crop?.y===250&&row.crop?.size.width===500));assert.equal(Object.keys(f.pushed.at(-1).data.formImages)[0],second.slice('memory://'.length));
 });

@@ -12,11 +12,12 @@ final class WidgetAppearance {
     final int overlay;
     final String mode,color,titleColor,captionColor;
     private WidgetAppearance(int overlay,String mode,String color,String titleColor,String captionColor){this.overlay=overlay;this.mode=mode;this.color=color;this.titleColor=titleColor;this.captionColor=captionColor;}
-    static WidgetAppearance load(Context c){String color=WidgetStore.prefs(c).getString("appearance-color","#704457");return new WidgetAppearance(Math.max(0,Math.min(70,WidgetStore.prefs(c).getInt("appearance-overlay",12))),WidgetStore.prefs(c).getString("appearance-mode","auto"),color,WidgetStore.prefs(c).getString("appearance-title-color",color),WidgetStore.prefs(c).getString("appearance-caption-color",color));}
+    static WidgetAppearance load(Context c){return load(c,WidgetProfiles.selected(c));}
+    static WidgetAppearance load(Context c,int id){String suffix=WidgetProfiles.suffix(id);String color=WidgetStore.prefs(c).getString("appearance-color"+suffix,WidgetStore.prefs(c).getString("appearance-color","#704457"));return new WidgetAppearance(Math.max(0,Math.min(70,WidgetStore.prefs(c).getInt("appearance-overlay"+suffix,WidgetStore.prefs(c).getInt("appearance-overlay",12)))),WidgetStore.prefs(c).getString("appearance-mode"+suffix,WidgetStore.prefs(c).getString("appearance-mode","auto")),color,WidgetStore.prefs(c).getString("appearance-title-color"+suffix,WidgetStore.prefs(c).getString("appearance-title-color",color)),WidgetStore.prefs(c).getString("appearance-caption-color"+suffix,WidgetStore.prefs(c).getString("appearance-caption-color",color)));}
     static boolean save(Context c,JSONObject input){
         int overlay=input.optInt("overlay",-1);String mode=input.optString("mode"),color=input.optString("color"),titleColor=input.optString("titleColor",color),captionColor=input.optString("captionColor",color);
         if(overlay<0||overlay>70||!mode.matches("auto|custom")||!color.matches("#[a-fA-F0-9]{6}")||!titleColor.matches("#[a-fA-F0-9]{6}")||!captionColor.matches("#[a-fA-F0-9]{6}"))return false;
-        synchronized(WidgetStore.LOCK){if(WidgetStore.owner(c)<=0)return false;WidgetStore.prefs(c).edit().putInt("appearance-overlay",overlay).putString("appearance-mode",mode).putString("appearance-color",color).putString("appearance-title-color",titleColor).putString("appearance-caption-color",captionColor).apply();}
+        String suffix=WidgetProfiles.suffix(WidgetProfiles.selected(c));synchronized(WidgetStore.LOCK){if(WidgetStore.owner(c)<=0)return false;WidgetStore.prefs(c).edit().putInt("appearance-overlay"+suffix,overlay).putString("appearance-mode"+suffix,mode).putString("appearance-color"+suffix,color).putString("appearance-title-color"+suffix,titleColor).putString("appearance-caption-color"+suffix,captionColor).apply();}
         OurDaysWidget.render(c);return true;
     }
     int overlayColor(){return (Math.round(255*overlay/100f)<<24)|0x00ffffff;}
@@ -31,11 +32,11 @@ final class WidgetAppearance {
     }
     private static double contrast(int color,double background){double light=.2126*linear(Color.red(color)/255.0)+.7152*linear(Color.green(color)/255.0)+.0722*linear(Color.blue(color)/255.0);return (Math.max(light,background)+.05)/(Math.min(light,background)+.05);}
     private static double linear(double s){return s<=.04045?s/12.92:Math.pow((s+.055)/1.055,2.4);}
-    static String snapshot(Context c){
+    static String snapshot(Context c){return snapshot(c,WidgetProfiles.selected(c));}
+    static String snapshot(Context c,int id){
         try{
-            WidgetAppearance style=load(c);JSONObject json=new JSONObject().put("overlay",style.overlay).put("mode",style.mode).put("color",style.color).put("titleColor",style.titleColor).put("captionColor",style.captionColor);
-            int[] ids=android.appwidget.AppWidgetManager.getInstance(c).getAppWidgetIds(new android.content.ComponentName(c,OurDaysWidget.class));
-            if(WidgetStore.owner(c)>0&&ids.length>0){File image=WidgetStore.background(c,ids[0]);if(image.isFile()&&image.length()<250000)json.put("preview",Base64.encodeToString(Files.readAllBytes(image.toPath()),Base64.NO_WRAP));}
+            WidgetAppearance style=load(c,id);JSONObject json=new JSONObject().put("overlay",style.overlay).put("mode",style.mode).put("color",style.color).put("titleColor",style.titleColor).put("captionColor",style.captionColor);
+            if(WidgetStore.owner(c)>0){File image=WidgetProfiles.photo(c,id);if(image.isFile()){Bitmap bitmap=android.graphics.BitmapFactory.decodeFile(image.getPath());if(bitmap!=null){Bitmap thumb=Bitmap.createScaledBitmap(bitmap,256,256,true);java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();thumb.compress(Bitmap.CompressFormat.JPEG,85,out);json.put("preview",Base64.encodeToString(out.toByteArray(),Base64.NO_WRAP));if(thumb!=bitmap)thumb.recycle();bitmap.recycle();}}}
             return json.toString();
         }catch(Exception error){android.util.Log.e("OurDaysWidget","Widget appearance could not be read",error);return "";}
     }

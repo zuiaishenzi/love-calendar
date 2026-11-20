@@ -14,7 +14,8 @@ export function widgetService(db,{now=Date.now}={}){
   const setting=db.prepare('SELECT * FROM widget_settings WHERE user_id=?').get(user.id);let countdown=null;
   if(setting?.reminder_id){const r=visibleReminder(user,setting.reminder_id),today=shanghaiClock(new Date(now())).day,next=r&&nextOccurrence(r,today);if(next)countdown={id:r.id,title:r.title,day:next,days:Math.round((Date.parse(next)-Date.parse(today))/86400000)};}
   if(setting?.custom_day){const today=shanghaiClock(new Date(now())).day;countdown={title:setting.title,day:setting.custom_day,days:Math.round((Date.parse(setting.custom_day)-Date.parse(today))/86400000),source:'custom'};}
-  return {owner:user.id,peer,unreadCount:noteCount+chatCount,item:pick,countdown,settings:{reminderId:setting?.reminder_id||null,customDay:setting?.custom_day||null,title:setting?.title||''},updatedAt:now()};
+  const today=shanghaiClock(new Date(now())).day,countdowns=db.prepare('SELECT * FROM reminders WHERE ledger_id=? AND (private_owner IS NULL OR private_owner=?)').all(user.ledger_id,user.id).flatMap(r=>{const day=nextOccurrence(r,today);return day?[{id:r.id,title:r.title,day,days:Math.round((Date.parse(day)-Date.parse(today))/86400000)}]:[];});
+  return {countdowns,owner:user.id,peer,unreadCount:noteCount+chatCount,item:pick,countdown,settings:{reminderId:setting?.reminder_id||null,customDay:setting?.custom_day||null,title:setting?.title||''},updatedAt:now()};
  }
  function route(req,url,user,input,ensureWritable){
   const p=url.pathname;

@@ -1,9 +1,9 @@
 export interface WidgetItem { id: number; type: string; text: string; target: string; }
-export interface WidgetCountdown { title: string; day: string; days: number; }
+export interface WidgetCountdown { id?: number; title: string; day: string; days: number; }
 export interface WidgetPeer { name: string; }
 export interface WidgetState {
   owner: number; item: WidgetItem | null; countdown: WidgetCountdown | null;
-  peer: WidgetPeer | null; unreadCount: number; updatedAt: number;
+  countdowns?: WidgetCountdown[]; peer: WidgetPeer | null; unreadCount: number; updatedAt: number;
 }
 export class WidgetView {
   title: string = '朝夕 · 桌面留言';
@@ -22,10 +22,12 @@ export class WidgetView {
   compact: boolean = false;
   overlayColor: string = '#1FFFFFFF';
   refreshing: boolean = false;
+  reading: boolean = false;
+  readFailed: boolean = false;
   formImages: Record<string, number> = {};
 }
 export class WidgetAppearance {
-  preset: string = 'rose'; photoOwner: number = 0; photoRevision: string = '';
+  preset: string = 'rose'; photoOwner: number = 0; photoRevision: string = ''; photoFile: string = ''; previewFile: string = '';
   overlay: number = 12; mode: string = 'auto'; color: string = '#704457'; titleColor: string = '#704457'; captionColor: string = '#704457'; samples: number[] = []; samplesCropped: boolean = false;
 }
 export function widgetTextColor(samples: number[], overlay: number, region: string = 'body'): string {
