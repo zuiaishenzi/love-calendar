@@ -18,6 +18,12 @@ struct OurDaysCard {
   @LocalStorageProp('compact') compact: boolean = false;
   @LocalStorageProp('overlayColor') overlayColor: string = '#1FFFFFFF';
   @LocalStorageProp('refreshing') refreshing: boolean = false;
+  @State refreshAngle: number = 0;
+
+  private refreshCard(): void {
+    this.refreshAngle += 360;
+    postCardAction(this, { action: 'message', params: { action: 'refresh' } });
+  }
 
   build() {
     Stack() {
@@ -46,10 +52,9 @@ struct OurDaysCard {
             })
           } else { Blank().layoutWeight(1) }
           Stack() {
-            if (this.refreshing) { LoadingProgress().color(this.captionColor).width(22).height(22) }
-            else { Text('↻').fontSize(22).fontColor(this.captionColor) }
-          }.width(32).height(30).onClick(() => {
-            postCardAction(this, { action: 'message', params: { action: 'refresh' } });
+            Text('↻').fontSize(22).fontColor(this.captionColor).rotate({ angle: this.refreshAngle }).animation({ duration: 800, curve: Curve.Linear })
+          }.width(36).height(32).onClick(() => {
+            this.refreshCard();
           })
         }.width('100%').alignItems(VerticalAlign.Center)
       }.padding(10).width('100%').height('100%').backgroundColor(this.overlayColor)

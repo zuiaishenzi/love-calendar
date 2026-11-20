@@ -20,6 +20,12 @@ function harmonyWidgetFixture(){
  const actions=new Script(model+'\n'+source+';({HarmonyWidget,widgetView,validWidgetTarget});').runInNewContext({fs,rcp,SERVER_URL:'https://love.example/',formProvider:{updateForm:async(id,data)=>{pushed.push({id,data:JSON.parse(JSON.stringify(data))});await updater(id,data);}},formBindingData:{createFormBindingData:value=>value}});
  return {...actions,context,files,pushed,requests,setFetch:fn=>fetcher=fn,setUpdate:fn=>updater=fn};
 }
+test('鸿蒙卡片点击刷新先改变本地旋转状态，再发送事件，不依赖网络回传',()=>{
+ const source=readFileSync('apps/harmony/entry/src/main/ets/widget/OurDaysCard.ets','utf8'),method=source.slice(source.indexOf('  private refreshCard('),source.indexOf('  build()'));
+ const events=[],Harness=new Script(stripTypeScriptTypes('class Harness {refreshAngle=0;'+method+'};Harness;',{mode:'transform'})).runInNewContext({postCardAction:(card,event)=>events.push({angle:card.refreshAngle,event})}),card=new Harness();
+ card.refreshCard();card.refreshCard();assert.deepEqual(events.map(row=>row.angle),[360,720]);assert.equal(events[0].event.action,'message');assert.equal(events[0].event.params.action,'refresh');
+});
+
 test('鸿蒙卡片展示只绑定正文与跳转，未知账号不显示缓存，任意日期支持已过天数',()=>{
  const f=harmonyWidgetFixture(),state={owner:1,item:{id:4,type:'chat',target:'notes',text:'消息'},peer:{name:'对方'},countdown:null,unreadCount:2};
  const chat=f.widgetView(state,1,'moon',false);assert.equal(chat.target,'chat');assert.equal(chat.itemType,'chat');assert.equal(chat.hasItem,true);assert.equal(chat.preset,'moon');assert.equal(chat.caption,'还有 2 条未读');
@@ -130,8 +136,8 @@ test('鸿蒙文档启动适配兼容旧网页，但不影响外站和子框架',
  for(const [origin,main,enabled] of [['https://love.11215739.xyz:11961',true,true],['https://evil.example',true,false],['https://love.11215739.xyz:11961',false,false]]){
   const styles=[],navigator={userAgent:'Mozilla/5.0 OpenHarmony'},window={};window.top=main?window:{};
   new Script(bootstrap).runInNewContext({location:{origin},window,navigator,MutationObserver:class{observe(){}},document:{querySelectorAll:()=>[],getElementById:()=>null,createElement:()=>({}),documentElement:{append:style=>styles.push(style)},addEventListener:()=>{}}});
-  assert.equal(navigator.userAgent.includes('OurDaysHarmony/10905'),enabled);assert.equal(styles.length,enabled?1:0);
-  if(enabled){assert.match(navigator.userAgent,/OurDaysAndroid\/10811/);assert.equal(styles[0].rel,'stylesheet');assert.equal(styles[0].href,'https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10905');}
+  assert.equal(navigator.userAgent.includes('OurDaysHarmony/10906'),enabled);assert.equal(styles.length,enabled?1:0);
+  if(enabled){assert.match(navigator.userAgent,/OurDaysAndroid\/10811/);assert.equal(styles[0].rel,'stylesheet');assert.equal(styles[0].href,'https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10906');}
  }
 });
 
@@ -145,7 +151,7 @@ test('鸿蒙内置CSS仅拦截指定同源GET子资源，遵守服务器style-sr
  class Response{setResponseData(value){this.body=value;}setResponseMimeType(value){this.mime=value;}setResponseEncoding(value){this.encoding=value;}setResponseCode(value){this.status=value;}setReasonMessage(){}setResponseHeader(value){this.headers=value;}}
  const Harness=new Script(code).runInNewContext({...constants,commandPath,WebResourceResponse:Response});
  for(const [url,verb,main,allowed] of [
-  ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10905','GET',false,true],
+  ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10906','GET',false,true],
   ['https://evil.example/__ourdays_harmony__/appearance.css','GET',false,false],
   ['https://love.11215739.xyz:11961/style.css','GET',false,false],
   ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css','POST',false,false],
@@ -160,9 +166,9 @@ test('鸿蒙加载后补注入复用已安装适配，丢失样式可恢复',()=
  const bootstrap=new Script(source+';HARMONY_BOOTSTRAP;').runInNewContext({});
  let style=null,appends=0,observers=0,refreshes=0;
  const window={dispatchEvent:()=>refreshes++};window.top=window;
- const context=createContext({location:{origin:'https://love.11215739.xyz:11961'},window,navigator:{userAgent:'OurDaysHarmony/10905'},Event:class{},MutationObserver:class{constructor(){observers++;}observe(){}},document:{getElementById:()=>style,createElement:()=>({}),documentElement:{append:node=>{style=node;appends++;}},querySelectorAll:()=>[],addEventListener:()=>{}}});
+ const context=createContext({location:{origin:'https://love.11215739.xyz:11961'},window,navigator:{userAgent:'OurDaysHarmony/10906'},Event:class{},MutationObserver:class{constructor(){observers++;}observe(){}},document:{getElementById:()=>style,createElement:()=>({}),documentElement:{append:node=>{style=node;appends++;}},querySelectorAll:()=>[],addEventListener:()=>{}}});
  const run=()=>new Script(bootstrap).runInContext(context);
- run();assert.equal(window.__ourdaysHarmonyBootstrap,'10905');assert.equal(appends,1);const initialObservers=observers;
+ run();assert.equal(window.__ourdaysHarmonyBootstrap,'10906');assert.equal(appends,1);const initialObservers=observers;
  run();assert.equal(appends,1);assert.equal(observers,initialObservers);assert.equal(refreshes,1);
  style=null;run();assert.equal(appends,2);assert.equal(observers,initialObservers);
 });

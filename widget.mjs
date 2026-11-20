@@ -30,6 +30,12 @@ export function widgetService(db,{now=Date.now}={}){
    const count=db.prepare('SELECT COUNT(*) AS n FROM widget_notes WHERE sender=? AND created>?').get(user.id,now()-60000).n;if(count>=10)throw fail(429,'留言发送得有些快，请稍后再试');
    const id=Number(db.prepare('INSERT INTO widget_notes(ledger_id,sender,recipient,text,created) VALUES(?,?,?,?,?)').run(user.ledger_id,user.id,peer.id,input.text.trim(),now()).lastInsertRowid);return {id};
   }
+  if(p==='/api/widget/unread'&&req.method==='POST'){
+   if(input.type!=='note'||!Number.isSafeInteger(input.id)||input.id<=0)throw fail(400,'留言标记无效');
+   const result=db.prepare('UPDATE widget_notes SET read_at=NULL WHERE id=? AND ledger_id=? AND recipient=?').run(input.id,user.ledger_id,user.id);
+   if(!result.changes)throw fail(404,'留言不存在');
+   return state(user);
+  }
   if(p==='/api/widget/read'&&req.method==='POST'){
    if(!['note','chat'].includes(input.type)||!Number.isSafeInteger(input.id)||input.id<=0)throw fail(400,'留言标记无效');
    db.transaction(()=>{

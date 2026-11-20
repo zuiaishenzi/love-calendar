@@ -40,6 +40,16 @@ test('桌面留言仅对方卡片显示，逐条已读、历史保留、跨账�
  f.db.prepare('DELETE FROM users WHERE id=2').run();assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM widget_notes').get().n,0);
  }finally{f.close();}
 });
+test('收件人可将已读桌面留言恢复未读，幂等且不回退聊天已读位置',()=>{
+ const f=fixture();try{const r=f.request,id=r(1,'POST','/api/widget/notes',{text:'记得一起去散步'}).id;
+ const chat=Number(f.db.prepare("INSERT INTO chat_messages(ledger_id,sender,kind,text,created) VALUES(1,1,'text','已经看过的聊天',?)").run(f.tick()).lastInsertRowid);r(2,'POST','/api/widget/read',{type:'note',id});r(2,'POST','/api/widget/read',{type:'chat',id:chat});assert.equal(r(2,'GET','/api/widget/state').item,null);
+ const unread=r(2,'POST','/api/widget/unread',{type:'note',id},()=>{throw Error('readonly still permits read state');});assert.equal(unread.item.id,id);assert.equal(unread.item.target,'notes');assert.equal(unread.unreadCount,1);assert.equal(r(2,'GET','/api/widget/notes').items[0].read_at,null);
+ assert.equal(r(2,'POST','/api/widget/unread',{type:'note',id}).unreadCount,1);assert.equal(f.db.prepare('SELECT through_id FROM chat_reads WHERE user_id=2').get().through_id,chat);
+ assert.throws(()=>r(1,'POST','/api/widget/unread',{type:'note',id}),e=>e.status===404);assert.throws(()=>r(3,'POST','/api/widget/unread',{type:'note',id}),e=>e.status===404);assert.throws(()=>r(2,'POST','/api/widget/unread',{type:'chat',id:chat}),e=>e.status===400);assert.throws(()=>r(2,'POST','/api/widget/unread',{type:'note',id:0}),e=>e.status===400);
+ assert.equal(r(2,'POST','/api/widget/read',{type:'note',id}).item,null);assert.equal(r(2,'POST','/api/widget/read',{type:'note',id}).item,null);assert.equal(r(1,'GET','/api/widget/state').item,null);
+ }finally{f.close();}
+});
+
 test('卡片聊天摘要、最早未读推进、幂等、撤回及并发已读不能跳过未读',()=>{
  const f=fixture();try{const add=(kind,text='',sender=1)=>Number(f.db.prepare('INSERT INTO chat_messages(ledger_id,sender,kind,text,created) VALUES(1,?,?,?,?)').run(sender,kind,text,f.tick()).lastInsertRowid),a=add('text','早上好'),b=add('image'),c=add('audio');const r=f.request;
  assert.equal(r(2,'GET','/api/widget/state').item.text,'早上好');assert.equal(r(2,'GET','/api/widget/state').item.target,'chat');assert.throws(()=>r(2,'POST','/api/widget/read',{type:'chat',id:b}),e=>e.status===409);
