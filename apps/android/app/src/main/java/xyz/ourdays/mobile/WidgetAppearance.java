@@ -10,28 +10,30 @@ import org.json.JSONObject;
 
 final class WidgetAppearance {
     final int overlay;
-    final String mode,color;
-    private WidgetAppearance(int overlay,String mode,String color){this.overlay=overlay;this.mode=mode;this.color=color;}
-    static WidgetAppearance load(Context c){return new WidgetAppearance(Math.max(0,Math.min(70,WidgetStore.prefs(c).getInt("appearance-overlay",12))),WidgetStore.prefs(c).getString("appearance-mode","auto"),WidgetStore.prefs(c).getString("appearance-color","#704457"));}
+    final String mode,color,titleColor,captionColor;
+    private WidgetAppearance(int overlay,String mode,String color,String titleColor,String captionColor){this.overlay=overlay;this.mode=mode;this.color=color;this.titleColor=titleColor;this.captionColor=captionColor;}
+    static WidgetAppearance load(Context c){String color=WidgetStore.prefs(c).getString("appearance-color","#704457");return new WidgetAppearance(Math.max(0,Math.min(70,WidgetStore.prefs(c).getInt("appearance-overlay",12))),WidgetStore.prefs(c).getString("appearance-mode","auto"),color,WidgetStore.prefs(c).getString("appearance-title-color",color),WidgetStore.prefs(c).getString("appearance-caption-color",color));}
     static boolean save(Context c,JSONObject input){
-        int overlay=input.optInt("overlay",-1);String mode=input.optString("mode"),color=input.optString("color");
-        if(overlay<0||overlay>70||!mode.matches("auto|custom")||!color.matches("#[a-fA-F0-9]{6}"))return false;
-        synchronized(WidgetStore.LOCK){if(WidgetStore.owner(c)<=0)return false;WidgetStore.prefs(c).edit().putInt("appearance-overlay",overlay).putString("appearance-mode",mode).putString("appearance-color",color).apply();}
+        int overlay=input.optInt("overlay",-1);String mode=input.optString("mode"),color=input.optString("color"),titleColor=input.optString("titleColor",color),captionColor=input.optString("captionColor",color);
+        if(overlay<0||overlay>70||!mode.matches("auto|custom")||!color.matches("#[a-fA-F0-9]{6}")||!titleColor.matches("#[a-fA-F0-9]{6}")||!captionColor.matches("#[a-fA-F0-9]{6}"))return false;
+        synchronized(WidgetStore.LOCK){if(WidgetStore.owner(c)<=0)return false;WidgetStore.prefs(c).edit().putInt("appearance-overlay",overlay).putString("appearance-mode",mode).putString("appearance-color",color).putString("appearance-title-color",titleColor).putString("appearance-caption-color",captionColor).apply();}
         OurDaysWidget.render(c);return true;
     }
     int overlayColor(){return (Math.round(255*overlay/100f)<<24)|0x00ffffff;}
-    int textColor(Bitmap image){
-        if("custom".equals(mode))return Color.parseColor(color);
-        if(image==null)return 0xff30252c;
-        Bitmap sample=Bitmap.createScaledBitmap(image,16,16,true);int[] pixels=new int[256];sample.getPixels(pixels,0,16,0,0,16,16);if(sample!=image)sample.recycle();
-        double luminance=0,a=overlay/100.0;
-        for(int pixel:pixels){double r=linear((Color.red(pixel)*(1-a)+255*a)/255),g=linear((Color.green(pixel)*(1-a)+255*a)/255),b=linear((Color.blue(pixel)*(1-a)+255*a)/255);luminance+=.2126*r+.7152*g+.0722*b;}
-        luminance/=pixels.length;return (luminance+.05)/.0713>1.05/(luminance+.05)?0xff30252c:Color.WHITE;
+    int[] textColors(Bitmap image){
+        if("custom".equals(mode))return new int[]{Color.parseColor(titleColor),Color.parseColor(color),Color.parseColor(captionColor)};
+        int[] pixels=new int[256];java.util.Arrays.fill(pixels,0xfff0e1eb);
+        if(image!=null){int side=Math.min(image.getWidth(),image.getHeight());Bitmap crop=Bitmap.createBitmap(image,(image.getWidth()-side)/2,(image.getHeight()-side)/2,side,side);Bitmap sample=Bitmap.createScaledBitmap(crop,16,16,true);sample.getPixels(pixels,0,16,0,0,16,16);if(sample!=image&&sample!=crop)sample.recycle();if(crop!=image)crop.recycle();}
+        int[] result=new int[3];String[][] palettes={{"#63364E","#FFE6F0"},{"#30252C","#FFFFFF"},{"#264A40","#DDF6EC"}};
+        for(int region=0;region<3;region++){int first=region==0?0:region==1?4:12,last=region==0?4:region==1?12:16;double luminance=0,a=overlay/100.0;for(int i=first*16;i<last*16;i++){int pixel=pixels[i];luminance+=.2126*linear((Color.red(pixel)*(1-a)+255*a)/255)+.7152*linear((Color.green(pixel)*(1-a)+255*a)/255)+.0722*linear((Color.blue(pixel)*(1-a)+255*a)/255);}luminance/=(last-first)*16;
+            int dark=Color.parseColor(palettes[region][0]),light=Color.parseColor(palettes[region][1]);int chosen=contrast(dark,luminance)>=contrast(light,luminance)?dark:light;result[region]=contrast(chosen,luminance)>=4.5?chosen:contrast(Color.BLACK,luminance)>=contrast(Color.WHITE,luminance)?Color.BLACK:Color.WHITE;
+        }return result;
     }
+    private static double contrast(int color,double background){double light=.2126*linear(Color.red(color)/255.0)+.7152*linear(Color.green(color)/255.0)+.0722*linear(Color.blue(color)/255.0);return (Math.max(light,background)+.05)/(Math.min(light,background)+.05);}
     private static double linear(double s){return s<=.04045?s/12.92:Math.pow((s+.055)/1.055,2.4);}
     static String snapshot(Context c){
         try{
-            WidgetAppearance style=load(c);JSONObject json=new JSONObject().put("overlay",style.overlay).put("mode",style.mode).put("color",style.color);
+            WidgetAppearance style=load(c);JSONObject json=new JSONObject().put("overlay",style.overlay).put("mode",style.mode).put("color",style.color).put("titleColor",style.titleColor).put("captionColor",style.captionColor);
             int[] ids=android.appwidget.AppWidgetManager.getInstance(c).getAppWidgetIds(new android.content.ComponentName(c,OurDaysWidget.class));
             if(WidgetStore.owner(c)>0&&ids.length>0){File image=WidgetStore.background(c,ids[0]);if(image.isFile()&&image.length()<250000)json.put("preview",Base64.encodeToString(Files.readAllBytes(image.toPath()),Base64.NO_WRAP));}
             return json.toString();

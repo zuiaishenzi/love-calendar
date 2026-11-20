@@ -86,7 +86,10 @@ struct Index {
       }).catch(() => { if (generation === this.widgetSessionGeneration) HarmonyWidget.session(this.context(), 0, ''); });
     } else if (command === 'refresh') HarmonyWidget.refresh(this.context(), undefined, true);
     else if (command === 'appearance-current') result = HarmonyWidget.snapshot(this.context());
-    else if (command === 'appearance') result = HarmonyWidget.saveAppearance(this.context(), event.value) ? HarmonyWidget.snapshot(this.context()) : '';
+    else if (command === 'appearance') {
+      HarmonyWidget.saveAppearance(this.context(), event.value).then((saved: boolean) => { event.result.handlePromptConfirm(saved ? HarmonyWidget.snapshot(this.context()) : ''); }).catch(() => { event.result.handlePromptConfirm(''); });
+      return true;
+    }
     else if (command === 'background-current') result = HarmonyWidget.currentPreset(this.context());
     else if (this.foreground) {
       if (command === 'background') result = HarmonyWidget.preset(this.context(), event.value) ? 'saved' : 'login';

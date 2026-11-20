@@ -27,12 +27,12 @@ public class OurDaysWidget extends AppWidgetProvider {
             else {title="朝夕 · 桌面留言";body="把下一个期待，放在这里";caption="轻触，给对方留一句想念";}
             if(logged&&WidgetStore.prefs(c).getBoolean("offline",false))caption="暂未同步 · 点击 ↻ 重试";
             if(refreshing)caption="正在刷新…";
-            view.setTextViewText(R.id.widget_title,title);view.setTextViewText(R.id.widget_body,body);view.setTextViewText(R.id.widget_caption,caption);view.setViewVisibility(R.id.widget_read,hasItem?View.VISIBLE:View.INVISIBLE);
+            view.setTextViewText(R.id.widget_title,title);view.setTextViewText(R.id.widget_body,body);view.setTextViewText(R.id.widget_caption,caption);view.setViewVisibility(R.id.widget_caption,hasItem&&body.codePointCount(0,body.length())>60&&!refreshing?View.GONE:View.VISIBLE);view.setViewVisibility(R.id.widget_read,hasItem?View.VISIBLE:View.INVISIBLE);
             view.setViewVisibility(R.id.widget_refresh,refreshing?View.INVISIBLE:View.VISIBLE);view.setViewVisibility(R.id.widget_refresh_progress,refreshing?View.VISIBLE:View.GONE);
             view.setOnClickPendingIntent(R.id.widget_content,open(c,id,owner,hasItem?item.optString("target","notes"):"notes"));view.setOnClickPendingIntent(R.id.widget_refresh_button,action(c,id,REFRESH,owner,null));if(hasItem)view.setOnClickPendingIntent(R.id.widget_read,action(c,id,READ,owner,item));
             Bitmap background=logged?BitmapFactory.decodeFile(WidgetStore.background(c,id).getAbsolutePath()):null;
             if(background!=null)view.setImageViewBitmap(R.id.widget_background,background);else view.setImageViewResource(R.id.widget_background,backgroundResource(WidgetStore.prefs(c).getString("background-preset-"+id,WidgetStore.prefs(c).getString("default-preset","rose"))));
-            int textColor=style.textColor(background);for(int text:new int[]{R.id.widget_title,R.id.widget_body,R.id.widget_caption,R.id.widget_read,R.id.widget_refresh})view.setTextColor(text,textColor);
+            int[] textColors=style.textColors(background);view.setTextColor(R.id.widget_title,textColors[0]);view.setTextColor(R.id.widget_body,textColors[1]);for(int text:new int[]{R.id.widget_caption,R.id.widget_read,R.id.widget_refresh})view.setTextColor(text,textColors[2]);
             view.setInt(R.id.widget_overlay,"setBackgroundColor",style.overlayColor());manager.updateAppWidget(id,view);
         }
     }

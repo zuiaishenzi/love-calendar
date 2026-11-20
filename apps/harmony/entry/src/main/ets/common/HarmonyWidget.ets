@@ -9,13 +9,14 @@ import { WidgetState, WidgetView, WidgetAppearance, widgetView, widgetTextColor 
 
 export class WidgetAuth { owner: number = 0; cookie: string = ''; epoch: string = ''; }
 class WidgetCache { epoch: string = ''; state: WidgetState | undefined = undefined; offline: boolean = false; refreshing: number = 0; }
-interface AppearanceInput { overlay: number; mode: string; color: string; }
-interface AppearanceSnapshot { overlay: number; mode: string; color: string; preview?: string; }
+interface AppearanceInput { overlay: number; mode: string; color: string; titleColor?: string; captionColor?: string; }
+interface AppearanceSnapshot { overlay: number; mode: string; color: string; titleColor: string; captionColor: string; preview?: string; }
 export interface WidgetAction { action: string; type?: string; id?: string; owner?: string; }
 interface WidgetRead { type: string; id: number; }
 
 export class HarmonyWidget {
   private static queue: Promise<void> = Promise.resolve();
+  private static publications: Promise<boolean> = Promise.resolve(true);
   private static refreshes: Map<string, Promise<void>> = new Map();
   static file(context: common.Context, name: string): string { return context.filesDir + '/widget-' + name; }
   private static text(context: common.Context, name: string): string {
@@ -40,7 +41,9 @@ export class HarmonyWidget {
       const stored: WidgetAppearance = JSON.parse(HarmonyWidget.text(context, 'appearance.json')) as WidgetAppearance;
       value.preset = ['rose', 'dawn', 'hills', 'moon'].includes(stored.preset) ? stored.preset : 'rose'; value.photoOwner = stored.photoOwner || 0; value.photoRevision = stored.photoRevision || '';
       value.overlay = Number.isInteger(stored.overlay) && stored.overlay >= 0 && stored.overlay <= 70 ? stored.overlay : 12;
-      value.mode = stored.mode === 'custom' ? 'custom' : 'auto'; value.color = /^#[a-fA-F0-9]{6}$/.test(stored.color || '') ? stored.color : '#704457'; value.samples = stored.samples || [];
+      value.mode = stored.mode === 'custom' ? 'custom' : 'auto'; value.color = /^#[a-fA-F0-9]{6}$/.test(stored.color || '') ? stored.color : '#704457'; value.samples = stored.samples || []; value.samplesCropped = stored.samplesCropped === true;
+      value.titleColor = /^#[a-fA-F0-9]{6}$/.test(stored.titleColor || '') ? stored.titleColor : value.color;
+      value.captionColor = /^#[a-fA-F0-9]{6}$/.test(stored.captionColor || '') ? stored.captionColor : value.color;
     } catch {}
     return value;
   }
@@ -83,22 +86,29 @@ export class HarmonyWidget {
     const auth: WidgetAuth = HarmonyWidget.auth(context), cache: WidgetCache = HarmonyWidget.cache(context), appearance: WidgetAppearance = HarmonyWidget.appearance(context);
     const view: WidgetView = widgetView(cache.epoch === auth.epoch ? cache.state : undefined, auth.owner, appearance.preset, cache.offline);
     view.textColor = appearance.mode === 'custom' ? appearance.color : widgetTextColor(appearance.photoOwner === auth.owner ? appearance.samples : [], appearance.overlay);
+    view.titleColor = appearance.mode === 'custom' ? appearance.titleColor : widgetTextColor(appearance.photoOwner === auth.owner ? appearance.samples : [], appearance.overlay, 'title');
+    view.captionColor = appearance.mode === 'custom' ? appearance.captionColor : widgetTextColor(appearance.photoOwner === auth.owner ? appearance.samples : [], appearance.overlay, 'caption');
     view.overlayColor = '#' + Math.round(255 * appearance.overlay / 100).toString(16).padStart(2, '0') + 'FFFFFF';
     view.refreshing = cache.epoch === auth.epoch && cache.refreshing > 0 && Date.now() - cache.refreshing < 45000;
     if (view.refreshing) view.caption = '正在刷新…';
     return view;
   }
-  static saveAppearance(context: common.Context, input: string): boolean {
+  static async saveAppearance(context: common.Context, input: string): Promise<boolean> {
     try {
       const value: AppearanceInput = JSON.parse(input) as AppearanceInput;
-      if (HarmonyWidget.auth(context).owner <= 0 || !Number.isInteger(value.overlay) || value.overlay < 0 || value.overlay > 70 || !['auto', 'custom'].includes(value.mode) || !/^#[a-fA-F0-9]{6}$/.test(value.color)) return false;
+      const titleColor: string = value.titleColor === undefined ? value.color : value.titleColor, captionColor: string = value.captionColor === undefined ? value.color : value.captionColor;
+      if (HarmonyWidget.auth(context).owner <= 0 || !Number.isInteger(value.overlay) || value.overlay < 0 || value.overlay > 70 || !['auto', 'custom'].includes(value.mode) || !/^#[a-fA-F0-9]{6}$/.test(value.color) || !/^#[a-fA-F0-9]{6}$/.test(titleColor) || !/^#[a-fA-F0-9]{6}$/.test(captionColor)) return false;
       const appearance: WidgetAppearance = HarmonyWidget.appearance(context); appearance.overlay = value.overlay; appearance.mode = value.mode; appearance.color = value.color;
-      HarmonyWidget.write(context, 'appearance.json', JSON.stringify(appearance)); HarmonyWidget.publish(context); return true;
+      appearance.titleColor = titleColor; appearance.captionColor = captionColor;
+      const epoch: string = HarmonyWidget.auth(context).epoch;
+      HarmonyWidget.write(context, 'appearance.json', JSON.stringify(appearance));
+      await HarmonyWidget.ensurePhotoSamples(context);
+      return await HarmonyWidget.publish(context) && HarmonyWidget.auth(context).epoch === epoch;
     } catch { return false; }
   }
   static snapshot(context: common.Context): string {
     const appearance: WidgetAppearance = HarmonyWidget.appearance(context);
-    const value: AppearanceSnapshot = { overlay: appearance.overlay, mode: appearance.mode, color: appearance.color };
+    const value: AppearanceSnapshot = { overlay: appearance.overlay, mode: appearance.mode, color: appearance.color, titleColor: appearance.titleColor, captionColor: appearance.captionColor };
     if (appearance.photoOwner === HarmonyWidget.auth(context).owner && appearance.photoOwner > 0) {
       let file: fs.File | undefined = undefined;
       try { file = fs.openSync(HarmonyWidget.file(context, 'background.jpg'), fs.OpenMode.READ_ONLY); const size: number = fs.statSync(file.fd).size; if (size < 250000) { const bytes: ArrayBuffer = new ArrayBuffer(size); if (fs.readSync(file.fd, bytes) === size) value.preview = new util.Base64Helper().encodeToStringSync(new Uint8Array(bytes)); } } catch {} finally { if (file) fs.closeSync(file); }
@@ -107,19 +117,27 @@ export class HarmonyWidget {
   }
   private static async ensurePhotoSamples(context: common.Context): Promise<void> {
     const auth: WidgetAuth = HarmonyWidget.auth(context), appearance: WidgetAppearance = HarmonyWidget.appearance(context);
-    if (auth.owner <= 0 || appearance.photoOwner !== auth.owner || appearance.samples.length > 0) return;
+    if (auth.owner <= 0 || appearance.photoOwner !== auth.owner || appearance.samples.length > 0 && appearance.samplesCropped) return;
     let file: fs.File | undefined = undefined, source: image.ImageSource | undefined = undefined, pixels: image.PixelMap | undefined = undefined;
     try {
       file = fs.openSync(HarmonyWidget.file(context, 'background.jpg'), fs.OpenMode.READ_ONLY); source = image.createImageSource(file.fd);
-      pixels = await source.createPixelMap({ desiredSize: { width: 16, height: 16 }, desiredPixelFormat: image.PixelMapFormat.RGBA_8888 });
+      pixels = await source.createPixelMap({ editable: true, desiredPixelFormat: image.PixelMapFormat.RGBA_8888 });
+      const info: image.ImageInfo = await pixels.getImageInfo(), side: number = Math.min(info.size.width, info.size.height);
+      await pixels.crop({ x: Math.floor((info.size.width - side) / 2), y: Math.floor((info.size.height - side) / 2), size: { width: side, height: side } });
+      await pixels.scale(16 / side, 16 / side);
       const buffer: ArrayBuffer = new ArrayBuffer(16 * 16 * 4); await pixels.readPixelsToBuffer(buffer);
       if (HarmonyWidget.auth(context).epoch !== auth.epoch) return;
       const current: WidgetAppearance = HarmonyWidget.appearance(context); if (current.photoOwner !== auth.owner || current.photoRevision !== appearance.photoRevision) return;
-      current.samples = Array.from(new Uint8Array(buffer)); HarmonyWidget.write(context, 'appearance.json', JSON.stringify(current)); await HarmonyWidget.publish(context);
+      current.samples = Array.from(new Uint8Array(buffer)); current.samplesCropped = true; HarmonyWidget.write(context, 'appearance.json', JSON.stringify(current)); await HarmonyWidget.publish(context);
     } catch {} finally { await pixels?.release(); source?.release(); if (file) fs.closeSync(file); }
   }
-  static async publish(context: common.Context): Promise<void> {
+  static publish(context: common.Context): Promise<boolean> {
+    const task: Promise<boolean> = HarmonyWidget.publications.catch(() => false).then(() => HarmonyWidget.publishCurrent(context));
+    HarmonyWidget.publications = task; return task;
+  }
+  private static async publishCurrent(context: common.Context): Promise<boolean> {
     const auth: WidgetAuth = HarmonyWidget.auth(context);
+    let success: boolean = true;
     for (const id of HarmonyWidget.forms(context)) {
       const view: WidgetView = HarmonyWidget.currentView(context); let photo: fs.File | undefined = undefined;
       try {
@@ -129,11 +147,13 @@ export class HarmonyWidget {
         }
         if (HarmonyWidget.auth(context).epoch !== auth.epoch) break;
         await formProvider.updateForm(id, formBindingData.createFormBindingData(view));
-      } catch {} finally { if (photo) fs.closeSync(photo); }
+      } catch { success = false; console.error('Widget appearance update failed'); } finally { if (photo) fs.closeSync(photo); }
       if (HarmonyWidget.auth(context).epoch !== auth.epoch) {
+        success = false;
         try { await formProvider.updateForm(id, formBindingData.createFormBindingData(HarmonyWidget.currentView(context))); } catch {}
       }
     }
+    return success;
   }
   private static async request(auth: WidgetAuth, read?: WidgetRead): Promise<WidgetState> {
     const session: rcp.Session = rcp.createSession();
@@ -156,7 +176,7 @@ export class HarmonyWidget {
   static refresh(context: common.Context, action?: WidgetAction, visible: boolean = false): Promise<void> {
     if (!HarmonyWidget.forms(context).length) return Promise.resolve();
     const epoch: string = HarmonyWidget.auth(context).epoch;
-    let feedback: Promise<void> = Promise.resolve();
+    let feedback: Promise<boolean> = Promise.resolve(true);
     if (visible) { const cache: WidgetCache = HarmonyWidget.cache(context); cache.epoch = epoch; cache.refreshing = Date.now(); HarmonyWidget.write(context, 'cache.json', JSON.stringify(cache)); feedback = HarmonyWidget.publish(context); }
     const existing: Promise<void> | undefined = action ? undefined : HarmonyWidget.refreshes.get(epoch);
     if (existing) return existing;

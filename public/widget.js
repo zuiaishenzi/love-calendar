@@ -70,27 +70,44 @@ $('#widget-pin').onclick=()=>nativeWidget('pin');$('#widget-background').onclick
 window.addEventListener('widget-open',event=>openWidgetLink(event.detail));if(currentUser)widgetSessionChanged();
 
 const widgetAppearanceCapable=Number(/OurDaysHarmony\/(\d+)/.exec(navigator.userAgent)?.[1]||0)>=10902||(!widgetHarmony&&Number(/OurDaysAndroid\/(\d+)/.exec(navigator.userAgent)?.[1]||0)>=10903);
-let widgetPhotoUrl=null,widgetPhotoPixels=null,widgetPhotoGeneration=0;
-function clearWidgetPhoto(){widgetPhotoGeneration++;if(widgetPhotoUrl)URL.revokeObjectURL(widgetPhotoUrl);widgetPhotoUrl=null;widgetPhotoPixels=null;$('#widget-setting-preview').style.removeProperty('--widget-preview-image');}
-function widgetTextColor(pixels,overlay){
- let luminance=0,count=0;for(let i=0;i<pixels.length;i+=4){let value=0;for(let c=0;c<3;c++){const a=overlay/100+(1-overlay/100)*(1-(pixels[i+3]??255)/255),s=(pixels[i+c]*(1-a)+255*a)/255;value+=(c===0?.2126:c===1?.7152:.0722)*(s<=.04045?s/12.92:((s+.055)/1.055)**2.4);}luminance+=value;count++;}
- const light=count?luminance/count:.8;return (light+.05)/.0713>1.05/(light+.05)?'#30252C':'#FFFFFF';
+const widgetRegionalCapable=Number(/OurDaysHarmony\/(\d+)/.exec(navigator.userAgent)?.[1]||0)>=10905||(!widgetHarmony&&Number(/OurDaysAndroid\/(\d+)/.exec(navigator.userAgent)?.[1]||0)>=10905);
+let widgetPhotoUrl=null,widgetPhotoPixels=null,widgetPhotoGeneration=0,widgetAppearanceTimer=null;
+function clearWidgetPhoto(){clearTimeout(widgetAppearanceTimer);widgetAppearanceTimer=null;widgetPhotoGeneration++;if(widgetPhotoUrl)URL.revokeObjectURL(widgetPhotoUrl);widgetPhotoUrl=null;widgetPhotoPixels=null;$('#widget-setting-preview').style.removeProperty('--widget-preview-image');}
+function widgetTextColor(pixels,overlay,region='body'){
+ const edge=Math.sqrt(pixels.length/4),square=Number.isInteger(edge)&&edge>=4,start=region==='caption'?.75:region==='body'?.25:0,end=region==='title'?.25:region==='body'?.75:1;
+ let luminance=0,count=0;for(let i=0;i<pixels.length;i+=4){const row=Math.floor(i/4/edge);if(square&&(row<Math.floor(edge*start)||row>=Math.ceil(edge*end)))continue;let value=0;for(let c=0;c<3;c++){const a=overlay/100+(1-overlay/100)*(1-(pixels[i+3]??255)/255),s=(pixels[i+c]*(1-a)+255*a)/255;value+=(c===0?.2126:c===1?.7152:.0722)*(s<=.04045?s/12.92:((s+.055)/1.055)**2.4);}luminance+=value;count++;}
+ const light=count?luminance/count:.8,palette=region==='title'?['#63364E','#FFE6F0']:region==='caption'?['#264A40','#DDF6EC']:['#30252C','#FFFFFF'];
+ const contrast=color=>{let value=0;for(let c=0;c<3;c++){const s=parseInt(color.slice(1+c*2,3+c*2),16)/255;value+=(c===0?.2126:c===1?.7152:.0722)*(s<=.04045?s/12.92:((s+.055)/1.055)**2.4);}return (Math.max(light,value)+.05)/(Math.min(light,value)+.05);};
+ const chosen=contrast(palette[0])>=contrast(palette[1])?palette[0]:palette[1];return contrast(chosen)>=4.5?chosen:contrast('#000000')>=contrast('#FFFFFF')?'#000000':'#FFFFFF';
 }
 function paintWidgetAppearance(){
  const overlay=Number($('#widget-overlay').value),custom=$('[name="widget-text-mode"][value="custom"]').checked;
- $('#widget-overlay-value').textContent=overlay+'%';$('#widget-text-color').disabled=!custom;
+ $('#widget-overlay-value').textContent=overlay+'%';for(const id of ['widget-text-color','widget-title-color','widget-caption-color'])$('#'+id).disabled=!custom||id!=='widget-text-color'&&!widgetRegionalCapable;
+ for(const node of document.querySelectorAll('.widget-region-only'))node.hidden=!widgetRegionalCapable;
  const color=custom?$('#widget-text-color').value:widgetTextColor(widgetPhotoPixels||[240,225,235,255],overlay),preview=$('#widget-setting-preview');
  preview.style.setProperty('--widget-overlay',String(overlay/100));preview.style.setProperty('--widget-text',color);
+ preview.style.setProperty('--widget-title',widgetRegionalCapable?(custom?$('#widget-title-color').value:widgetTextColor(widgetPhotoPixels||[240,225,235,255],overlay,'title')):color);
+ preview.style.setProperty('--widget-caption',widgetRegionalCapable?(custom?$('#widget-caption-color').value:widgetTextColor(widgetPhotoPixels||[240,225,235,255],overlay,'caption')):color);
 }
 function loadWidgetAppearance(){
+ if(widgetAppearanceTimer!==null)return;
  $('#widget-appearance-controls').disabled=!widgetAppearanceCapable;
  if(!widgetAppearanceCapable){$('#widget-appearance-status').textContent='更新客户端后，可以调整照片遮罩与文字颜色。';return;}
  let style;try{style=JSON.parse(nativeWidget('appearance-current')||'null');}catch{return;}if(!style)return;
  $('#widget-overlay').value=String(Math.max(0,Math.min(70,Number(style.overlay)||0)));for(const radio of document.querySelectorAll('[name="widget-text-mode"]'))radio.checked=radio.value===(style.mode==='custom'?'custom':'auto');$('#widget-text-color').value=/^#[\da-f]{6}$/i.test(style.color)?style.color:'#704457';
+ for(const [id,key] of [['widget-title-color','titleColor'],['widget-caption-color','captionColor']])$('#'+id).value=/^#[\da-f]{6}$/i.test(style[key])?style[key]:$('#widget-text-color').value;
  clearWidgetPhoto();const generation=widgetPhotoGeneration,owner=currentUser?.id;
- if(style.preview&&style.preview.length<400000){try{const bytes=Uint8Array.from(atob(style.preview),x=>x.charCodeAt(0));widgetPhotoUrl=URL.createObjectURL(new Blob([bytes],{type:'image/jpeg'}));$('#widget-setting-preview').style.setProperty('--widget-preview-image','url("'+widgetPhotoUrl+'")');const image=new Image();image.onload=()=>{if(generation!==widgetPhotoGeneration||owner!==currentUser?.id)return;const canvas=document.createElement('canvas');canvas.width=canvas.height=16;const context=canvas.getContext('2d');context.drawImage(image,0,0,16,16);widgetPhotoPixels=context.getImageData(0,0,16,16).data;paintWidgetAppearance();};image.src=widgetPhotoUrl;}catch{clearWidgetPhoto();}}
+ if(style.preview&&style.preview.length<400000){try{const bytes=Uint8Array.from(atob(style.preview),x=>x.charCodeAt(0));widgetPhotoUrl=URL.createObjectURL(new Blob([bytes],{type:'image/jpeg'}));$('#widget-setting-preview').style.setProperty('--widget-preview-image','url("'+widgetPhotoUrl+'")');const image=new Image();image.onload=()=>{if(generation!==widgetPhotoGeneration||owner!==currentUser?.id)return;const canvas=document.createElement('canvas');canvas.width=canvas.height=16;const context=canvas.getContext('2d'),side=Math.min(image.naturalWidth,image.naturalHeight);context.drawImage(image,Math.floor((image.naturalWidth-side)/2),Math.floor((image.naturalHeight-side)/2),side,side,0,0,16,16);widgetPhotoPixels=context.getImageData(0,0,16,16).data;paintWidgetAppearance();};image.src=widgetPhotoUrl;}catch{clearWidgetPhoto();}}
  paintWidgetAppearance();$('#widget-appearance-status').textContent='';
 }
-$('#widget-overlay').oninput=paintWidgetAppearance;$('#widget-text-color').oninput=paintWidgetAppearance;for(const radio of document.querySelectorAll('[name="widget-text-mode"]'))radio.onchange=paintWidgetAppearance;
-$('#widget-appearance-save').onclick=()=>{const style={overlay:Number($('#widget-overlay').value),mode:$('[name="widget-text-mode"][value="custom"]').checked?'custom':'auto',color:$('#widget-text-color').value};try{const saved=JSON.parse(nativeWidget('appearance',JSON.stringify(style))||'null');$('#widget-appearance-status').textContent=saved?'卡片外观已保存。':'未能保存，请确认已登录并重试。';}catch{$('#widget-appearance-status').textContent='外观未保存，请重试。';}};
+function saveWidgetAppearance(){
+ clearTimeout(widgetAppearanceTimer);widgetAppearanceTimer=null;if(!currentUser||!widgetAppearanceCapable||$('#widget-appearance-controls').disabled)return;
+ const style={overlay:Number($('#widget-overlay').value),mode:$('[name="widget-text-mode"][value="custom"]').checked?'custom':'auto',color:$('#widget-text-color').value};
+ if(widgetRegionalCapable){style.titleColor=$('#widget-title-color').value;style.captionColor=$('#widget-caption-color').value;}
+ try{const saved=JSON.parse(nativeWidget('appearance',JSON.stringify(style))||'null');$('#widget-appearance-status').textContent=saved&&saved.mode===style.mode&&saved.overlay===style.overlay&&['color',...(widgetRegionalCapable?['titleColor','captionColor']:[])].every(key=>saved[key]?.toLowerCase()===style[key].toLowerCase())?'已应用到桌面卡片。':'未能应用到桌面，请点击按钮重试。';}catch{$('#widget-appearance-status').textContent='未能应用到桌面，请点击按钮重试。';}
+}
+function queueWidgetAppearance(){paintWidgetAppearance();clearTimeout(widgetAppearanceTimer);const owner=currentUser?.id;$('#widget-appearance-status').textContent='正在应用到桌面…';widgetAppearanceTimer=setTimeout(()=>{widgetAppearanceTimer=null;if(owner===currentUser?.id)saveWidgetAppearance();},250);}
+for(const id of ['widget-overlay','widget-text-color','widget-title-color','widget-caption-color'])$('#'+id).oninput=queueWidgetAppearance;
+for(const input of [$('#widget-overlay'),$('#widget-text-color'),$('#widget-title-color'),$('#widget-caption-color'),...document.querySelectorAll('[name="widget-text-mode"]')])input.onchange=()=>{paintWidgetAppearance();saveWidgetAppearance();};
+$('#widget-appearance-save').onclick=saveWidgetAppearance;
 window.addEventListener('widget-style-changed',()=>{if(view==='widget')loadWidgetAppearance();});

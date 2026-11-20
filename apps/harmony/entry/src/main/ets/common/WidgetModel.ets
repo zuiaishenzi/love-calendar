@@ -17,17 +17,23 @@ export class WidgetView {
   preset: string = 'rose';
   photo: string = '';
   textColor: string = '#30252C';
+  titleColor: string = '#63364E';
+  captionColor: string = '#264A40';
+  compact: boolean = false;
   overlayColor: string = '#1FFFFFFF';
   refreshing: boolean = false;
   formImages: Record<string, number> = {};
 }
 export class WidgetAppearance {
   preset: string = 'rose'; photoOwner: number = 0; photoRevision: string = '';
-  overlay: number = 12; mode: string = 'auto'; color: string = '#704457'; samples: number[] = [];
+  overlay: number = 12; mode: string = 'auto'; color: string = '#704457'; titleColor: string = '#704457'; captionColor: string = '#704457'; samples: number[] = []; samplesCropped: boolean = false;
 }
-export function widgetTextColor(samples: number[], overlay: number): string {
+export function widgetTextColor(samples: number[], overlay: number, region: string = 'body'): string {
+  const edge: number = Math.sqrt(samples.length / 4), square: boolean = Number.isInteger(edge) && edge >= 4;
+  const start: number = region === 'caption' ? .75 : region === 'body' ? .25 : 0, end: number = region === 'title' ? .25 : region === 'body' ? .75 : 1;
   let luminance: number = 0, count: number = 0;
   for (let i: number = 0; i + 3 < samples.length; i += 4) {
+    const row: number = Math.floor(i / 4 / edge); if (square && (row < Math.floor(edge * start) || row >= Math.ceil(edge * end))) continue;
     let value: number = 0;
     const alpha: number = overlay / 100 + (1 - overlay / 100) * (1 - samples[i + 3] / 255);
     for (let c: number = 0; c < 3; c++) {
@@ -37,7 +43,14 @@ export function widgetTextColor(samples: number[], overlay: number): string {
     luminance += value; count++;
   }
   const light: number = count > 0 ? luminance / count : .8;
-  return (light + .05) / .0713 > 1.05 / (light + .05) ? '#30252C' : '#FFFFFF';
+  const palette: string[] = region === 'title' ? ['#63364E', '#FFE6F0'] : region === 'caption' ? ['#264A40', '#DDF6EC'] : ['#30252C', '#FFFFFF'];
+  const contrast = (color: string): number => {
+    let value: number = 0;
+    for (let c: number = 0; c < 3; c++) { const s: number = parseInt(color.slice(1 + c * 2, 3 + c * 2), 16) / 255; value += (c === 0 ? .2126 : c === 1 ? .7152 : .0722) * (s <= .04045 ? s / 12.92 : Math.pow((s + .055) / 1.055, 2.4)); }
+    return (Math.max(light, value) + .05) / (Math.min(light, value) + .05);
+  };
+  const chosen: string = contrast(palette[0]) >= contrast(palette[1]) ? palette[0] : palette[1];
+  return contrast(chosen) >= 4.5 ? chosen : contrast('#000000') >= contrast('#FFFFFF') ? '#000000' : '#FFFFFF';
 }
 export function widgetView(state: WidgetState | undefined, owner: number, preset: string, offline: boolean): WidgetView {
   const view: WidgetView = new WidgetView();
@@ -51,7 +64,7 @@ export function widgetView(state: WidgetState | undefined, owner: number, preset
       view.hasItem = true; view.itemId = state.item.id; view.itemType = state.item.type;
       view.target = state.item.type === 'chat' ? 'chat' : 'notes';
       view.title = (state.peer?.name || '对方') + (view.target === 'chat' ? ' · 聊天消息' : ' · 桌面留言');
-      view.body = state.item.text.slice(0, 500);
+      view.body = state.item.text; view.compact = Array.from(view.body).length > 60;
       view.caption = state.unreadCount > 1 ? '还有 ' + state.unreadCount + ' 条未读' : '留给你的一点想念';
     } else if (state.countdown) {
       const days: number = state.countdown.days;

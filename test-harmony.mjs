@@ -44,9 +44,34 @@ test('鸿蒙手动刷新立即显示进度、合并同账号请求，外观保�
  let release;const before=f.requests.length;f.setFetch(()=>new Promise(resolve=>{release=()=>resolve({owner:1,item:null,peer:null,countdown:null,unreadCount:0,updatedAt:5});}));
  const first=service.refresh(c,undefined,true);await new Promise(resolve=>setImmediate(resolve));assert.equal(service.currentView(c).refreshing,true);assert.match(service.currentView(c).caption,/正在刷新/);
  const second=service.refresh(c,undefined,true);assert.equal(f.requests.length,before+1);release();await Promise.all([first,second]);assert.equal(service.currentView(c).refreshing,false);
- assert.equal(service.saveAppearance(c,JSON.stringify({overlay:0,mode:'custom',color:'#123456'})),true);assert.equal(service.currentView(c).textColor,'#123456');assert.equal(service.currentView(c).overlayColor,'#00FFFFFF');
- assert.equal(service.saveAppearance(c,JSON.stringify({overlay:90,mode:'custom',color:'bad'})),false);assert.equal(service.preset(c,'moon'),true);assert.equal(service.currentView(c).textColor,'#123456');
+ assert.equal(await service.saveAppearance(c,JSON.stringify({overlay:0,mode:'custom',color:'#123456'})),true);assert.equal(service.currentView(c).textColor,'#123456');assert.equal(service.currentView(c).overlayColor,'#00FFFFFF');
+ assert.equal(await service.saveAppearance(c,JSON.stringify({overlay:90,mode:'custom',color:'bad'})),false);assert.equal(service.preset(c,'moon'),true);assert.equal(service.currentView(c).textColor,'#123456');
  service.session(c,0,'');assert.equal(service.currentView(c).textColor,'#30252C');assert.equal(JSON.parse(service.snapshot(c)).mode,'auto');
+});
+
+test('鸿蒙外观等待宿主确认，旧发布不会覆盖后选颜色，更新失败允许重试',async()=>{
+ const f=harmonyWidgetFixture(),service=f.HarmonyWidget,c=f.context;service.add(c,'18');service.session(c,1,'session='+'a'.repeat(64));await service.refresh(c);
+ let release,blocked=false;f.setUpdate(async()=>{if(!blocked){blocked=true;await new Promise(resolve=>release=resolve);}});
+ const old=service.publish(c);await new Promise(resolve=>setImmediate(resolve));let finished=false;
+ const saved=service.saveAppearance(c,JSON.stringify({overlay:0,mode:'custom',color:'#19bfe3'})).then(result=>{finished=true;return result;});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(finished,false);release();await old;assert.equal(await saved,true);assert.equal(f.pushed.at(-1).data.textColor,'#19bfe3');assert.equal(f.pushed.at(-1).data.overlayColor,'#00FFFFFF');
+ f.setUpdate(async()=>{throw Error('host unavailable');});assert.equal(await service.saveAppearance(c,JSON.stringify({overlay:10,mode:'custom',color:'#123456'})),false);
+ f.setUpdate(async()=>{});assert.equal(await service.saveAppearance(c,JSON.stringify({overlay:10,mode:'custom',color:'#123456'})),true);assert.equal(f.pushed.at(-1).data.textColor,'#123456');
+ const style=JSON.parse(f.files.get('/private/widget-appearance.json'));style.photoOwner=1;style.samplesCropped=true;style.samples=[0,0,0,255];f.files.set('/private/widget-appearance.json',JSON.stringify(style));
+ assert.equal(await service.saveAppearance(c,JSON.stringify({overlay:0,mode:'auto',color:'#123456'})),true);assert.equal(f.pushed.at(-1).data.textColor,'#FFFFFF');
+ style.samples=[255,255,255,255];f.files.set('/private/widget-appearance.json',JSON.stringify(style));assert.equal(await service.saveAppearance(c,JSON.stringify({overlay:0,mode:'auto',color:'#123456'})),true);assert.equal(f.pushed.at(-1).data.textColor,'#30252C');
+});
+
+test('鸿蒙标题正文底部分区配色，旧单色配置兼容且长消息不预截断',async()=>{
+ const f=harmonyWidgetFixture(),service=f.HarmonyWidget,c=f.context;service.add(c,'19');service.session(c,1,'session='+'a'.repeat(64));await service.refresh(c);
+ f.files.set('/private/widget-appearance.json',JSON.stringify({mode:'custom',color:'#123456',overlay:12}));assert.equal(service.currentView(c).titleColor,'#123456');assert.equal(service.currentView(c).captionColor,'#123456');
+ const colors={overlay:0,mode:'custom',color:'#FFFFFF',titleColor:'#FFD0DF',captionColor:'#D2F3DF'};
+ assert.equal(await service.saveAppearance(c,JSON.stringify(colors)),true);const pushed=f.pushed.at(-1).data;assert.deepEqual([pushed.titleColor,pushed.textColor,pushed.captionColor],['#FFD0DF','#FFFFFF','#D2F3DF']);
+ assert.equal(JSON.parse(service.snapshot(c)).titleColor,'#FFD0DF');assert.equal(await service.saveAppearance(c,JSON.stringify({...colors,titleColor:'invalid'})),false);assert.equal(service.currentView(c).titleColor,'#FFD0DF');
+ const style=JSON.parse(f.files.get('/private/widget-appearance.json'));style.mode='auto';style.photoOwner=1;style.samplesCropped=true;style.samples=Array.from({length:256},(_,i)=>Math.floor(i/16)<4||Math.floor(i/16)>=12?[255,255,255,255]:[0,0,0,255]).flat();f.files.set('/private/widget-appearance.json',JSON.stringify(style));
+ assert.deepEqual([service.currentView(c).titleColor,service.currentView(c).textColor,service.currentView(c).captionColor],['#63364E','#FFFFFF','#264A40']);
+ const text='一起慢慢走，'.repeat(100)+'最后一句也要保留';f.setFetch(async()=>({owner:1,item:{id:23,type:'note',text,target:'notes'},peer:null,countdown:null,unreadCount:1,updatedAt:88}));await service.refresh(c);assert.equal(service.currentView(c).body,text);assert.equal(service.currentView(c).compact,true);
+ service.session(c,0,'');assert.equal(service.currentView(c).compact,false);assert.notEqual(service.currentView(c).titleColor,colors.titleColor);
 });
 
 test('鸿蒙刷新完成发布期间再次点击仍会发起下一次刷新，不遗留加载状态',async()=>{
@@ -105,8 +130,8 @@ test('鸿蒙文档启动适配兼容旧网页，但不影响外站和子框架',
  for(const [origin,main,enabled] of [['https://love.11215739.xyz:11961',true,true],['https://evil.example',true,false],['https://love.11215739.xyz:11961',false,false]]){
   const styles=[],navigator={userAgent:'Mozilla/5.0 OpenHarmony'},window={};window.top=main?window:{};
   new Script(bootstrap).runInNewContext({location:{origin},window,navigator,MutationObserver:class{observe(){}},document:{querySelectorAll:()=>[],getElementById:()=>null,createElement:()=>({}),documentElement:{append:style=>styles.push(style)},addEventListener:()=>{}}});
-  assert.equal(navigator.userAgent.includes('OurDaysHarmony/10903'),enabled);assert.equal(styles.length,enabled?1:0);
-  if(enabled){assert.match(navigator.userAgent,/OurDaysAndroid\/10811/);assert.equal(styles[0].rel,'stylesheet');assert.equal(styles[0].href,'https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10903');}
+  assert.equal(navigator.userAgent.includes('OurDaysHarmony/10905'),enabled);assert.equal(styles.length,enabled?1:0);
+  if(enabled){assert.match(navigator.userAgent,/OurDaysAndroid\/10811/);assert.equal(styles[0].rel,'stylesheet');assert.equal(styles[0].href,'https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10905');}
  }
 });
 
@@ -120,7 +145,7 @@ test('鸿蒙内置CSS仅拦截指定同源GET子资源，遵守服务器style-sr
  class Response{setResponseData(value){this.body=value;}setResponseMimeType(value){this.mime=value;}setResponseEncoding(value){this.encoding=value;}setResponseCode(value){this.status=value;}setReasonMessage(){}setResponseHeader(value){this.headers=value;}}
  const Harness=new Script(code).runInNewContext({...constants,commandPath,WebResourceResponse:Response});
  for(const [url,verb,main,allowed] of [
-  ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10903','GET',false,true],
+  ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10905','GET',false,true],
   ['https://evil.example/__ourdays_harmony__/appearance.css','GET',false,false],
   ['https://love.11215739.xyz:11961/style.css','GET',false,false],
   ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css','POST',false,false],
@@ -135,9 +160,9 @@ test('鸿蒙加载后补注入复用已安装适配，丢失样式可恢复',()=
  const bootstrap=new Script(source+';HARMONY_BOOTSTRAP;').runInNewContext({});
  let style=null,appends=0,observers=0,refreshes=0;
  const window={dispatchEvent:()=>refreshes++};window.top=window;
- const context=createContext({location:{origin:'https://love.11215739.xyz:11961'},window,navigator:{userAgent:'OurDaysHarmony/10903'},Event:class{},MutationObserver:class{constructor(){observers++;}observe(){}},document:{getElementById:()=>style,createElement:()=>({}),documentElement:{append:node=>{style=node;appends++;}},querySelectorAll:()=>[],addEventListener:()=>{}}});
+ const context=createContext({location:{origin:'https://love.11215739.xyz:11961'},window,navigator:{userAgent:'OurDaysHarmony/10905'},Event:class{},MutationObserver:class{constructor(){observers++;}observe(){}},document:{getElementById:()=>style,createElement:()=>({}),documentElement:{append:node=>{style=node;appends++;}},querySelectorAll:()=>[],addEventListener:()=>{}}});
  const run=()=>new Script(bootstrap).runInContext(context);
- run();assert.equal(window.__ourdaysHarmonyBootstrap,'10903');assert.equal(appends,1);const initialObservers=observers;
+ run();assert.equal(window.__ourdaysHarmonyBootstrap,'10905');assert.equal(appends,1);const initialObservers=observers;
  run();assert.equal(appends,1);assert.equal(observers,initialObservers);assert.equal(refreshes,1);
  style=null;run();assert.equal(appends,2);assert.equal(observers,initialObservers);
 });

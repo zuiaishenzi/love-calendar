@@ -12,6 +12,10 @@ test('卡片配色在深浅照片与遮罩变化时保持对比度，网页与�
  const web=readFileSync('public/widget.js','utf8'),source=web.slice(web.indexOf('function widgetTextColor('),web.indexOf('function paintWidgetAppearance(')),choose=new Script(source+';widgetTextColor;').runInNewContext({});
  const model=stripTypeScriptTypes(readFileSync('apps/harmony/entry/src/main/ets/common/WidgetModel.ets','utf8'),{mode:'transform'}).replaceAll('export ',''),native=new Script(model+';widgetTextColor;').runInNewContext({});
  for(const [pixels,overlay,expected] of [[[0,0,0,255],0,'#FFFFFF'],[[255,255,255,255],0,'#30252C'],[[0,0,0,255],70,'#30252C'],[[20,30,40,0],0,'#30252C']]){assert.equal(choose(pixels,overlay),expected);assert.equal(native(pixels,overlay),expected);}
+ const regional=Array.from({length:256},(_,i)=>Math.floor(i/16)<4||Math.floor(i/16)>=12?[255,255,255,255]:[0,0,0,255]).flat();
+ for(const [region,expected] of [['title','#63364E'],['body','#FFFFFF'],['caption','#264A40']]){assert.equal(choose(regional,0,region),expected);assert.equal(native(regional,0,region),expected);}
+ const light=color=>{const rgb=color.match(/[a-f0-9]{2}/gi).map(x=>parseInt(x,16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;};
+ for(let grey=0;grey<=255;grey+=5)for(const region of ['title','body','caption']){const pixels=[grey,grey,grey,255],color=choose(pixels,0,region);assert.equal(color,native(pixels,0,region));const background=light('#'+grey.toString(16).padStart(2,'0').repeat(3)),foreground=light(color);assert.ok((Math.max(background,foreground)+.05)/(Math.min(background,foreground)+.05)>=4.5,region+' contrast');}
 });
 function fixture(){
  const dir=mkdtempSync(path.join(os.tmpdir(),'love-widget-')),db=openDatabase(dir);db.exec("INSERT INTO ledgers(id,code) VALUES(1,'WIDGET01'),(2,'WIDGET02');");
