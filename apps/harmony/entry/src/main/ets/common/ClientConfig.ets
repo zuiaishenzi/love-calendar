@@ -1,5 +1,5 @@
 export const SERVER_URL: string = 'https://love.11215739.xyz:11961/';
-export const VERSION_CODE: number = 10911;
+export const VERSION_CODE: number = 10915;
 export const VERSION_NAME: string = '1.9.0';
 
 // Match the complete HTTPS origin, including the non-default server port.

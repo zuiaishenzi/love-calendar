@@ -34,7 +34,8 @@ function openWidgetLink(detail=null){
 }
 let widgetCountdownMode='custom',widgetReminderRows=[],widgetReminderId=null,widgetDateMonth=localDay().slice(0,7),widgetSettingsRequest=0,widgetSettingsBusy=false;
 const widgetCardsCapable=widgetHarmony?Number(/OurDaysHarmony\/(\d+)/.exec(navigator.userAgent)?.[1]||0)>=10910:Number(/OurDaysAndroid\/(\d+)/.exec(navigator.userAgent)?.[1]||0)>=10906;
-const widgetPresetNames={rose:'柔雾',dawn:'晨光',hills:'山野',moon:'晚风',transparent:'透明'};
+const widgetPresetNames={rose:'柔雾',dawn:'晨光',hills:'山野',moon:'晚风'};
+if(widgetAndroid&&!widgetHarmony&&widgetCardsCapable)widgetPresetNames.transparent='透明';
 function closeWidgetDate(){const open=!$('#widget-date-picker').hidden||!$('#widget-reminder-options').hidden;$('#widget-date-picker').hidden=true;$('#widget-date-trigger').setAttribute('aria-expanded','false');$('#widget-reminder-options').hidden=true;$('#widget-reminder-trigger').setAttribute('aria-expanded','false');return open;}
 function paintWidgetCountdownMode(){
  const readonly=Boolean(currentUser?.lifecycle?.readonly);closeWidgetDate();for(const b of document.querySelectorAll('[data-widget-countdown]')){b.setAttribute('aria-selected',String(b.dataset.widgetCountdown===widgetCountdownMode));b.disabled=readonly;}

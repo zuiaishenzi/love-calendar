@@ -23,3 +23,5 @@
 .widget-card-carousel{position:relative;margin:4px -6px 14px}#widget-card-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior-x:contain}#widget-card-track::-webkit-scrollbar{display:none}.widget-card-slide{flex:0 0 100%;min-width:0;scroll-snap-align:center;padding:0 26px;text-align:center}.widget-card-slide .widget-setting-preview{margin-bottom:8px;text-align:left}.widget-card-label{border:0;background:transparent;color:#9c6c83;font-size:12px;padding:8px}.widget-card-nav{pointer-events:none;position:absolute;inset:75px 0 auto;display:flex;justify-content:space-between}.widget-card-nav button{pointer-events:auto;border:0;background:#faf6f8cc;color:#a06a85;border-radius:50%;width:30px;height:30px;padding:0;font-size:24px}
 
 .widget-setting-preview>.widget-card-add{position:absolute;right:8px;top:8px;z-index:2;width:30px;height:30px;border-radius:50%;padding:0;background:#fff8fcdf;border:1px solid #d9b9ca;color:#93435f;font-size:21px;line-height:1}
+
+html.harmony-shell [data-widget-background="transparent"],body.harmony-app [data-widget-background="transparent"]{display:none!important}

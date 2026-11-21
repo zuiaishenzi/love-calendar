@@ -74,3 +74,23 @@ test('自定义任意日期与标题仅本人可见，可与纪念日互换，�
  f.db.exec("INSERT INTO reminders(id,ledger_id,creator,title,base_day,kind,month,day) VALUES(1,1,1,'纪念日','2026-11-22','solar',11,22)");state=r(1,'PUT','/api/widget/settings',{reminderId:1});assert.equal(state.countdown.id,1);assert.equal(state.settings.customDay,null);assert.equal(r(1,'PUT','/api/widget/settings',{reminderId:null}).countdown,null);
  }finally{f.close();}
 });
+
+
+test('卡片合并时间队列，批量已读仅处理已展示ID并保留新到和未展示消息',()=>{
+ const f=fixture();try{const r=f.request,note=text=>r(1,'POST','/api/widget/notes',{text}).id,chat=text=>Number(f.db.prepare("INSERT INTO chat_messages(ledger_id,sender,kind,text,created) VALUES(1,1,'text',?,?)").run(text,f.tick()).lastInsertRowid);
+ const a=note('早安');f.tick();const b=chat('记得吃早餐');const c=note('今天也想你');f.tick();const d=chat('很长的消息'.repeat(60));
+ const state=r(2,'GET','/api/widget/state');assert.deepEqual(state.items.map(row=>row.text),['早安','记得吃早餐','今天也想你','很长的消息'.repeat(60)]);assert.deepEqual(state.item,state.items[0]);
+ const newer=note('刚刚到的新消息');const visible=state.items.slice(0,3).map(({type,id})=>({type,id}));const after=r(2,'POST','/api/widget/read-batch',{items:visible});assert.equal(after.unreadCount,2);assert.deepEqual(after.items.map(row=>row.id),[d,newer]);assert.equal(f.db.prepare('SELECT read_at FROM widget_notes WHERE id=?').get(c).read_at>0,true);assert.equal(f.db.prepare('SELECT through_id FROM chat_reads WHERE user_id=2').get().through_id,b);
+ assert.equal(r(2,'POST','/api/widget/read-batch',{items:visible}).unreadCount,2);
+ r(2,'POST','/api/widget/unread',{type:'note',id:a});assert.equal(r(2,'GET','/api/widget/state').unreadCount,3);
+ }finally{f.close();}
+});
+
+test('卡片批量已读拒绝跨账号、重复及聊天间隙，失败时留言也不被已读',()=>{
+ const f=fixture();try{const r=f.request,n=r(1,'POST','/api/widget/notes',{text:'保留未读'}).id,chat=text=>Number(f.db.prepare("INSERT INTO chat_messages(ledger_id,sender,kind,text,created) VALUES(1,1,'text',?,?)").run(text,f.tick()).lastInsertRowid),a=chat('第一条'),b=chat('未展示'),c=chat('第三条');
+ assert.throws(()=>r(2,'POST','/api/widget/read-batch',{items:[{type:'note',id:n},{type:'chat',id:a},{type:'chat',id:c}]}),e=>e.status===409);assert.equal(f.db.prepare('SELECT read_at FROM widget_notes WHERE id=?').get(n).read_at,null);assert.equal(f.db.prepare('SELECT through_id FROM chat_reads WHERE user_id=2').get(),undefined);
+ for(const id of [1,3])assert.throws(()=>r(id,'POST','/api/widget/read-batch',{items:[{type:'note',id:n}]}),e=>e.status===404);
+ assert.throws(()=>r(2,'POST','/api/widget/read-batch',{items:[{type:'note',id:n},{type:'note',id:n}]}),e=>e.status===400);assert.throws(()=>r(2,'POST','/api/widget/read-batch',{items:[]}),e=>e.status===400);
+ f.db.prepare('UPDATE chat_messages SET retracted_at=1 WHERE id=?').run(b);assert.equal(r(2,'POST','/api/widget/read-batch',{items:[{type:'chat',id:a},{type:'chat',id:c}]}).unreadCount,1);
+ }finally{f.close();}
+});

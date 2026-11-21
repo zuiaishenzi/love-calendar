@@ -6,16 +6,17 @@ export function widgetService(db,{now=Date.now}={}){
  function visibleReminder(user,id){return db.prepare('SELECT * FROM reminders WHERE id=? AND ledger_id=? AND (private_owner IS NULL OR private_owner=?)').get(id,user.ledger_id,user.id);}
  function state(user){
   const peer=db.prepare('SELECT id,name FROM users WHERE ledger_id=? AND id<>?').get(user.ledger_id,user.id)||null;
-  const note=db.prepare('SELECT id,text,created FROM widget_notes WHERE ledger_id=? AND recipient=? AND read_at IS NULL ORDER BY created,id LIMIT 1').get(user.ledger_id,user.id);
-  const chat=db.prepare('SELECT id,kind,text,created FROM chat_messages WHERE ledger_id=? AND sender<>? AND id>? AND retracted_at IS NULL ORDER BY id LIMIT 1').get(user.ledger_id,user.id,through(user));
+  const notes=db.prepare('SELECT id,text,created FROM widget_notes WHERE ledger_id=? AND recipient=? AND read_at IS NULL ORDER BY created,id LIMIT 8').all(user.ledger_id,user.id).map(row=>({...row,type:'note',target:'notes'}));
+  const chats=db.prepare('SELECT id,kind,text,created FROM chat_messages WHERE ledger_id=? AND sender<>? AND id>? AND retracted_at IS NULL ORDER BY id LIMIT 8').all(user.ledger_id,user.id,through(user)).map(row=>({id:row.id,type:'chat',target:'chat',created:row.created,text:row.kind==='text'?row.text:row.kind==='image'?'发来一张图片':'发来一条语音'}));
   const noteCount=db.prepare('SELECT COUNT(*) AS n FROM widget_notes WHERE ledger_id=? AND recipient=? AND read_at IS NULL').get(user.ledger_id,user.id).n;
   const chatCount=db.prepare('SELECT COUNT(*) AS n FROM chat_messages WHERE ledger_id=? AND sender<>? AND id>? AND retracted_at IS NULL').get(user.ledger_id,user.id,through(user)).n;
-  const pick=note&&(!chat||note.created<=chat.created)?{...note,type:'note',target:'notes'}:chat?{id:chat.id,type:'chat',target:'chat',created:chat.created,text:chat.kind==='text'?chat.text:chat.kind==='image'?'发来一张图片':'发来一条语音'}:null;
+  const items=[];let n=0,c=0;while(items.length<8&&(n<notes.length||c<chats.length)){if(n<notes.length&&(c>=chats.length||notes[n].created<=chats[c].created))items.push(notes[n++]);else items.push(chats[c++]);}
+  const pick=items[0]||null;
   const setting=db.prepare('SELECT * FROM widget_settings WHERE user_id=?').get(user.id);let countdown=null;
   if(setting?.reminder_id){const r=visibleReminder(user,setting.reminder_id),today=shanghaiClock(new Date(now())).day,next=r&&nextOccurrence(r,today);if(next)countdown={id:r.id,title:r.title,day:next,days:Math.round((Date.parse(next)-Date.parse(today))/86400000)};}
   if(setting?.custom_day){const today=shanghaiClock(new Date(now())).day;countdown={title:setting.title,day:setting.custom_day,days:Math.round((Date.parse(setting.custom_day)-Date.parse(today))/86400000),source:'custom'};}
   const today=shanghaiClock(new Date(now())).day,countdowns=db.prepare('SELECT * FROM reminders WHERE ledger_id=? AND (private_owner IS NULL OR private_owner=?)').all(user.ledger_id,user.id).flatMap(r=>{const day=nextOccurrence(r,today);return day?[{id:r.id,title:r.title,day,days:Math.round((Date.parse(day)-Date.parse(today))/86400000)}]:[];});
-  return {countdowns,owner:user.id,peer,unreadCount:noteCount+chatCount,item:pick,countdown,settings:{reminderId:setting?.reminder_id||null,customDay:setting?.custom_day||null,title:setting?.title||''},updatedAt:now()};
+  return {items,countdowns,owner:user.id,peer,unreadCount:noteCount+chatCount,item:pick,countdown,settings:{reminderId:setting?.reminder_id||null,customDay:setting?.custom_day||null,title:setting?.title||''},updatedAt:now()};
  }
  function route(req,url,user,input,ensureWritable){
   const p=url.pathname;
@@ -36,6 +37,20 @@ export function widgetService(db,{now=Date.now}={}){
    const result=db.prepare('UPDATE widget_notes SET read_at=NULL WHERE id=? AND ledger_id=? AND recipient=?').run(input.id,user.ledger_id,user.id);
    if(!result.changes)throw fail(404,'留言不存在');
    return state(user);
+  }
+  if(p==='/api/widget/read-batch'&&req.method==='POST'){
+   const items=input.items;
+   if(!Array.isArray(items)||items.length<1||items.length>8||items.some(row=>!row||!['note','chat'].includes(row.type)||!Number.isSafeInteger(row.id)||row.id<=0)||new Set(items.map(row=>row.type+':'+row.id)).size!==items.length)throw fail(400,'已读消息列表无效');
+   db.transaction(()=>{
+    for(const row of items){const found=row.type==='note'?db.prepare('SELECT id FROM widget_notes WHERE id=? AND ledger_id=? AND recipient=?').get(row.id,user.ledger_id,user.id):db.prepare('SELECT id FROM chat_messages WHERE id=? AND ledger_id=? AND sender<>?').get(row.id,user.ledger_id,user.id);if(!found)throw fail(404,'消息不存在');}
+    const chatIds=new Set(items.filter(row=>row.type==='chat').map(row=>row.id)),last=chatIds.size?Math.max(...chatIds):0;
+    if(last>through(user)){
+     const prefix=db.prepare('SELECT id FROM chat_messages WHERE ledger_id=? AND sender<>? AND id>? AND id<=? AND retracted_at IS NULL ORDER BY id LIMIT 9').all(user.ledger_id,user.id,through(user),last);
+     if(prefix.some(row=>!chatIds.has(row.id)))throw fail(409,'消息状态已变化，请刷新卡片');
+     db.prepare('INSERT INTO chat_reads(user_id,through_id) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET through_id=MAX(through_id,excluded.through_id)').run(user.id,last);
+    }
+    for(const row of items)if(row.type==='note')db.prepare('UPDATE widget_notes SET read_at=COALESCE(read_at,?) WHERE id=?').run(now(),row.id);
+   })();return state(user);
   }
   if(p==='/api/widget/read'&&req.method==='POST'){
    if(!['note','chat'].includes(input.type)||!Number.isSafeInteger(input.id)||input.id<=0)throw fail(400,'留言标记无效');

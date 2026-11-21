@@ -4,10 +4,11 @@ import { rcp } from '@kit.RemoteCommunicationKit';
 import { formBindingData, formProvider } from '@kit.FormKit';
 import { image } from '@kit.ImageKit';
 import { util } from '@kit.ArkTS';
+import { fitWidgetMessages, widgetGeometryKey, WidgetGeometry, WidgetMessageFit } from './WidgetMessages';
 import { WidgetCropRegion } from './WidgetCrop';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { SERVER_URL } from './ClientConfig';
-import { WidgetCountdown, WidgetState, WidgetView, WidgetAppearance, widgetView, widgetTextColor } from './WidgetModel';
+import { WidgetItem, WidgetCountdown, WidgetState, WidgetView, WidgetAppearance, widgetView, widgetTextColor } from './WidgetModel';
 
 export class WidgetAuth { owner: number = 0; cookie: string = ''; epoch: string = ''; }
 class WidgetCache { epoch: string = ''; state: WidgetState | undefined = undefined; offline: boolean = false; refreshing: number = 0; reading: number = 0; readFailed: boolean = false; }
@@ -15,8 +16,9 @@ interface WidgetSettings { customDay?: string; title?: string; reminderId?: numb
 interface AppearanceInput { overlay: number; mode: string; color: string; titleColor?: string; captionColor?: string; }
 interface WidgetCardSnapshot { id: string; preset: string; appearance: AppearanceSnapshot; }
 interface AppearanceSnapshot { overlay: number; mode: string; color: string; titleColor: string; captionColor: string; preview?: string; }
-export interface WidgetAction { action: string; type?: string; id?: string; owner?: string; }
-interface WidgetRead { type: string; id: number; }
+export interface WidgetAction { action: string; type?: string; id?: string; owner?: string; items?: string; }
+interface WidgetReadId { type: string; id: number; }
+interface WidgetRead { type?: string; id?: number; items?: WidgetReadId[]; }
 
 export class HarmonyWidget {
   private static queue: Promise<void> = Promise.resolve();
@@ -106,10 +108,27 @@ export class HarmonyWidget {
     const appearance: WidgetAppearance = HarmonyWidget.appearance(context); appearance.preset = code; appearance.photoOwner = 0; appearance.samples = [];
     HarmonyWidget.write(context, HarmonyWidget.appearanceName(HarmonyWidget.selected(context)), JSON.stringify(appearance)); HarmonyWidget.publish(context); return true;
   }
+  static layout(context: common.Context, id: string, width: number, height: number, font: number): void {
+    if (!HarmonyWidget.forms(context).includes(id) || !Number.isFinite(width) || !Number.isFinite(height) || !Number.isFinite(font) || width <= 0 || height <= 0 || width > 8192 || height > 8192 || font <= 0 || font > 32) return;
+    const geometry: WidgetGeometry = { width: Math.floor(width), height: Math.floor(height), font: Math.round(font * 100) / 100 }, value: string = JSON.stringify(geometry), name: string = 'layout-' + id + '.json';
+    if (HarmonyWidget.text(context, name) === value) return;
+    HarmonyWidget.write(context, name, value); HarmonyWidget.publish(context);
+  }
   static currentView(context: common.Context, id: string = HarmonyWidget.selected(context)): WidgetView {
     const auth: WidgetAuth = HarmonyWidget.auth(context), cache: WidgetCache = HarmonyWidget.cache(context), appearance: WidgetAppearance = HarmonyWidget.appearance(context, id);
     const state: WidgetState | undefined = cache.epoch === auth.epoch && cache.state ? JSON.parse(JSON.stringify(cache.state)) as WidgetState : undefined; if (state) state.countdown = HarmonyWidget.countdown(context, state, id);
     const view: WidgetView = widgetView(state, auth.owner, appearance.preset, cache.offline);
+    if (state && state.owner === auth.owner && view.hasItem) {
+      const items: WidgetItem[] = state.items || (state.item ? [state.item] : []);
+      try {
+        const geometry: WidgetGeometry = JSON.parse(HarmonyWidget.text(context, 'layout-' + id + '.json')) as WidgetGeometry;
+        const fit: WidgetMessageFit = fitWidgetMessages(items, geometry); view.body = fit.body; view.readCount = fit.items.length; view.bodyFont = fit.font; view.canRead = fit.items.length > 0;
+        view.readItems = JSON.stringify(fit.items.map((item: WidgetItem): WidgetReadId => ({ id: item.id, type: item.type })));
+        view.layoutKey = widgetGeometryKey(geometry);
+        const rest: number = Math.max(0, state.unreadCount - fit.items.length);
+        view.caption = view.canRead ? rest > 0 ? '还有 ' + rest + ' 条未展示' : '留给你的一点想念' : '打开 App 后查看完整内容';
+      } catch {}
+    }
     view.textColor = appearance.mode === 'custom' ? appearance.color : widgetTextColor(appearance.photoOwner === auth.owner ? appearance.samples : [], appearance.overlay);
     view.titleColor = appearance.mode === 'custom' ? appearance.titleColor : widgetTextColor(appearance.photoOwner === auth.owner ? appearance.samples : [], appearance.overlay, 'title');
     view.captionColor = appearance.mode === 'custom' ? appearance.captionColor : widgetTextColor(appearance.photoOwner === auth.owner ? appearance.samples : [], appearance.overlay, 'caption');
@@ -187,7 +206,7 @@ export class HarmonyWidget {
   private static async request(auth: WidgetAuth, read?: WidgetRead): Promise<WidgetState> {
     const session: rcp.Session = rcp.createSession();
     try {
-      const request: rcp.Request = new rcp.Request(SERVER_URL + (read ? 'api/widget/read' : 'api/widget/state'));
+      const request: rcp.Request = new rcp.Request(SERVER_URL + (read ? read.items ? 'api/widget/read-batch' : 'api/widget/read' : 'api/widget/state'));
       request.method = read ? 'POST' : 'GET';
       request.headers = { 'Cookie': auth.cookie, 'Content-Type': 'application/json', 'Origin': SERVER_URL.slice(0, -1) };
       request.content = read ? JSON.stringify(read) : undefined;
@@ -208,8 +227,17 @@ export class HarmonyWidget {
     const auth: WidgetAuth = HarmonyWidget.auth(context), epoch: string = auth.epoch;
     let read: WidgetRead | undefined = undefined;
     if (action) {
-      if (auth.owner <= 0 || Number(action.owner) !== auth.owner || !['chat', 'note'].includes(action.type || '') || !Number.isSafeInteger(Number(action.id)) || Number(action.id) <= 0) { console.warn('Widget read ignored: stale or invalid action'); return HarmonyWidget.publish(context).then(() => {}); }
-      read = { type: action.type || '', id: Number(action.id) };
+      if (auth.owner <= 0 || Number(action.owner) !== auth.owner) return HarmonyWidget.publish(context).then(() => {});
+      if (action.action === 'read-batch') {
+        try {
+          const items: WidgetReadId[] = JSON.parse(action.items || '[]') as WidgetReadId[];
+          if (!Array.isArray(items) || items.length < 1 || items.length > 8 || items.some((item: WidgetReadId) => !item || !['chat', 'note'].includes(item.type) || !Number.isSafeInteger(item.id) || item.id <= 0)) return Promise.resolve();
+          read = { items: items };
+        } catch { return Promise.resolve(); }
+      } else {
+        if (!['chat', 'note'].includes(action.type || '') || !Number.isSafeInteger(Number(action.id)) || Number(action.id) <= 0) return HarmonyWidget.publish(context).then(() => {});
+        read = { type: action.type || '', id: Number(action.id) };
+      }
     }
     let feedback: Promise<boolean> = Promise.resolve(true);
     if (visible || read) { const cache: WidgetCache = HarmonyWidget.cache(context); cache.epoch = epoch; if (read) { cache.reading = Date.now(); cache.readFailed = false; } else cache.refreshing = Date.now(); HarmonyWidget.write(context, 'cache.json', JSON.stringify(cache)); feedback = HarmonyWidget.publish(context); }

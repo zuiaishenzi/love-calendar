@@ -3,7 +3,7 @@ export const HARMONY_STYLE_PATH: string = '/__ourdays_harmony__/appearance.css';
 
 // Explicit view markers also support older deployed pages and WebView kernels.
 export const HARMONY_APPEARANCE: string = `
-#client-downloads,#android-update-entry{display:none!important}
+#client-downloads,#android-update-entry,[data-widget-background="transparent"]{display:none!important}
 #chat-native-record,#chat-native-cancel{touch-action:none!important;-webkit-user-drag:none!important;user-select:none!important;-webkit-touch-callout:none!important}
 html.harmony-shell,body.harmony-app{background:#faf8f7;scrollbar-gutter:auto}
 html.harmony-shell,body.harmony-app,body.harmony-app *{overscroll-behavior:none!important}
@@ -218,9 +218,9 @@ export const HARMONY_LAYOUT: string = `(()=>{
 // This compatibility marker describes the shared UI/voice protocol, not the OS.
 export const HARMONY_BOOTSTRAP: string = `(()=>{
   if(location.origin!=='https://love.11215739.xyz:11961'||window!==window.top)return;
-  if(window.__ourdaysHarmonyBootstrap==='10911'){window.__ourdaysHarmonyRefresh?.();return;}
+  if(window.__ourdaysHarmonyBootstrap==='10915'){window.__ourdaysHarmonyRefresh?.();return;}
   let agent=navigator.userAgent;
-  if(!agent.includes('OurDaysHarmony/'))agent+=' OurDaysHarmony/10911';
+  if(!agent.includes('OurDaysHarmony/'))agent+=' OurDaysHarmony/10915';
   if(!agent.includes('OurDaysAndroid/'))agent+=' OurDaysAndroid/10811';
   try{Object.defineProperty(navigator,'userAgent',{value:agent,configurable:true});}catch{}
   const hide=()=>{
@@ -228,11 +228,12 @@ export const HARMONY_BOOTSTRAP: string = `(()=>{
     document.body?.classList.add('harmony-app');
     if(document.getElementById('ourdays-harmony-style'))return;
     const style=document.createElement('link');style.id='ourdays-harmony-style';style.rel='stylesheet';
-    style.href=location.origin+${JSON.stringify(HARMONY_STYLE_PATH)}+'?build=10911';
+    style.href=location.origin+${JSON.stringify(HARMONY_STYLE_PATH)}+'?build=10915';
     if(document.documentElement)document.documentElement.append(style);
   };
   const selector='#chat-native-record,#chat-native-cancel',commands=new WeakMap();
   const protect=()=>{
+    for(const node of document.querySelectorAll('[data-widget-background="transparent"]'))node.remove();
     for(const node of document.querySelectorAll(selector)){
       const path=node.getAttribute('href');
       if(path!==null){
@@ -255,5 +256,5 @@ export const HARMONY_BOOTSTRAP: string = `(()=>{
   ${HARMONY_LAYOUT};
   ${HARMONY_SCROLLBARS};
   window.__ourdaysHarmonyRefresh=()=>{hide();protect();window.dispatchEvent(new Event('ourdays-viewport'));};
-  window.__ourdaysHarmonyBootstrap='10911';
+  window.__ourdaysHarmonyBootstrap='10915';
 })()`;

@@ -2,11 +2,12 @@ export interface WidgetItem { id: number; type: string; text: string; target: st
 export interface WidgetCountdown { id?: number; title: string; day: string; days: number; }
 export interface WidgetPeer { name: string; }
 export interface WidgetState {
-  owner: number; item: WidgetItem | null; countdown: WidgetCountdown | null;
+  owner: number; items?: WidgetItem[]; item: WidgetItem | null; countdown: WidgetCountdown | null;
   countdowns?: WidgetCountdown[]; peer: WidgetPeer | null; unreadCount: number; updatedAt: number;
 }
 export class WidgetView {
   title: string = '朝夕 · 桌面留言';
+  readCount: number = 0; bodyFont: number = 16; canRead: boolean = false; readItems: string = '[]'; layoutKey: string = '';
   body: string = '打开 App，登录后接收对方的心意';
   caption: string = '轻触打开桌面留言';
   target: string = 'notes';
@@ -65,7 +66,7 @@ export function widgetView(state: WidgetState | undefined, owner: number, preset
     if (state.item && ['chat', 'note'].includes(state.item.type)) {
       view.hasItem = true; view.itemId = state.item.id; view.itemType = state.item.type;
       view.target = state.item.type === 'chat' ? 'chat' : 'notes';
-      view.title = (state.peer?.name || '对方') + (view.target === 'chat' ? ' · 聊天消息' : ' · 桌面留言');
+      view.title = (state.peer?.name || '对方') + ((state.items?.length || 0) > 1 ? ' · 未读消息' : view.target === 'chat' ? ' · 聊天消息' : ' · 桌面留言');
       view.body = state.item.text; view.compact = Array.from(view.body).length > 60;
       view.caption = state.unreadCount > 1 ? '还有 ' + state.unreadCount + ' 条未读' : '留给你的一点想念';
     } else if (state.countdown) {

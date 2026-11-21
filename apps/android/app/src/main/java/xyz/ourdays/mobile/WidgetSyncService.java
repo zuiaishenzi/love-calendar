@@ -54,6 +54,7 @@ public class WidgetSyncService extends JobService {
         }
     }
     static void acknowledge(Context c,String type,long id,long owner){Context app=c.getApplicationContext();NETWORK.execute(()->{try{if(owner!=WidgetStore.owner(app))return;JSONObject body=new JSONObject();body.put("type",type);body.put("id",id);runSync(app,body);}catch(Exception error){Log.e("OurDaysWidget","Widget acknowledgement failed",error);}});}
+    static void acknowledgeBatch(Context c,String items,long owner){Context app=c.getApplicationContext();NETWORK.execute(()->{try{if(owner!=WidgetStore.owner(app))return;org.json.JSONArray list=new org.json.JSONArray(items);if(list.length()<1||list.length()>8)return;JSONObject body=new JSONObject();body.put("items",list);runSync(app,body);}catch(Exception error){Log.e("OurDaysWidget","Widget batch acknowledgement failed",error);}});}
     private static void runSync(Context c,JSONObject ack){
         try{sync(c,ack);}catch(RuntimeException error){Log.e("OurDaysWidget","Widget synchronization failed",error);}
     }
@@ -62,7 +63,7 @@ public class WidgetSyncService extends JobService {
         synchronized(WidgetStore.LOCK){owner=WidgetStore.owner(c);if(owner==0)return;if(cookie.isEmpty()||!fingerprint.equals(WidgetStore.prefs(c).getString("session",""))){WidgetStore.clear(c);OurDaysWidget.render(c);schedule(c);return;}}
         try{
             JSONObject state;
-            try{state=WidgetApi.request(ack==null?"/api/widget/state":"/api/widget/read",cookie,ack);}catch(WidgetApi.RequestError e){if(e.status==409)state=WidgetApi.request("/api/widget/state",cookie,null);else throw e;}
+            try{state=WidgetApi.request(ack==null?"/api/widget/state":ack.has("items")?"/api/widget/read-batch":"/api/widget/read",cookie,ack);}catch(WidgetApi.RequestError e){if(e.status==409)state=WidgetApi.request("/api/widget/state",cookie,null);else throw e;}
             synchronized(WidgetStore.LOCK){if(owner!=WidgetStore.owner(c)||!fingerprint.equals(WidgetStore.hash(WidgetStore.cookie())))return;if(state.optLong("owner")!=owner){WidgetStore.clear(c);}else WidgetStore.prefs(c).edit().putString("state",state.toString()).putBoolean("offline",false).apply();}
         }catch(Exception e){synchronized(WidgetStore.LOCK){if(owner!=WidgetStore.owner(c)||!fingerprint.equals(WidgetStore.hash(WidgetStore.cookie())))return;if(e instanceof WidgetApi.RequestError&&((WidgetApi.RequestError)e).status==401)WidgetStore.clear(c);else WidgetStore.prefs(c).edit().putBoolean("offline",true).apply();}}
         OurDaysWidget.render(c);schedule(c);
