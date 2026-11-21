@@ -17,15 +17,18 @@ export function fitWidgetMessages(items: WidgetItem[], geometry: WidgetGeometry)
     return paragraph.getHeight() + 2 * geometry.font <= geometry.height;
   };
   try {
-    let ready: boolean = false;
-    for (const size of [16, 14, 12, 10]) { if (fits('• ' + items[0].text, size)) { result.font = size; ready = true; break; } }
-    if (!ready) return result;
+    const minimum: number = fits('• ' + items[0].text, 12) ? 12 : 10;
+    if (!fits('• ' + items[0].text, minimum)) return result;
+    result.font = minimum;
     let body: string = '';
     for (const item of items.slice(0, 8)) {
       const next: string = body ? body + '\n\n• ' + item.text : '• ' + item.text;
       if (!fits(next, result.font)) break; body = next; result.items.push(item);
     }
-    if (result.items.length) result.body = body;
+    if (result.items.length) {
+      result.body = body;
+      for (const size of [20, 18, 16, 14, 12, 10]) { if (size >= minimum && fits(body, size)) { result.font = size; break; } }
+    }
   } catch { result.items = []; }
   return result;
 }

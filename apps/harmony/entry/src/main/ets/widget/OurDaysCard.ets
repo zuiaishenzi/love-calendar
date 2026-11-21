@@ -30,7 +30,7 @@ struct OurDaysCard {
   @LocalStorageProp('layoutKey') layoutKey: string = '';
   @State actualLayoutKey: string = '';
   private reportLayout(area: SizeOptions): void {
-    const width: number = Math.floor(vp2px(Number(area.width))), height: number = Math.floor(vp2px(Number(area.height))), font: number = Math.round(fp2px(1) * 100) / 100;
+    const width: number = Math.floor(vp2px(Number(area.width))), height: number = Math.floor(vp2px(Math.max(0, Number(area.height) - 8))), font: number = Math.round(fp2px(1) * 100) / 100;
     this.bodyWidth = width; this.bodyHeight = height; this.bodyFontUnit = font;
     const key: string = width + ':' + height + ':' + font; if (key === this.actualLayoutKey || width <= 0 || height <= 0) return; this.actualLayoutKey = key;
     postCardAction(this, { action: 'message', params: { widgetAction: 'layout', width: String(width), height: String(height), font: String(font) } });
@@ -64,7 +64,7 @@ struct OurDaysCard {
           Text(this.title).fontSize(11).fontColor(this.titleColor).maxLines(2).width('100%')
           Stack({ alignContent: Alignment.Start }) {
             Text(this.body).fontSize(this.bodyFont).fontFamily('HarmonyOS Sans').fontColor(this.textColor).width('100%')
-          }.layoutWeight(1).width('100%').clip(true).onSizeChange((_old: SizeOptions, area: SizeOptions) => this.reportLayout(area))
+          }.layoutWeight(1).width('100%').padding({ top: 8 }).clip(true).onSizeChange((_old: SizeOptions, area: SizeOptions) => this.reportLayout(area))
           Text(this.caption).fontSize(9).fontColor(this.captionColor).maxLines(1).width('100%')
         }.alignItems(HorizontalAlign.Start).layoutWeight(1).width('100%')
         .onClick(() => {

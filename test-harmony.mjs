@@ -181,8 +181,8 @@ test('鸿蒙文档启动适配兼容旧网页，但不影响外站和子框架',
  for(const [origin,main,enabled] of [['https://love.11215739.xyz:11961',true,true],['https://evil.example',true,false],['https://love.11215739.xyz:11961',false,false]]){
   const styles=[],navigator={userAgent:'Mozilla/5.0 OpenHarmony'},window={};window.top=main?window:{};
   new Script(bootstrap).runInNewContext({location:{origin},window,navigator,MutationObserver:class{observe(){}},document:{querySelectorAll:()=>[],getElementById:()=>null,createElement:()=>({}),documentElement:{append:style=>styles.push(style)},addEventListener:()=>{}}});
-  assert.equal(navigator.userAgent.includes('OurDaysHarmony/10915'),enabled);assert.equal(styles.length,enabled?1:0);
-  if(enabled){assert.match(navigator.userAgent,/OurDaysAndroid\/10811/);assert.equal(styles[0].rel,'stylesheet');assert.equal(styles[0].href,'https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10915');}
+  assert.equal(navigator.userAgent.includes('OurDaysHarmony/10916'),enabled);assert.equal(styles.length,enabled?1:0);
+  if(enabled){assert.match(navigator.userAgent,/OurDaysAndroid\/10811/);assert.equal(styles[0].rel,'stylesheet');assert.equal(styles[0].href,'https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10916');}
  }
 });
 
@@ -196,7 +196,7 @@ test('鸿蒙内置CSS仅拦截指定同源GET子资源，遵守服务器style-sr
  class Response{setResponseData(value){this.body=value;}setResponseMimeType(value){this.mime=value;}setResponseEncoding(value){this.encoding=value;}setResponseCode(value){this.status=value;}setReasonMessage(){}setResponseHeader(value){this.headers=value;}}
  const Harness=new Script(code).runInNewContext({...constants,commandPath,WebResourceResponse:Response});
  for(const [url,verb,main,allowed] of [
-  ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10915','GET',false,true],
+  ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css?build=10916','GET',false,true],
   ['https://evil.example/__ourdays_harmony__/appearance.css','GET',false,false],
   ['https://love.11215739.xyz:11961/style.css','GET',false,false],
   ['https://love.11215739.xyz:11961/__ourdays_harmony__/appearance.css','POST',false,false],
@@ -211,9 +211,9 @@ test('鸿蒙加载后补注入复用已安装适配，丢失样式可恢复',()=
  const bootstrap=new Script(source+';HARMONY_BOOTSTRAP;').runInNewContext({});
  let style=null,appends=0,observers=0,refreshes=0;
  const window={dispatchEvent:()=>refreshes++};window.top=window;
- const context=createContext({location:{origin:'https://love.11215739.xyz:11961'},window,navigator:{userAgent:'OurDaysHarmony/10915'},Event:class{},MutationObserver:class{constructor(){observers++;}observe(){}},document:{getElementById:()=>style,createElement:()=>({}),documentElement:{append:node=>{style=node;appends++;}},querySelectorAll:()=>[],addEventListener:()=>{}}});
+ const context=createContext({location:{origin:'https://love.11215739.xyz:11961'},window,navigator:{userAgent:'OurDaysHarmony/10916'},Event:class{},MutationObserver:class{constructor(){observers++;}observe(){}},document:{getElementById:()=>style,createElement:()=>({}),documentElement:{append:node=>{style=node;appends++;}},querySelectorAll:()=>[],addEventListener:()=>{}}});
  const run=()=>new Script(bootstrap).runInContext(context);
- run();assert.equal(window.__ourdaysHarmonyBootstrap,'10915');assert.equal(appends,1);const initialObservers=observers;
+ run();assert.equal(window.__ourdaysHarmonyBootstrap,'10916');assert.equal(appends,1);const initialObservers=observers;
  run();assert.equal(appends,1);assert.equal(observers,initialObservers);assert.equal(refreshes,1);
  style=null;run();assert.equal(appends,2);assert.equal(observers,initialObservers);
 });
@@ -369,4 +369,11 @@ test('鸿蒙已读仅发送当前完成排版的消息，尺寸变化等待确�
  const source=readFileSync('apps/harmony/entry/src/main/ets/widget/OurDaysCard.ets','utf8'),method=source.slice(source.indexOf('  private readCard('),source.indexOf('  build()')),events=[];
  const Card=new Script(stripTypeScriptTypes('class Card {hasItem=true;reading=false;canRead=false;layoutKey="old";actualLayoutKey="new";readItems=JSON.stringify([{type:"note",id:5},{type:"chat",id:8}]);owner=1;'+method+'};Card;',{mode:'transform'})).runInNewContext({postCardAction:(_card,event)=>events.push(event),console:{info(){}}}),card=new Card();
  card.readCard();assert.equal(events.length,0);card.canRead=true;card.readCard();assert.equal(events.length,0);card.layoutKey='new';card.readCard();assert.equal(events.length,1);assert.equal(events[0].params.widgetAction,'read-batch');assert.deepEqual(JSON.parse(events[0].params.items),[{type:'note',id:5},{type:'chat',id:8}]);
+});
+
+
+test('鸿蒙字号随完整内容密度浮动，稀疏内容放大而多条内容缩小',()=>{
+ const {fitWidgetMessages:fit}=harmonyWidgetFixture(),geometry={width:180,height:110,font:1},row=id=>({id,type:'note',text:'今天也想你呀',target:'notes'}),single=fit([row(1)],geometry),many=fit([row(1),row(2),row(3)],geometry);
+ assert.equal(single.font,20);assert.equal(single.items.length,1);assert.equal(many.items.length,3);assert.ok(many.font<single.font);assert.ok(many.font>=12);assert.equal(many.body.split('今天也想你呀').length-1,3);
+ const long=fit([{...row(1),text:'第一行\n'.repeat(100)},row(2)],geometry);assert.equal(long.items.length,0);
 });

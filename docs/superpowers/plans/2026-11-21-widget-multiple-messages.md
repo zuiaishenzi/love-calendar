@@ -22,3 +22,12 @@
 - Isolated Android16 launcher/API integration:4 unread messages ->2 fully displayed, button acknowledges exactly2 ->2 unread remain; next short message acknowledged ->456-character note remains unread, opens-full-text hint and no read button. No AndroidRuntime error observed during check.
 - Android release compilation and lint passed. Harmony compilation/signature verification passed; no Harmony device connected, so real form-size callback/visual checks remain unverified on device.
 - Final artifacts:Android10908,Harmony10915, display1.9.0, outside repository. Existing artifacts preserved. No commit/push/deploy performed. Both server and clients need updating for the batch endpoint.
+
+
+## Follow-up: adaptive font and optical centering
+
+- Select the full message prefix at readable12sp/fp, falling back to10 only when the first message otherwise cannot fit; enlarge that complete prefix to the largest fitting20/18/16/14/12/10 size.
+- Add8dp/vp of top inset inside the body region, shifting text center down4dp/vp; deduct that inset in measurement and retain all read guards.
+- Verify sparse/dense and very long text, native Android font/layout results, builds and signatures; packages stay in ../love-app. Display version remains1.9.0.
+
+Follow-up verification:43 related tests passed; actual Android16 instrumentation confirmed sparse20sp, smaller dense text and centered body shifted4dp. Android10909 release/lint and Harmony10916 build/signature passed. Artifacts remain local; no Harmony device verification.

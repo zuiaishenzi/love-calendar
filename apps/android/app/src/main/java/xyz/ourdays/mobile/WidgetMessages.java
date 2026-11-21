@@ -20,19 +20,19 @@ final class WidgetMessages {
         Bundle options=AppWidgetManager.getInstance(c).getAppWidgetOptions(id);float dp=c.getResources().getDisplayMetrics().density,sp=c.getResources().getDisplayMetrics().scaledDensity;
         boolean landscape=c.getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE;
         int width=Math.max(1,Math.round((options.getInt(landscape?AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH:AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH,110)-24)*dp));
-        int available=Math.round((options.getInt(landscape?AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT:AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT,options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,110))-58)*dp)-height(title,11,sp,width)-Math.round(13*sp);
+        int available=Math.round((options.getInt(landscape?AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT:AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT,options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,110))-66)*dp)-height(title,11,sp,width)-Math.round(13*sp);
         return fit(queue,width,available,sp);
     }
     static WidgetMessages fit(JSONArray queue,int width,int available,float sp){
         WidgetMessages result=new WidgetMessages();JSONObject first=queue.optJSONObject(0);if(first==null)return result;
-        String firstText="• "+first.optString("text");boolean fits=false;
-        for(int size:new int[]{16,14,12,10}){if(height(firstText,size,sp,width)<=available){result.font=size;fits=true;break;}}
-        if(!fits)return result;
+        String firstText="• "+first.optString("text");int minimum=height(firstText,12,sp,width)<=available?12:10;
+        if(height(firstText,minimum,sp,width)>available)return result;
+        result.font=minimum;
         String body="";
         for(int n=0;n<Math.min(8,queue.length());n++){JSONObject item=queue.optJSONObject(n);if(item==null||!item.optString("type").matches("note|chat")||item.optLong("id")<=0)break;
             String next=body.isEmpty()?"• "+item.optString("text"):body+"\n\n• "+item.optString("text");if(height(next,result.font,sp,width)>available)break;
             try{result.readItems.put(new JSONObject().put("type",item.optString("type")).put("id",item.optLong("id")));}catch(JSONException impossible){break;}body=next;
         }
-        if(result.readItems.length()>0)result.body=body;return result;
+        if(result.readItems.length()>0){result.body=body;for(int size:new int[]{20,18,16,14,12,10}){if(size>=minimum&&height(body,size,sp,width)<=available){result.font=size;break;}}}return result;
     }
 }
